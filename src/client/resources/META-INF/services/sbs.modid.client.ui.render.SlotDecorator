@@ -1,0 +1,17 @@
+sbs.modid.client.core.api.ApiHighlightDecorator
+sbs.modid.client.core.item.ItemOverlayDecorator
+sbs.modid.client.dungeons.chest.DungeonChestDecorator
+sbs.modid.client.dungeons.croesus.render.CroesusDecorator
+sbs.modid.client.economy.bazaar.render.BazaarClaimableDecorator
+sbs.modid.client.economy.bazaar.render.BazaarOrderDecorator
+sbs.modid.client.economy.bitsshop.render.BitsShopDecorator
+sbs.modid.client.economy.npcshop.render.NpcShopDecorator
+sbs.modid.client.economy.recipe.render.SearchHighlightDecorator
+sbs.modid.client.helper.gamemenu.GameMenuDecorator
+sbs.modid.client.helper.inventory.render.AccessoryBagDecorator
+sbs.modid.client.helper.inventory.render.SlotLockDecorator
+sbs.modid.client.helper.itemprotection.render.ProtectedItemDecorator
+sbs.modid.client.helper.museum.render.MuseumSlotDecorator
+sbs.modid.client.helper.stacktips.StackTipDecorator
+sbs.modid.client.skills.garden.render.GardenMenuDecorator
+sbs.modid.client.skills.mining.render.HotmMenuDecorator

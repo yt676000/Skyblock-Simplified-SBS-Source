@@ -1,0 +1,13 @@
+{
+  "id": "spiders_den",
+  "name": "Spider's Den",
+  "island": "Spider's Den",
+  "travel": "/warp spider",
+  "note": "Places are not catalogued yet - append to \"locations\" (name, category, x/y/z) and they appear on the map with no code change.",
+  "warps": [
+    { "id": "spider", "command": "/warp spider", "label": "Spider's Den" },
+    { "id": "nest", "command": "/warp nest", "label": "Top of Nest" },
+    { "id": "arachne", "command": "/warp arachne", "label": "Arachne's Burrow" }
+  ],
+  "locations": []
+}

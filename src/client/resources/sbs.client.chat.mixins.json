@@ -1,0 +1,23 @@
+{
+  "required": true,
+  "package": "sbs.modid.client.core.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "BetterChatMixin",
+    "ChatChannelPrefixMixin",
+    "ChatComponentAccessor",
+    "ChatCopyMixin",
+    "ChatNameClickMixin",
+    "ChatPriceListenerMixin",
+    "ChatScreenMixin",
+    "ChatSelectionMixin",
+    "ChatTabBarMixin",
+    "ChatTabsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

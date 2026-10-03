@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "dataVersion": 1,
+  "generatedAt": "2026-08-07",
+  "note": "Per-area clock rules for the Rift. drainMultiplier 0 = the clock stands still, 0.5 = half speed, 2 = double. minimumSeconds is what the area REQUIRES you to be holding, not what it takes. exitSeconds is a hand-estimated walk back to somewhere that does not drain, and is only used to decide when to warn. certainty is CONFIRMED once somebody has watched the clock do it in game; everything here is WIKI until then.",
+  "areas": [
+    {
+      "zone": "Wizard Tower",
+      "drainMultiplier": 0.0,
+      "note": "Time does not drain here, except on the bottom floor",
+      "certainty": "WIKI"
+    },
+    {
+      "zone": "Rift Gallery",
+      "drainMultiplier": 0.0,
+      "note": "Time does not drain here",
+      "certainty": "WIKI"
+    },
+    {
+      "zone": "Mirrorverse",
+      "drainMultiplier": 0.0,
+      "minimumSeconds": 180,
+      "note": "Needs 3 minutes on the clock to enter; time is frozen inside",
+      "certainty": "WIKI"
+    },
+    {
+      "zone": "Colosseum",
+      "drainMultiplier": 0.5,
+      "exitSeconds": 40,
+      "note": "Drains at half speed in and near the Colosseum",
+      "certainty": "WIKI"
+    },
+    {
+      "zone": "Time Chamber",
+      "drainMultiplier": 2.0,
+      "exitSeconds": 30,
+      "note": "Drains twice as fast",
+      "certainty": "WIKI"
+    }
+  ]
+}

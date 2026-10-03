@@ -1,0 +1,11 @@
+{
+  "id": "jerrys_workshop",
+  "name": "Jerry's Workshop",
+  "island": "Jerry's Workshop",
+  "travel": "/warp winter",
+  "note": "Only open during the Winter event. Places are not catalogued yet - append to \"locations\" and they appear on the map.",
+  "warps": [
+    { "id": "winter", "command": "/warp winter", "label": "Jerry's Workshop" }
+  ],
+  "locations": []
+}

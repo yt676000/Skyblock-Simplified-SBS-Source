@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "dataVersion": 2,
+  "generatedAt": "2026-09-27",
+  "note": "Heart of the Mountain goal profiles for the perk advisor. A profile is WEIGHTS OVER EFFECT STATS (hotm.json effects[].stat), never a perk list, so a tree change is a data edit: a new perk that moves a weighted stat is ranked without touching this file. weight = value of one unit of that stat for this goal, relative to 1 Mining Speed. core = always max first (ranked ahead of fill), fill = worth taking after core, skip = never suggested for this goal. 'target' is the level the recommended tree aims at; progress = sum(min(level, target)) / sum(target). Reasons are short and written from the tooltip effects plus the community wiki's mining guides (facts only, CC BY-NC-SA). The wiki itself notes its HotM guides predate the current tree, so every weight is a judgement and ESTIMATED; the certainty field says so per profile. See docs/features/hotm-perk-advisor.md for the sources behind each profile.",
+  "profiles": [
+    {
+      "id": "mithril",
+      "name": "Mithril / Dwarven metals",
+      "shortName": "Mithril",
+      "certainty": "ESTIMATED",
+      "sources": ["HotM menu tooltips (play log 2026-09-04)", "community wiki: Heart of the Mountain, Mithril mining guide"],
+      "weights": {
+        "mining_speed": 1.0, "mining_fortune": 4.0, "mining_spread": 2.0, "titanium_chance": 80.0,
+        "mining_speed_percent": 20.0, "dwarven_metal_speed": 1.0, "dwarven_metal_fortune": 4.0,
+        "daily_powder": 300.0, "daily_buff": 150.0, "pickaxe_ability": 100.0, "powder_gain": 40.0
+      },
+      "core": [
+        { "perk": "mining_speed", "target": 50, "reason": "flat +20 speed a level; speed is the bottleneck on mithril" },
+        { "perk": "mining_fortune", "target": 50, "reason": "+2 fortune a level = more mithril and powder per block" },
+        { "perk": "efficient_miner", "target": 100, "reason": "spread mines neighbouring ore for free" },
+        { "perk": "titanium_insanium", "target": 50, "reason": "mithril converts to titanium, the valuable drop" },
+        { "perk": "precision_mining", "target": 1, "reason": "+30% speed while aiming at the particle, one token" }
+      ],
+      "fill": [
+        { "perk": "daily_powder", "target": 1, "reason": "free powder every day, one token" },
+        { "perk": "sky_mall", "target": 1, "reason": "daily random buff, often speed or 5x titanium" },
+        { "perk": "mining_speed_boost", "target": 1, "reason": "the ability most mithril routes use" },
+        { "perk": "strong_arm", "target": 100, "reason": "+5 speed a level on Dwarven metals" },
+        { "perk": "metal_head", "target": 20, "reason": "Dwarven-metal fortune, +5 at level 1 (later levels unseen)" }
+      ],
+      "skip": [
+        { "perk": "mole", "reason": "hard stone spread; mithril routes avoid hard stone" },
+        { "perk": "professional", "reason": "gemstone-only speed" },
+        { "perk": "gem_lover", "reason": "gemstone-only fortune" },
+        { "perk": "quick_forge", "reason": "forge time, not mining" }
+      ]
+    },
+    {
+      "id": "gemstone",
+      "name": "Gemstone mining (Crystal Hollows)",
+      "shortName": "Gem",
+      "certainty": "ESTIMATED",
+      "sources": ["HotM menu tooltips (play log 2026-09-04)", "community wiki: Heart of the Mountain, Gemstone mining guide"],
+      "weights": {
+        "mining_speed": 1.0, "gemstone_mining_speed": 1.0, "mining_fortune": 3.0, "gemstone_fortune": 5.0,
+        "mining_spread": 2.0, "daily_gemstone_burst": 300.0, "daily_powder": 250.0, "daily_buff": 100.0,
+        "pickaxe_ability": 100.0, "powder_gain": 40.0, "pristine": 400.0
+      },
+      "core": [
+        { "perk": "mining_speed", "target": 50, "reason": "flat speed applies to gemstones too" },
+        { "perk": "professional", "target": 140, "reason": "+5 speed a level, but only on gemstones: the gem-specific speed" },
+        { "perk": "gem_lover", "target": 20, "reason": "gemstone fortune: more gems per block" },
+        { "perk": "mining_fortune", "target": 50, "reason": "general fortune also counts on gems" },
+        { "perk": "front_loaded", "target": 1, "reason": "first 2,500 gems a day: 3x gemstone powder, +150 gem fortune" }
+      ],
+      "fill": [
+        { "perk": "efficient_miner", "target": 100, "reason": "spread, applies to gem veins" },
+        { "perk": "daily_powder", "target": 1, "reason": "free powder every day" },
+        { "perk": "sky_mall", "target": 1, "reason": "daily random buff" },
+        { "perk": "mining_speed_boost", "target": 1, "reason": "speed ability for gem grinding" }
+      ],
+      "skip": [
+        { "perk": "titanium_insanium", "reason": "mithril-only" },
+        { "perk": "mole", "reason": "hard stone spread; gem grinding does not break hard stone" },
+        { "perk": "old_school", "reason": "ore fortune, not gemstones" },
+        { "perk": "quick_forge", "reason": "forge time, not mining" }
+      ]
+    },
+    {
+      "id": "glacite",
+      "name": "Glacite / Tunnels, mineshafts, corpses",
+      "shortName": "Glacite",
+      "certainty": "ESTIMATED",
+      "sources": ["HotM menu tooltips tiers 6-9 (Layout Recorder, 2026-09-28)", "community wiki: Heart of the Mountain tier 10, Glacite Tunnels, Glacite Mineshaft"],
+      "weights": {
+        "mining_speed": 1.0, "mining_fortune": 3.0, "cold_resistance": 60.0, "mineshaft_chance": 120.0,
+        "vanguard_corpse_chance": 100.0, "corpse_loot": 80.0, "dwarven_metal_speed": 1.0,
+        "dwarven_metal_fortune": 4.0, "suspicious_scrap": 40.0, "mineshaft_mining_speed": 1.0,
+        "mineshaft_mining_fortune": 3.0, "mineshaft_gemstone_spread": 20.0, "mineshaft_buff": 150.0, "glacite_powder_mobs": 200.0,
+        "daily_powder": 250.0, "powder_gain": 40.0
+      },
+      "core": [
+        { "perk": "warm_hearted", "target": 50, "reason": "Warm Heart: +0.4 cold resistance a level = longer runs in the tunnels" },
+        { "perk": "surveyor", "target": 20, "reason": "+0.75% Glacite Mineshaft chance a level" },
+        { "perk": "vanguard_seeker", "target": 50, "reason": "Vanguard corpse chance in mineshafts (ESTIMATED perk)" },
+        { "perk": "mining_speed", "target": 50, "reason": "flat speed" }
+      ],
+      "fill": [
+        { "perk": "gifts_from_the_departed", "target": 50, "reason": "corpse loot (ESTIMATED perk)" },
+        { "perk": "eager_adventurer", "target": 100, "reason": "+4 speed a level inside a mineshaft" },
+        { "perk": "rags_to_riches", "target": 50, "reason": "+4 fortune a level inside a mineshaft" },
+        { "perk": "steady_hand", "target": 100, "reason": "gemstone spread inside a mineshaft" },
+        { "perk": "no_stone_unturned", "target": 50, "reason": "Suspicious Scrap chance in mineshafts" },
+        { "perk": "mining_fortune", "target": 50, "reason": "general fortune" },
+        { "perk": "daily_powder", "target": 1, "reason": "free powder every day" }
+      ],
+      "skip": [
+        { "perk": "professional", "reason": "gemstone-only speed" },
+        { "perk": "titanium_insanium", "reason": "mithril-only" },
+        { "perk": "quick_forge", "reason": "forge time, not mining" }
+      ]
+    },
+    {
+      "id": "commissions",
+      "name": "Commissions / powder grinding",
+      "shortName": "Comms",
+      "certainty": "ESTIMATED",
+      "sources": ["HotM menu tooltips (play log 2026-09-04)", "community wiki: Commissions, Heart of the Mountain"],
+      "weights": {
+        "mining_speed": 1.0, "mining_fortune": 2.0, "mining_spread": 1.0, "daily_powder": 400.0,
+        "mining_wisdom": 30.0, "daily_buff": 150.0, "powder_gain": 60.0, "pickaxe_ability": 100.0,
+        "rare_occurrence": 10.0
+      },
+      "core": [
+        { "perk": "mining_speed", "target": 50, "reason": "faster commissions" },
+        { "perk": "daily_grind", "target": 1, "reason": "first commission a day grants powder x HotM level" },
+        { "perk": "daily_powder", "target": 1, "reason": "first ore a day grants powder x HotM level" },
+        { "perk": "sky_mall", "target": 1, "reason": "daily buff, one option is +15% powder" }
+      ],
+      "fill": [
+        { "perk": "seasoned_mineman", "target": 100, "reason": "mining wisdom = mining XP" },
+        { "perk": "mining_fortune", "target": 50, "reason": "more drops per commission block" },
+        { "perk": "efficient_miner", "target": 100, "reason": "spread" },
+        { "perk": "mining_speed_boost", "target": 1, "reason": "speed ability" }
+      ],
+      "skip": [
+        { "perk": "quick_forge", "reason": "forge time, not mining" },
+        { "perk": "mole", "reason": "hard stone spread" }
+      ]
+    },
+    {
+      "id": "scatha",
+      "name": "Scatha / worm hunting",
+      "shortName": "Scatha",
+      "certainty": "ESTIMATED",
+      "sources": ["HotM menu tooltip: Luck of the Cave", "community wiki: Scatha, Worm, Crystal Hollows"],
+      "weights": {
+        "mining_speed": 1.0, "hard_stone_spread": 2.0, "mining_spread": 1.0, "rare_occurrence": 40.0,
+        "pickaxe_ability": 100.0, "daily_powder": 200.0
+      },
+      "core": [
+        { "perk": "mining_speed", "target": 50, "reason": "worms spawn from blocks broken: more blocks, more rolls" },
+        { "perk": "mole", "target": 200, "reason": "spread on hard stone, which worm hunting mines" },
+        { "perk": "luck_of_the_cave", "target": 45, "reason": "rare occurrence chance (the tooltip lists Dwarven Mines events; whether it moves worm spawns is UNVERIFIED)" }
+      ],
+      "fill": [
+        { "perk": "efficient_miner", "target": 100, "reason": "general spread" },
+        { "perk": "mining_speed_boost", "target": 1, "reason": "speed ability" },
+        { "perk": "daily_powder", "target": 1, "reason": "free powder every day" }
+      ],
+      "skip": [
+        { "perk": "titanium_insanium", "reason": "mithril-only" },
+        { "perk": "gem_lover", "reason": "gemstone fortune" },
+        { "perk": "quick_forge", "reason": "forge time, not mining" }
+      ]
+    }
+  ]
+}

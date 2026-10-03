@@ -1,0 +1,2863 @@
+{
+ "schemaVersion": 1,
+ "dataVersion": 1,
+ "generatedAt": "2026-08-08T12:26:26Z",
+ "sourceUpdated": 1786046142121,
+ "accessories": [
+  {
+   "id": "ABICASE",
+   "name": "Abicase",
+   "tier": "RARE"
+  },
+  {
+   "id": "ACCRETION_ARTIFACT",
+   "name": "Accretion Artifact",
+   "tier": "RARE",
+   "family": "ACCRETION",
+   "step": 2
+  },
+  {
+   "id": "ACCRETION_RING",
+   "name": "Accretion Ring",
+   "tier": "UNCOMMON",
+   "family": "ACCRETION",
+   "step": 1
+  },
+  {
+   "id": "ACCRETION_TALISMAN",
+   "name": "Accretion Talisman",
+   "tier": "COMMON",
+   "family": "ACCRETION",
+   "step": 0
+  },
+  {
+   "id": "AGARIMOO_ARTIFACT",
+   "name": "Agarimoo Artifact",
+   "tier": "RARE",
+   "family": "AGARIMOO",
+   "step": 2
+  },
+  {
+   "id": "AGARIMOO_RING",
+   "name": "Agarimoo Ring",
+   "tier": "UNCOMMON",
+   "family": "AGARIMOO",
+   "step": 1
+  },
+  {
+   "id": "AGARIMOO_TALISMAN",
+   "name": "Agarimoo Talisman",
+   "tier": "COMMON",
+   "family": "AGARIMOO",
+   "step": 0
+  },
+  {
+   "id": "ANGUISH_ARTIFACT",
+   "name": "Anguish Artifact",
+   "tier": "LEGENDARY",
+   "family": "ANGUISH",
+   "step": 2
+  },
+  {
+   "id": "ANGUISH_RING",
+   "name": "Anguish Ring",
+   "tier": "EPIC",
+   "family": "ANGUISH",
+   "step": 1
+  },
+  {
+   "id": "ANGUISH_TALISMAN",
+   "name": "Anguish Talisman",
+   "tier": "RARE",
+   "family": "ANGUISH",
+   "step": 0
+  },
+  {
+   "id": "ANITA_ARTIFACT",
+   "name": "Anita's Artifact",
+   "tier": "RARE",
+   "family": "ANITA",
+   "step": 2
+  },
+  {
+   "id": "ANITA_RING",
+   "name": "Anita's Ring",
+   "tier": "UNCOMMON",
+   "family": "ANITA",
+   "step": 1
+  },
+  {
+   "id": "ANITA_TALISMAN",
+   "name": "Anita's Talisman",
+   "tier": "COMMON",
+   "family": "ANITA",
+   "step": 0
+  },
+  {
+   "id": "APPLICANT_STATEMENT",
+   "name": "Applicant's Statement",
+   "tier": "COMMON",
+   "family": "ACADEMIC",
+   "step": 0,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "ARCHAEOLOGIST_COMPASS",
+   "name": "Archaeologist's Compass",
+   "tier": "COMMON",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "ARGOFAY_TRINKET",
+   "name": "Argofay Trinket",
+   "tier": "EPIC",
+   "origin": "RIFT"
+  },
+  {
+   "id": "ARTIFACT_OF_COINS",
+   "name": "Artifact of Coins",
+   "tier": "RARE",
+   "family": "COINS",
+   "step": 1
+  },
+  {
+   "id": "ARTIFACT_OF_CONTROL",
+   "name": "Artifact of Control",
+   "tier": "LEGENDARY"
+  },
+  {
+   "id": "ARTIFACT_OF_SPACE",
+   "name": "Artifact of Space",
+   "tier": "EPIC",
+   "family": "SPACE",
+   "step": 2
+  },
+  {
+   "id": "ARTIFACT_POTION_AFFINITY",
+   "name": "Potion Affinity Artifact",
+   "tier": "RARE",
+   "family": "POTION_AFFINITY",
+   "step": 2
+  },
+  {
+   "id": "ATMOSPHERIC_FILTER",
+   "name": "Atmospheric Filter",
+   "tier": "RARE"
+  },
+  {
+   "id": "AUTO_RECOMBOBULATOR",
+   "name": "Auto Recombobulator",
+   "tier": "LEGENDARY"
+  },
+  {
+   "id": "BAIT_RING",
+   "name": "Bait Ring",
+   "tier": "RARE"
+  },
+  {
+   "id": "BAT_ARTIFACT",
+   "name": "Bat Artifact",
+   "tier": "LEGENDARY",
+   "family": "BAT",
+   "step": 2
+  },
+  {
+   "id": "BAT_PERSON_ARTIFACT",
+   "name": "Bat Person Artifact",
+   "tier": "RARE",
+   "family": "BAT_PERSON",
+   "step": 2
+  },
+  {
+   "id": "BAT_PERSON_RING",
+   "name": "Bat Person Ring",
+   "tier": "UNCOMMON",
+   "family": "BAT_PERSON",
+   "step": 1
+  },
+  {
+   "id": "BAT_PERSON_TALISMAN",
+   "name": "Bat Person Talisman",
+   "family": "BAT_PERSON",
+   "step": 0
+  },
+  {
+   "id": "BAT_RING",
+   "name": "Bat Ring",
+   "tier": "EPIC",
+   "family": "BAT",
+   "step": 1
+  },
+  {
+   "id": "BAT_TALISMAN",
+   "name": "Bat Talisman",
+   "tier": "RARE",
+   "family": "BAT",
+   "step": 0
+  },
+  {
+   "id": "BEASTMASTER_CREST_COMMON",
+   "name": "Beastmaster Crest",
+   "family": "BEASTMASTER_CREST",
+   "step": 0
+  },
+  {
+   "id": "BEASTMASTER_CREST_EPIC",
+   "name": "Beastmaster Crest",
+   "tier": "EPIC",
+   "family": "BEASTMASTER_CREST",
+   "step": 3
+  },
+  {
+   "id": "BEASTMASTER_CREST_LEGENDARY",
+   "name": "Beastmaster Crest",
+   "tier": "LEGENDARY",
+   "family": "BEASTMASTER_CREST",
+   "step": 4
+  },
+  {
+   "id": "BEASTMASTER_CREST_RARE",
+   "name": "Beastmaster Crest",
+   "tier": "RARE",
+   "family": "BEASTMASTER_CREST",
+   "step": 2
+  },
+  {
+   "id": "BEASTMASTER_CREST_UNCOMMON",
+   "name": "Beastmaster Crest",
+   "tier": "UNCOMMON",
+   "family": "BEASTMASTER_CREST",
+   "step": 1
+  },
+  {
+   "id": "BIG_BRAIN_TALISMAN",
+   "name": "Big Brain Talisman",
+   "tier": "COMMON",
+   "origin": "RIFT",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "BINGO_ARTIFACT",
+   "name": "Bingo Artifact",
+   "tier": "RARE",
+   "family": "BINGO",
+   "step": 2,
+   "museum": true
+  },
+  {
+   "id": "BINGO_HEIRLOOM",
+   "name": "Bingo Heirloom",
+   "tier": "LEGENDARY",
+   "family": "BINGO",
+   "step": 4,
+   "museum": true
+  },
+  {
+   "id": "BINGO_RELIC",
+   "name": "Bingo Relic",
+   "tier": "EPIC",
+   "family": "BINGO",
+   "step": 3,
+   "museum": true
+  },
+  {
+   "id": "BINGO_RING",
+   "name": "Bingo Ring",
+   "tier": "UNCOMMON",
+   "family": "BINGO",
+   "step": 1,
+   "museum": true
+  },
+  {
+   "id": "BINGO_TALISMAN",
+   "name": "Bingo Talisman",
+   "tier": "COMMON",
+   "family": "BINGO",
+   "step": 0,
+   "museum": true
+  },
+  {
+   "id": "BIOANALYSIS_ARTIFACT",
+   "name": "Bioanalysis Artifact",
+   "tier": "RARE",
+   "family": "BIOANALYSIS",
+   "step": 2,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "BIOANALYSIS_RING",
+   "name": "Bioanalysis Ring",
+   "tier": "UNCOMMON",
+   "family": "BIOANALYSIS",
+   "step": 1,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "BIOANALYSIS_TALISMAN",
+   "name": "Bioanalysis Talisman",
+   "tier": "COMMON",
+   "family": "BIOANALYSIS",
+   "step": 0,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "BITS_TALISMAN",
+   "name": "Bits Talisman",
+   "tier": "RARE"
+  },
+  {
+   "id": "BLAZE_TALISMAN",
+   "name": "Blaze Talisman",
+   "tier": "RARE"
+  },
+  {
+   "id": "BLOOD_DONOR_ARTIFACT",
+   "name": "Blood Donor Artifact",
+   "tier": "RARE",
+   "family": "BLOOD_DONOR",
+   "step": 2,
+   "origin": "RIFT"
+  },
+  {
+   "id": "BLOOD_DONOR_RING",
+   "name": "Blood Donor Ring",
+   "tier": "UNCOMMON",
+   "family": "BLOOD_DONOR",
+   "step": 1,
+   "origin": "RIFT"
+  },
+  {
+   "id": "BLOOD_DONOR_TALISMAN",
+   "name": "Blood Donor Talisman",
+   "tier": "COMMON",
+   "family": "BLOOD_DONOR",
+   "step": 0,
+   "origin": "RIFT"
+  },
+  {
+   "id": "BLOOD_GOD_CREST",
+   "name": "Blood God Crest"
+  },
+  {
+   "id": "BLOOD_GOD_SIGIL",
+   "name": "Blood God Sigil",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "BLUERTOOTH_RING",
+   "name": "Bluertooth Ring",
+   "tier": "EPIC"
+  },
+  {
+   "id": "BLUETOOTH_RING",
+   "name": "Bluetooth Ring",
+   "tier": "RARE",
+   "origin": "RIFT"
+  },
+  {
+   "id": "BLUE_GIFT_TALISMAN",
+   "name": "Blue Gift Talisman",
+   "tier": "RARE"
+  },
+  {
+   "id": "BOOK_OF_PROGRESSION",
+   "name": "Book of Progression",
+   "tier": "COMMON"
+  },
+  {
+   "id": "BROKEN_PIGGY_BANK",
+   "name": "Broken Piggy Bank",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "BUCKET_OF_DYE",
+   "name": "Bucket of Dye",
+   "tier": "RARE"
+  },
+  {
+   "id": "BURNING_KUUDRA_CORE",
+   "name": "Burning Kuudra Core",
+   "tier": "RARE",
+   "family": "KUUDRA_CORE",
+   "step": 0
+  },
+  {
+   "id": "BURSTSTOPPER_ARTIFACT",
+   "name": "Burststopper Artifact",
+   "tier": "EPIC",
+   "family": "BURSTSTOPPER",
+   "step": 2
+  },
+  {
+   "id": "BURSTSTOPPER_TALISMAN",
+   "name": "Burststopper Talisman",
+   "tier": "RARE",
+   "family": "BURSTSTOPPER",
+   "step": 0
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_1",
+   "name": "Campfire Initiate Badge I",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 1,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_10",
+   "name": "Campfire Cultist Badge III",
+   "tier": "RARE",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 10,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_11",
+   "name": "Campfire Cultist Badge IV",
+   "tier": "RARE",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 11,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_12",
+   "name": "Campfire Cultist Badge V",
+   "tier": "RARE",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 12,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_13",
+   "name": "Campfire Scion Badge I",
+   "tier": "EPIC",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 13,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_14",
+   "name": "Campfire Scion Badge II",
+   "tier": "EPIC",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 14,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_15",
+   "name": "Campfire Scion Badge III",
+   "tier": "EPIC",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 15,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_16",
+   "name": "Campfire Scion Badge IV",
+   "tier": "EPIC",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 16,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_17",
+   "name": "Campfire Scion Badge V",
+   "tier": "EPIC",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 17,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_18",
+   "name": "Campfire Scion Badge VI",
+   "tier": "EPIC",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 18,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_19",
+   "name": "Campfire Scion Badge VII",
+   "tier": "EPIC",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 19,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_2",
+   "name": "Campfire Initiate Badge II",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 2,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_20",
+   "name": "Campfire Scion Badge VIII",
+   "tier": "EPIC",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 20,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_21",
+   "name": "Campfire God Badge I",
+   "tier": "LEGENDARY",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 21,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_22",
+   "name": "Campfire God Badge II",
+   "tier": "LEGENDARY",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 22,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_23",
+   "name": "Campfire God Badge III",
+   "tier": "LEGENDARY",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 23,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_24",
+   "name": "Campfire God Badge IV",
+   "tier": "LEGENDARY",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 24,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_25",
+   "name": "Campfire God Badge V",
+   "tier": "LEGENDARY",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 25,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_26",
+   "name": "Campfire God Badge VI",
+   "tier": "LEGENDARY",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 26,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_27",
+   "name": "Campfire God Badge VII",
+   "tier": "LEGENDARY",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 27,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_28",
+   "name": "Campfire God Badge VIII",
+   "tier": "LEGENDARY",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 28,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_29",
+   "name": "Campfire God Badge IX",
+   "tier": "LEGENDARY",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 29,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_3",
+   "name": "Campfire Initiate Badge III",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 3,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_4",
+   "name": "Campfire Adept Badge I",
+   "tier": "UNCOMMON",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 4,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_5",
+   "name": "Campfire Adept Badge II",
+   "tier": "UNCOMMON",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 5,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_6",
+   "name": "Campfire Adept Badge III",
+   "tier": "UNCOMMON",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 6,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_7",
+   "name": "Campfire Adept Badge IV",
+   "tier": "UNCOMMON",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 7,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_8",
+   "name": "Campfire Cultist Badge I",
+   "tier": "RARE",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 8,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CAMPFIRE_TALISMAN_9",
+   "name": "Campfire Cultist Badge II",
+   "tier": "RARE",
+   "family": "CAMPFIRE_TALISMAN",
+   "step": 9,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CANDY_ARTIFACT",
+   "name": "Candy Artifact",
+   "tier": "EPIC",
+   "family": "CANDY",
+   "step": 2
+  },
+  {
+   "id": "CANDY_RELIC",
+   "name": "Candy Relic",
+   "tier": "LEGENDARY",
+   "family": "CANDY",
+   "step": 3
+  },
+  {
+   "id": "CANDY_RING",
+   "name": "Candy Ring",
+   "tier": "RARE",
+   "family": "CANDY",
+   "step": 1
+  },
+  {
+   "id": "CANDY_TALISMAN",
+   "name": "Candy Talisman",
+   "tier": "UNCOMMON",
+   "family": "CANDY",
+   "step": 0
+  },
+  {
+   "id": "CARNIVAL_MASK_BAG",
+   "name": "Carnival Mask Bag",
+   "tier": "COMMON"
+  },
+  {
+   "id": "CATACOMBS_EXPERT_RING",
+   "name": "Catacombs Expert Ring",
+   "tier": "EPIC"
+  },
+  {
+   "id": "CAT_TALISMAN",
+   "name": "Cat Talisman",
+   "tier": "UNCOMMON",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CENTURY_ARTIFACT",
+   "name": "Artifact of the Century",
+   "tier": "RARE",
+   "family": "CENTURY",
+   "step": 2
+  },
+  {
+   "id": "CENTURY_RING",
+   "name": "Ring of the Century",
+   "tier": "UNCOMMON",
+   "family": "CENTURY",
+   "step": 1
+  },
+  {
+   "id": "CENTURY_TALISMAN",
+   "name": "Talisman of the Century",
+   "tier": "COMMON",
+   "family": "CENTURY",
+   "step": 0
+  },
+  {
+   "id": "CHEETAH_TALISMAN",
+   "name": "Cheetah Talisman",
+   "tier": "EPIC",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CHUMMING_TALISMAN",
+   "name": "Chumming Talisman",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "COIN_TALISMAN",
+   "name": "Talisman of Coins"
+  },
+  {
+   "id": "COMBO_MANIA_TALISMAN",
+   "name": "Combo Mania",
+   "tier": "UNCOMMON",
+   "origin": "RIFT"
+  },
+  {
+   "id": "COMPASS_TALISMAN",
+   "name": "Compass Talisman"
+  },
+  {
+   "id": "COPPER_ARTIFACT",
+   "name": "Copper Artifact",
+   "tier": "RARE",
+   "family": "COPPER",
+   "step": 2
+  },
+  {
+   "id": "COPPER_RING",
+   "name": "Copper Ring",
+   "tier": "UNCOMMON",
+   "family": "COPPER",
+   "step": 1
+  },
+  {
+   "id": "COPPER_TALISMAN",
+   "name": "Copper Talisman",
+   "tier": "COMMON",
+   "family": "COPPER",
+   "step": 0
+  },
+  {
+   "id": "CRACKED_PIGGY_BANK",
+   "name": "Cracked Piggy Bank",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "CROOKED_ARTIFACT",
+   "name": "Crooked Artifact",
+   "tier": "RARE",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "CROPIE_TALISMAN",
+   "name": "Cropie Talisman",
+   "tier": "COMMON"
+  },
+  {
+   "id": "CRUX_TALISMAN_1",
+   "name": "Crux Talisman",
+   "tier": "COMMON",
+   "family": "CRUX_TALISMAN",
+   "step": 1,
+   "origin": "RIFT"
+  },
+  {
+   "id": "CRUX_TALISMAN_2",
+   "name": "Crux Ring",
+   "tier": "UNCOMMON",
+   "family": "CRUX_TALISMAN",
+   "step": 2,
+   "origin": "RIFT"
+  },
+  {
+   "id": "CRUX_TALISMAN_3",
+   "name": "Crux Artifact",
+   "tier": "RARE",
+   "family": "CRUX_TALISMAN",
+   "step": 3,
+   "origin": "RIFT"
+  },
+  {
+   "id": "CRUX_TALISMAN_4",
+   "name": "Crux Relic",
+   "tier": "EPIC",
+   "family": "CRUX_TALISMAN",
+   "step": 4,
+   "origin": "RIFT"
+  },
+  {
+   "id": "CRUX_TALISMAN_5",
+   "name": "Crux Heirloom",
+   "tier": "LEGENDARY",
+   "family": "CRUX_TALISMAN",
+   "step": 5,
+   "origin": "RIFT"
+  },
+  {
+   "id": "CRUX_TALISMAN_6",
+   "name": "Crux Chronomicon",
+   "tier": "MYTHIC",
+   "family": "CRUX_TALISMAN",
+   "step": 6,
+   "origin": "RIFT"
+  },
+  {
+   "id": "CRUX_TALISMAN_7",
+   "name": "Celestial Starstone",
+   "tier": "SUPREME",
+   "family": "CRUX_TALISMAN",
+   "step": 7,
+   "origin": "RIFT"
+  },
+  {
+   "id": "DANTE_RING",
+   "name": "Dante's Ring",
+   "family": "DANTE",
+   "step": 1,
+   "museum": true
+  },
+  {
+   "id": "DANTE_TALISMAN",
+   "name": "Dante's Talisman",
+   "family": "DANTE",
+   "step": 0,
+   "museum": true
+  },
+  {
+   "id": "DAY_CRYSTAL",
+   "name": "Day Crystal",
+   "tier": "RARE"
+  },
+  {
+   "id": "DEFECTIVE_MONITOR",
+   "name": "Defective Monitor",
+   "tier": "EPIC",
+   "origin": "RIFT"
+  },
+  {
+   "id": "DEVOUR_RING",
+   "name": "Devour Ring",
+   "tier": "RARE"
+  },
+  {
+   "id": "DRACONIC_ARTIFACT",
+   "name": "Draconic Artifact",
+   "tier": "EPIC",
+   "family": "DRACONIC",
+   "step": 2
+  },
+  {
+   "id": "DRACONIC_RING",
+   "name": "Draconic Ring",
+   "tier": "RARE",
+   "family": "DRACONIC",
+   "step": 1
+  },
+  {
+   "id": "DRACONIC_TALISMAN",
+   "name": "Draconic Talisman",
+   "tier": "UNCOMMON",
+   "family": "DRACONIC",
+   "step": 0
+  },
+  {
+   "id": "DULL_SHARK_TOOTH_NECKLACE",
+   "name": "Dull Shark Tooth Necklace",
+   "tier": "UNCOMMON",
+   "family": "SHARK_TOOTH_NECKLACE",
+   "step": 0
+  },
+  {
+   "id": "DWARVEN_METAL",
+   "name": "Dwarven Metal Talisman",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "EMERALD_ARTIFACT",
+   "name": "Emerald Artifact",
+   "tier": "RARE",
+   "family": "EMERALD",
+   "step": 2
+  },
+  {
+   "id": "EMERALD_RING",
+   "name": "Emerald Ring",
+   "tier": "UNCOMMON",
+   "family": "EMERALD",
+   "step": 1
+  },
+  {
+   "id": "EMPEROR_ARTIFACT",
+   "name": "Emperor's Artifact",
+   "tier": "EPIC",
+   "family": "EMPEROR",
+   "step": 2
+  },
+  {
+   "id": "EMPEROR_RING",
+   "name": "Emperor's Ring",
+   "tier": "RARE",
+   "family": "EMPEROR",
+   "step": 1
+  },
+  {
+   "id": "EMPEROR_TALISMAN",
+   "name": "Emperor's Talisman",
+   "tier": "UNCOMMON",
+   "family": "EMPEROR",
+   "step": 0
+  },
+  {
+   "id": "ENDER_ARTIFACT",
+   "name": "Ender Artifact",
+   "tier": "EPIC",
+   "family": "ENDER",
+   "step": 2
+  },
+  {
+   "id": "ENDER_RELIC",
+   "name": "Ender Relic",
+   "tier": "LEGENDARY",
+   "family": "ENDER",
+   "step": 3
+  },
+  {
+   "id": "ETERNAL_CRYSTAL",
+   "name": "Eternal Crystal",
+   "tier": "EPIC"
+  },
+  {
+   "id": "ETERNAL_HOOF",
+   "name": "Eternal Hoof",
+   "tier": "RARE",
+   "family": "HOOF",
+   "step": 1
+  },
+  {
+   "id": "EXPERIENCE_ARTIFACT",
+   "name": "Experience Artifact",
+   "tier": "EPIC"
+  },
+  {
+   "id": "FARMER_ORB",
+   "name": "Farmer Orb",
+   "tier": "COMMON"
+  },
+  {
+   "id": "FARMING_TALISMAN",
+   "name": "Farming Talisman",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "FEATHER_ARTIFACT",
+   "name": "Feather Artifact",
+   "tier": "RARE",
+   "family": "FEATHER",
+   "step": 2
+  },
+  {
+   "id": "FEATHER_RING",
+   "name": "Feather Ring",
+   "tier": "UNCOMMON",
+   "family": "FEATHER",
+   "step": 1
+  },
+  {
+   "id": "FEATHER_TALISMAN",
+   "name": "Feather Talisman",
+   "family": "FEATHER",
+   "step": 0
+  },
+  {
+   "id": "FERMENTO_ARTIFACT",
+   "name": "Fermento Artifact",
+   "tier": "RARE"
+  },
+  {
+   "id": "FIERY_KUUDRA_CORE",
+   "name": "Fiery Kuudra Core",
+   "tier": "EPIC",
+   "family": "KUUDRA_CORE",
+   "step": 1
+  },
+  {
+   "id": "FIRE_TALISMAN",
+   "name": "Fire Talisman"
+  },
+  {
+   "id": "FISH_AFFINITY_TALISMAN",
+   "name": "Fish Affinity Talisman",
+   "tier": "RARE"
+  },
+  {
+   "id": "FRESHLY_BAKED_ARTIFACT",
+   "name": "Freshly Baked Artifact",
+   "tier": "RARE",
+   "family": "FRESHLY_BAKED",
+   "step": 2
+  },
+  {
+   "id": "FRESHLY_BAKED_HEIRLOOM",
+   "name": "Freshly Baked Heirloom",
+   "tier": "LEGENDARY",
+   "family": "FRESHLY_BAKED",
+   "step": 4
+  },
+  {
+   "id": "FRESHLY_BAKED_RELIC",
+   "name": "Freshly Baked Relic",
+   "tier": "EPIC",
+   "family": "FRESHLY_BAKED",
+   "step": 3
+  },
+  {
+   "id": "FRESHLY_BAKED_RING",
+   "name": "Freshly Baked Ring",
+   "tier": "UNCOMMON",
+   "family": "FRESHLY_BAKED",
+   "step": 1
+  },
+  {
+   "id": "FRESHLY_BAKED_TALISMAN",
+   "name": "Freshly Baked Talisman",
+   "tier": "COMMON",
+   "family": "FRESHLY_BAKED",
+   "step": 0
+  },
+  {
+   "id": "FRIED_FROZEN_CHICKEN",
+   "name": "Fried Frozen Chicken",
+   "tier": "EPIC",
+   "family": "FROZEN_CHICKEN",
+   "step": 1,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "FROZEN_CHICKEN",
+   "name": "Frozen Chicken",
+   "tier": "RARE",
+   "family": "FROZEN_CHICKEN",
+   "step": 0,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "FUTURE_CALORIES",
+   "name": "Future Calories Talisman",
+   "tier": "COMMON"
+  },
+  {
+   "id": "GANACHE_CHOCOLATE_SLAB",
+   "name": "Ganache Chocolate Slab",
+   "tier": "EPIC",
+   "family": "CHOCOLATE",
+   "step": 3
+  },
+  {
+   "id": "GARLIC_FLAVORED_GUMMY_BEAR",
+   "name": "Perma-Jelled Garlic-Flavored Re-Heated Gummy Polar Bear",
+   "tier": "EPIC",
+   "origin": "RIFT"
+  },
+  {
+   "id": "GENERAL_MEDALLION",
+   "name": "General's Medallion",
+   "tier": "RARE"
+  },
+  {
+   "id": "GLACIAL_ARTIFACT",
+   "name": "Glacial Artifact",
+   "tier": "RARE",
+   "family": "GLACIAL",
+   "step": 2
+  },
+  {
+   "id": "GLACIAL_RING",
+   "name": "Glacial Ring",
+   "tier": "UNCOMMON",
+   "family": "GLACIAL",
+   "step": 1
+  },
+  {
+   "id": "GLACIAL_TALISMAN",
+   "name": "Glacial Talisman",
+   "tier": "COMMON",
+   "family": "GLACIAL",
+   "step": 0
+  },
+  {
+   "id": "GLOSSY_MINERAL_TALISMAN",
+   "name": "Glossy Mineral Talisman",
+   "tier": "EPIC"
+  },
+  {
+   "id": "GOLD_GIFT_TALISMAN",
+   "name": "Gold Gift Talisman",
+   "tier": "LEGENDARY"
+  },
+  {
+   "id": "GRATITUDE_ARTIFACT",
+   "name": "Gratitude Artifact",
+   "tier": "RARE",
+   "family": "GRATITUDE",
+   "step": 2
+  },
+  {
+   "id": "GRATITUDE_RING",
+   "name": "Gratitude Ring",
+   "tier": "UNCOMMON",
+   "family": "GRATITUDE",
+   "step": 1
+  },
+  {
+   "id": "GRATITUDE_TALISMAN",
+   "name": "Gratitude Talisman",
+   "tier": "COMMON",
+   "family": "GRATITUDE",
+   "step": 0
+  },
+  {
+   "id": "GRAVITY_TALISMAN",
+   "name": "Gravity Talisman",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "GREAT_SPOOK_ARTIFACT",
+   "name": "Great Spook Artifact",
+   "tier": "RARE",
+   "family": "GREAT_SPOOK",
+   "step": 2,
+   "museum": true
+  },
+  {
+   "id": "GREAT_SPOOK_RING",
+   "name": "Great Spook Ring",
+   "tier": "UNCOMMON",
+   "family": "GREAT_SPOOK",
+   "step": 1,
+   "museum": true
+  },
+  {
+   "id": "GREAT_SPOOK_TALISMAN",
+   "name": "Great Spook Talisman",
+   "tier": "COMMON",
+   "family": "GREAT_SPOOK",
+   "step": 0,
+   "museum": true
+  },
+  {
+   "id": "GREEN_GIFT_TALISMAN",
+   "name": "Green Gift Talisman",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "GRIZZLY_PAW",
+   "name": "Grizzly Paw",
+   "tier": "RARE",
+   "family": "PAW",
+   "step": 1
+  },
+  {
+   "id": "HANDY_BLOOD_CHALICE",
+   "name": "Handy Blood Chalice"
+  },
+  {
+   "id": "HARMONIOUS_SURGERY_TOOLKIT",
+   "name": "Harmonious Surgery Toolkit",
+   "tier": "UNCOMMON",
+   "origin": "RIFT"
+  },
+  {
+   "id": "HASTE_ARTIFACT",
+   "name": "Haste Artifact",
+   "tier": "EPIC",
+   "family": "HASTE",
+   "step": 2
+  },
+  {
+   "id": "HASTE_RING",
+   "name": "Haste Ring",
+   "tier": "RARE",
+   "family": "HASTE",
+   "step": 1
+  },
+  {
+   "id": "HEALING_RING",
+   "name": "Healing Ring",
+   "tier": "UNCOMMON",
+   "family": "HEALING",
+   "step": 1
+  },
+  {
+   "id": "HEALING_TALISMAN",
+   "name": "Healing Talisman",
+   "family": "HEALING",
+   "step": 0
+  },
+  {
+   "id": "HEGEMONY_ARTIFACT",
+   "name": "Hegemony Artifact",
+   "tier": "LEGENDARY"
+  },
+  {
+   "id": "HELIANTHUS_RELIC",
+   "name": "Helianthus Relic",
+   "tier": "EPIC"
+  },
+  {
+   "id": "HOCUS_POCUS_CIPHER",
+   "name": "Hocus-Pocus Cipher",
+   "tier": "EPIC"
+  },
+  {
+   "id": "HONED_SHARK_TOOTH_NECKLACE",
+   "name": "Honed Shark Tooth Necklace",
+   "tier": "RARE",
+   "family": "SHARK_TOOTH_NECKLACE",
+   "step": 2
+  },
+  {
+   "id": "HONEYCOMB_ARTIFACT",
+   "name": "Honeycomb Artifact",
+   "tier": "RARE",
+   "family": "HONEYCOMB",
+   "step": 2
+  },
+  {
+   "id": "HONEYCOMB_RING",
+   "name": "Honeycomb Ring",
+   "tier": "UNCOMMON",
+   "family": "HONEYCOMB",
+   "step": 1
+  },
+  {
+   "id": "HONEYCOMB_TALISMAN",
+   "name": "Honeycomb Talisman",
+   "tier": "COMMON",
+   "family": "HONEYCOMB",
+   "step": 0
+  },
+  {
+   "id": "HUNTER_RING",
+   "name": "Hunter Ring",
+   "tier": "RARE",
+   "family": "HUNTER",
+   "step": 1
+  },
+  {
+   "id": "HUNTER_TALISMAN",
+   "name": "Hunter Talisman",
+   "tier": "UNCOMMON",
+   "family": "HUNTER",
+   "step": 0
+  },
+  {
+   "id": "INFERNAL_KUUDRA_CORE",
+   "name": "Infernal Kuudra Core",
+   "tier": "LEGENDARY",
+   "family": "KUUDRA_CORE",
+   "step": 2
+  },
+  {
+   "id": "INTIMIDATION_ARTIFACT",
+   "name": "Intimidation Artifact",
+   "tier": "RARE",
+   "family": "INTIMIDATION",
+   "step": 2
+  },
+  {
+   "id": "INTIMIDATION_RELIC",
+   "name": "Intimidation Relic",
+   "tier": "EPIC",
+   "family": "INTIMIDATION",
+   "step": 3
+  },
+  {
+   "id": "INTIMIDATION_RING",
+   "name": "Intimidation Ring",
+   "tier": "UNCOMMON",
+   "family": "INTIMIDATION",
+   "step": 1
+  },
+  {
+   "id": "INTIMIDATION_TALISMAN",
+   "name": "Intimidation Talisman",
+   "family": "INTIMIDATION",
+   "step": 0
+  },
+  {
+   "id": "IQ_POINT",
+   "name": "IQ Point",
+   "tier": "COMMON",
+   "origin": "RIFT",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "JACOBUS_REGISTER",
+   "name": "Jacobus Register",
+   "tier": "LEGENDARY",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "JAKE_PLUSHIE",
+   "name": "Jake's Plushie",
+   "tier": "UNCOMMON",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "JERRY_TALISMAN_BLUE",
+   "name": "Blue Jerry Talisman",
+   "tier": "RARE",
+   "family": "JERRY",
+   "step": 1
+  },
+  {
+   "id": "JERRY_TALISMAN_GOLDEN",
+   "name": "Golden Jerry Artifact",
+   "tier": "LEGENDARY",
+   "family": "JERRY",
+   "step": 3
+  },
+  {
+   "id": "JERRY_TALISMAN_GREEN",
+   "name": "Green Jerry Talisman",
+   "tier": "UNCOMMON",
+   "family": "JERRY",
+   "step": 0
+  },
+  {
+   "id": "JERRY_TALISMAN_PURPLE",
+   "name": "Purple Jerry Talisman",
+   "tier": "EPIC",
+   "family": "JERRY",
+   "step": 2
+  },
+  {
+   "id": "JUNGLE_AMULET",
+   "name": "Jungle Amulet",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "JUNK_ARTIFACT",
+   "name": "Junk Artifact",
+   "tier": "RARE",
+   "family": "JUNK",
+   "step": 2
+  },
+  {
+   "id": "JUNK_RING",
+   "name": "Junk Ring",
+   "tier": "UNCOMMON",
+   "family": "JUNK",
+   "step": 1
+  },
+  {
+   "id": "JUNK_TALISMAN",
+   "name": "Junk Talisman",
+   "tier": "COMMON",
+   "family": "JUNK",
+   "step": 0
+  },
+  {
+   "id": "KING_TALISMAN",
+   "name": "King Talisman",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "KUUDRAS_HEART",
+   "name": "Kuudra's Heart",
+   "tier": "LEGENDARY"
+  },
+  {
+   "id": "KUUDRAS_KIDNEY",
+   "name": "Kuudra's Kidney",
+   "tier": "RARE"
+  },
+  {
+   "id": "KUUDRAS_LUNG",
+   "name": "Kuudra's Lung",
+   "tier": "EPIC"
+  },
+  {
+   "id": "KUUDRA_FOLLOWER_ARTIFACT",
+   "name": "Kuudra Follower Artifact",
+   "tier": "EPIC",
+   "family": "KUUDRA_FOLLOWER",
+   "step": 2,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "KUUDRA_FOLLOWER_RELIC",
+   "name": "Kuudra Follower Relic",
+   "tier": "LEGENDARY",
+   "family": "KUUDRA_FOLLOWER",
+   "step": 3,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "LARGE_FISH_BOWL",
+   "name": "Large Fish Bowl",
+   "tier": "RARE",
+   "family": "FISH_BOWL",
+   "step": 2
+  },
+  {
+   "id": "LAVA_TALISMAN",
+   "name": "Lava Talisman",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "LUCKY_HOOF",
+   "name": "Lucky Hoof",
+   "tier": "UNCOMMON",
+   "family": "HOOF",
+   "step": 0
+  },
+  {
+   "id": "LUCK_TALISMAN",
+   "name": "Luck Talisman",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "LUMBERJACK_ARTIFACT",
+   "name": "Lumberjack Artifact",
+   "tier": "RARE",
+   "family": "LUMBERJACK",
+   "step": 2
+  },
+  {
+   "id": "LUMBERJACK_RING",
+   "name": "Lumberjack Ring",
+   "tier": "UNCOMMON",
+   "family": "LUMBERJACK",
+   "step": 1
+  },
+  {
+   "id": "LUMBERJACK_TALISMAN",
+   "name": "Lumberjack Talisman",
+   "tier": "COMMON",
+   "family": "LUMBERJACK",
+   "step": 0
+  },
+  {
+   "id": "LUSH_ARTIFACT",
+   "name": "Lush Artifact",
+   "tier": "EPIC",
+   "family": "LUSH",
+   "step": 2
+  },
+  {
+   "id": "LUSH_RING",
+   "name": "Lush Ring",
+   "tier": "RARE",
+   "family": "LUSH",
+   "step": 1
+  },
+  {
+   "id": "LUSH_TALISMAN",
+   "name": "Lush Talisman",
+   "tier": "UNCOMMON",
+   "family": "LUSH",
+   "step": 0
+  },
+  {
+   "id": "LYNX_TALISMAN",
+   "name": "Lynx Talisman",
+   "tier": "RARE",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "MAGIC_8_BALL",
+   "name": "Magic 8 Ball",
+   "tier": "EPIC"
+  },
+  {
+   "id": "MAGNETIC_TALISMAN",
+   "name": "Magnetic Talisman",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "MASTER_SKULL_TIER_1",
+   "name": "Master Skull - Tier 1",
+   "family": "MASTER_SKULL_TIER",
+   "step": 1
+  },
+  {
+   "id": "MASTER_SKULL_TIER_10",
+   "name": "Master Skull - Tier 10",
+   "tier": "LEGENDARY",
+   "family": "MASTER_SKULL_TIER",
+   "step": 10
+  },
+  {
+   "id": "MASTER_SKULL_TIER_2",
+   "name": "Master Skull - Tier 2",
+   "family": "MASTER_SKULL_TIER",
+   "step": 2
+  },
+  {
+   "id": "MASTER_SKULL_TIER_3",
+   "name": "Master Skull - Tier 3",
+   "tier": "UNCOMMON",
+   "family": "MASTER_SKULL_TIER",
+   "step": 3
+  },
+  {
+   "id": "MASTER_SKULL_TIER_4",
+   "name": "Master Skull - Tier 4",
+   "tier": "UNCOMMON",
+   "family": "MASTER_SKULL_TIER",
+   "step": 4
+  },
+  {
+   "id": "MASTER_SKULL_TIER_5",
+   "name": "Master Skull - Tier 5",
+   "tier": "RARE",
+   "family": "MASTER_SKULL_TIER",
+   "step": 5
+  },
+  {
+   "id": "MASTER_SKULL_TIER_6",
+   "name": "Master Skull - Tier 6",
+   "tier": "EPIC",
+   "family": "MASTER_SKULL_TIER",
+   "step": 6
+  },
+  {
+   "id": "MASTER_SKULL_TIER_7",
+   "name": "Master Skull - Tier 7",
+   "tier": "LEGENDARY",
+   "family": "MASTER_SKULL_TIER",
+   "step": 7
+  },
+  {
+   "id": "MASTER_SKULL_TIER_8",
+   "name": "Master Skull - Tier 8",
+   "tier": "EPIC",
+   "family": "MASTER_SKULL_TIER",
+   "step": 8
+  },
+  {
+   "id": "MASTER_SKULL_TIER_9",
+   "name": "Master Skull - Tier 9",
+   "tier": "LEGENDARY",
+   "family": "MASTER_SKULL_TIER",
+   "step": 9
+  },
+  {
+   "id": "MASTER_THESIS",
+   "name": "Master's Thesis",
+   "tier": "RARE",
+   "family": "ACADEMIC",
+   "step": 2,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "MEDIUM_FISH_BOWL",
+   "name": "Medium Fish Bowl",
+   "tier": "UNCOMMON",
+   "family": "FISH_BOWL",
+   "step": 1
+  },
+  {
+   "id": "MELODY_HAIR",
+   "name": "Melody's Hair",
+   "tier": "EPIC",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "MINERAL_TALISMAN",
+   "name": "Mineral Talisman",
+   "tier": "RARE"
+  },
+  {
+   "id": "MINE_TALISMAN",
+   "name": "Mine Affinity Talisman"
+  },
+  {
+   "id": "MINIATURIZED_TUBULATOR",
+   "name": "Miniaturized Tubulator",
+   "tier": "UNCOMMON",
+   "origin": "RIFT",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "MOONGLADE_ARTIFACT",
+   "name": "Moonglade Artifact",
+   "tier": "RARE",
+   "family": "MOONGLADE",
+   "step": 2
+  },
+  {
+   "id": "MOONGLADE_RING",
+   "name": "Moonglade Ring",
+   "tier": "UNCOMMON",
+   "family": "MOONGLADE",
+   "step": 1
+  },
+  {
+   "id": "MOONGLADE_TALISMAN",
+   "name": "Moonglade Talisman",
+   "tier": "COMMON",
+   "family": "MOONGLADE",
+   "step": 0
+  },
+  {
+   "id": "MOONLIGHT_CRYSTAL",
+   "name": "Moonlight Crystal",
+   "tier": "EPIC"
+  },
+  {
+   "id": "NETHERRACK_LOOKING_SUNSHADE",
+   "name": "Netherrack-Looking Sunshade",
+   "tier": "COMMON"
+  },
+  {
+   "id": "NETHER_ARTIFACT",
+   "name": "Nether Artifact",
+   "tier": "EPIC"
+  },
+  {
+   "id": "NEW_YEAR_CAKE_BAG",
+   "name": "New Year Cake Bag",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "NIBBLE_CHOCOLATE_STICK",
+   "name": "Nibble Chocolate Stick",
+   "tier": "COMMON",
+   "family": "CHOCOLATE",
+   "step": 0
+  },
+  {
+   "id": "NIGHT_CRYSTAL",
+   "name": "Night Crystal",
+   "tier": "RARE"
+  },
+  {
+   "id": "NIGHT_VISION_CHARM",
+   "name": "Night Vision Charm"
+  },
+  {
+   "id": "ODGERS_BRONZE_TOOTH",
+   "name": "Odger's Bronze Tooth",
+   "tier": "COMMON",
+   "family": "ODGERS_TOOTH",
+   "step": 0,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "ODGERS_DIAMOND_TOOTH",
+   "name": "Odger's Diamond Tooth",
+   "tier": "EPIC",
+   "family": "ODGERS_TOOTH",
+   "step": 3,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "ODGERS_GOLD_TOOTH",
+   "name": "Odger's Gold Tooth",
+   "tier": "RARE",
+   "family": "ODGERS_TOOTH",
+   "step": 2,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "ODGERS_SILVER_TOOTH",
+   "name": "Odger's Silver Tooth",
+   "tier": "UNCOMMON",
+   "family": "ODGERS_TOOTH",
+   "step": 1,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "OLD_BOOT",
+   "name": "Old Boot",
+   "tier": "RARE"
+  },
+  {
+   "id": "ORGAN_DONOR_ARTIFACT",
+   "name": "Organ Donor Artifact",
+   "tier": "RARE",
+   "family": "ORGAN_DONOR",
+   "step": 2,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "ORGAN_DONOR_RING",
+   "name": "Organ Donor Ring",
+   "tier": "UNCOMMON",
+   "family": "ORGAN_DONOR",
+   "step": 1,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "ORGAN_DONOR_TALISMAN",
+   "name": "Organ Donor Talisman",
+   "tier": "COMMON",
+   "family": "ORGAN_DONOR",
+   "step": 0,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "PANDORAS_BOX",
+   "name": "Pandora's Box",
+   "tier": "COMMON"
+  },
+  {
+   "id": "PARTY_HAT_CRAB",
+   "name": "Crab Hat of Celebration",
+   "tier": "SPECIAL",
+   "museum": true
+  },
+  {
+   "id": "PARTY_HAT_CRAB_ANIMATED",
+   "name": "Crab Hat of Celebration - 2022 Edition",
+   "tier": "SPECIAL",
+   "museum": true
+  },
+  {
+   "id": "PARTY_HAT_SLOTH",
+   "name": "Sloth Hat of Celebration",
+   "tier": "SPECIAL",
+   "museum": true
+  },
+  {
+   "id": "PERSONAL_COMPACTOR_4000",
+   "name": "Personal Compactor 4000",
+   "tier": "UNCOMMON",
+   "family": "PERSONAL_COMPACTOR",
+   "step": 4000
+  },
+  {
+   "id": "PERSONAL_COMPACTOR_5000",
+   "name": "Personal Compactor 5000",
+   "tier": "RARE",
+   "family": "PERSONAL_COMPACTOR",
+   "step": 5000
+  },
+  {
+   "id": "PERSONAL_COMPACTOR_6000",
+   "name": "Personal Compactor 6000",
+   "tier": "EPIC",
+   "family": "PERSONAL_COMPACTOR",
+   "step": 6000
+  },
+  {
+   "id": "PERSONAL_COMPACTOR_7000",
+   "name": "Personal Compactor 7000",
+   "tier": "LEGENDARY",
+   "family": "PERSONAL_COMPACTOR",
+   "step": 7000
+  },
+  {
+   "id": "PERSONAL_DELETOR_4000",
+   "name": "Personal Deletor 4000",
+   "tier": "UNCOMMON",
+   "family": "PERSONAL_DELETOR",
+   "step": 4000
+  },
+  {
+   "id": "PERSONAL_DELETOR_5000",
+   "name": "Personal Deletor 5000",
+   "tier": "RARE",
+   "family": "PERSONAL_DELETOR",
+   "step": 5000
+  },
+  {
+   "id": "PERSONAL_DELETOR_6000",
+   "name": "Personal Deletor 6000",
+   "tier": "EPIC",
+   "family": "PERSONAL_DELETOR",
+   "step": 6000
+  },
+  {
+   "id": "PERSONAL_DELETOR_7000",
+   "name": "Personal Deletor 7000",
+   "tier": "LEGENDARY",
+   "family": "PERSONAL_DELETOR",
+   "step": 7000
+  },
+  {
+   "id": "PESTHUNTER_ARTIFACT",
+   "name": "Pesthunter Artifact",
+   "tier": "EPIC",
+   "family": "PESTHUNTER",
+   "step": 2
+  },
+  {
+   "id": "PESTHUNTER_BADGE",
+   "name": "Pesthunter Badge",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "PESTHUNTER_RELIC",
+   "name": "Pesthunter Relic",
+   "tier": "LEGENDARY",
+   "family": "PESTHUNTER",
+   "step": 3
+  },
+  {
+   "id": "PESTHUNTER_RING",
+   "name": "Pesthunter Ring",
+   "tier": "RARE",
+   "family": "PESTHUNTER",
+   "step": 1
+  },
+  {
+   "id": "PHD_GRIMOIRE",
+   "name": "PhD's Grimoire",
+   "tier": "EPIC",
+   "family": "ACADEMIC",
+   "step": 3,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "PIGGY_BANK",
+   "name": "Piggy Bank",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "PIGS_FOOT",
+   "name": "Pig's Foot",
+   "tier": "RARE",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "POCKET_ESPRESSO_MACHINE",
+   "name": "Pocket Espresso Machine"
+  },
+  {
+   "id": "POTATO_RING",
+   "name": "Potato Ring",
+   "tier": "UNCOMMON",
+   "family": "POTATO",
+   "step": 1,
+   "museum": true
+  },
+  {
+   "id": "POTATO_TALISMAN",
+   "name": "Potato Talisman",
+   "family": "POTATO",
+   "step": 0,
+   "museum": true
+  },
+  {
+   "id": "POTION_AFFINITY_TALISMAN",
+   "name": "Potion Affinity Talisman",
+   "family": "POTION_AFFINITY",
+   "step": 0
+  },
+  {
+   "id": "POWER_ARTIFACT",
+   "name": "Artifact of Power",
+   "tier": "RARE",
+   "family": "POWER",
+   "step": 2
+  },
+  {
+   "id": "POWER_RELIC",
+   "name": "Relic of Power",
+   "tier": "EPIC",
+   "family": "POWER",
+   "step": 3
+  },
+  {
+   "id": "POWER_RING",
+   "name": "Ring of Power",
+   "tier": "UNCOMMON",
+   "family": "POWER",
+   "step": 1
+  },
+  {
+   "id": "POWER_TALISMAN",
+   "name": "Talisman of Power",
+   "family": "POWER",
+   "step": 0
+  },
+  {
+   "id": "PRESSURE_ARTIFACT",
+   "name": "Pressure Artifact",
+   "tier": "RARE",
+   "family": "PRESSURE",
+   "step": 2
+  },
+  {
+   "id": "PRESSURE_RING",
+   "name": "Pressure Ring",
+   "tier": "UNCOMMON",
+   "family": "PRESSURE",
+   "step": 1
+  },
+  {
+   "id": "PRESSURE_TALISMAN",
+   "name": "Pressure Talisman",
+   "tier": "COMMON",
+   "family": "PRESSURE",
+   "step": 0
+  },
+  {
+   "id": "PRESTIGE_CHOCOLATE_REALM",
+   "name": "Prestige Chocolate Realm",
+   "tier": "LEGENDARY",
+   "family": "CHOCOLATE",
+   "step": 4
+  },
+  {
+   "id": "PULSE_RING",
+   "name": "Pulse Ring",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "PUNCHCARD_ARTIFACT",
+   "name": "Punchcard Artifact",
+   "tier": "EPIC",
+   "origin": "RIFT"
+  },
+  {
+   "id": "PURPLE_GIFT_TALISMAN",
+   "name": "Purple Gift Talisman",
+   "tier": "EPIC"
+  },
+  {
+   "id": "RAGGEDY_SHARK_TOOTH_NECKLACE",
+   "name": "Raggedy Shark Tooth Necklace",
+   "family": "SHARK_TOOTH_NECKLACE",
+   "step": 1
+  },
+  {
+   "id": "RAZOR_SHARP_SHARK_TOOTH_NECKLACE",
+   "name": "Razor-sharp Shark Tooth Necklace",
+   "tier": "LEGENDARY",
+   "family": "SHARK_TOOTH_NECKLACE",
+   "step": 4
+  },
+  {
+   "id": "REAPER_ORB",
+   "name": "Reaper Orb",
+   "tier": "LEGENDARY"
+  },
+  {
+   "id": "RED_CLAW_ARTIFACT",
+   "name": "Red Claw Artifact",
+   "tier": "EPIC",
+   "family": "RED_CLAW",
+   "step": 2
+  },
+  {
+   "id": "RED_CLAW_RING",
+   "name": "Red Claw Ring",
+   "tier": "RARE",
+   "family": "RED_CLAW",
+   "step": 1
+  },
+  {
+   "id": "RED_CLAW_TALISMAN",
+   "name": "Red Claw Talisman",
+   "tier": "UNCOMMON",
+   "family": "RED_CLAW",
+   "step": 0
+  },
+  {
+   "id": "RELIC_OF_COINS",
+   "name": "Relic of Coins",
+   "tier": "EPIC",
+   "family": "COINS",
+   "step": 2
+  },
+  {
+   "id": "RESPIRATION_ARTIFACT",
+   "name": "Respiration Artifact",
+   "tier": "RARE",
+   "family": "RESPIRATION",
+   "step": 2
+  },
+  {
+   "id": "RESPIRATION_RING",
+   "name": "Respiration Ring",
+   "tier": "UNCOMMON",
+   "family": "RESPIRATION",
+   "step": 1
+  },
+  {
+   "id": "RESPIRATION_TALISMAN",
+   "name": "Respiration Talisman",
+   "tier": "COMMON",
+   "family": "RESPIRATION",
+   "step": 0
+  },
+  {
+   "id": "RICH_CHOCOLATE_CHUNK",
+   "name": "Rich Chocolate Chunk",
+   "tier": "RARE",
+   "family": "CHOCOLATE",
+   "step": 2
+  },
+  {
+   "id": "RIFT_PRISM",
+   "name": "Rift Prism",
+   "tier": "RARE",
+   "origin": "RIFT"
+  },
+  {
+   "id": "RING_OF_BROKEN_LOVE",
+   "name": "Ring of Broken Love",
+   "tier": "LEGENDARY",
+   "origin": "RIFT"
+  },
+  {
+   "id": "RING_OF_COINS",
+   "name": "Ring of Coins",
+   "tier": "UNCOMMON",
+   "family": "COINS",
+   "step": 0
+  },
+  {
+   "id": "RING_OF_ETERNAL_LOVE",
+   "name": "Ring of Eternal Love",
+   "tier": "LEGENDARY",
+   "origin": "RIFT"
+  },
+  {
+   "id": "RING_OF_SPACE",
+   "name": "Ring of Space",
+   "tier": "RARE",
+   "family": "SPACE",
+   "step": 1
+  },
+  {
+   "id": "RING_POTION_AFFINITY",
+   "name": "Potion Affinity Ring",
+   "tier": "UNCOMMON",
+   "family": "POTION_AFFINITY",
+   "step": 1
+  },
+  {
+   "id": "RUNEBLADE_ARTIFACT",
+   "name": "Runeblade Artifact",
+   "tier": "RARE",
+   "family": "RUNEBLADE",
+   "step": 2
+  },
+  {
+   "id": "RUNEBLADE_RING",
+   "name": "Runeblade Ring",
+   "tier": "UNCOMMON",
+   "family": "RUNEBLADE",
+   "step": 1
+  },
+  {
+   "id": "RUNEBLADE_TALISMAN",
+   "name": "Runeblade Talisman",
+   "tier": "COMMON",
+   "family": "RUNEBLADE",
+   "step": 0
+  },
+  {
+   "id": "RUNEBOOK",
+   "name": "Runebook"
+  },
+  {
+   "id": "SAFETY_BADGE",
+   "name": "Safety Badge",
+   "tier": "COMMON",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SATELITE",
+   "name": "Satelite",
+   "tier": "LEGENDARY",
+   "origin": "RIFT"
+  },
+  {
+   "id": "SCARF_GRIMOIRE",
+   "name": "Scarf's Grimoire",
+   "tier": "LEGENDARY",
+   "family": "SCARF",
+   "step": 2
+  },
+  {
+   "id": "SCARF_STUDIES",
+   "name": "Scarf's Studies",
+   "tier": "RARE",
+   "family": "SCARF",
+   "step": 0
+  },
+  {
+   "id": "SCARF_THESIS",
+   "name": "Scarf's Thesis",
+   "tier": "EPIC",
+   "family": "SCARF",
+   "step": 1
+  },
+  {
+   "id": "SCAVENGER_ARTIFACT",
+   "name": "Scavenger Artifact",
+   "tier": "RARE",
+   "family": "SCAVENGER",
+   "step": 2
+  },
+  {
+   "id": "SCAVENGER_RING",
+   "name": "Scavenger Ring",
+   "tier": "UNCOMMON",
+   "family": "SCAVENGER",
+   "step": 1
+  },
+  {
+   "id": "SCAVENGER_TALISMAN",
+   "name": "Scavenger Talisman",
+   "family": "SCAVENGER",
+   "step": 0
+  },
+  {
+   "id": "SEAL_OF_THE_FAMILY",
+   "name": "Seal of the Family",
+   "tier": "EPIC",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SEAL_RING",
+   "name": "Seal Ring",
+   "tier": "RARE",
+   "family": "SEAL",
+   "step": 1
+  },
+  {
+   "id": "SEAL_TALISMAN",
+   "name": "Seal Talisman",
+   "tier": "UNCOMMON",
+   "family": "SEAL",
+   "step": 0
+  },
+  {
+   "id": "SEA_CREATURE_ARTIFACT",
+   "name": "Sea Creature Artifact",
+   "tier": "RARE",
+   "family": "SEA_CREATURE",
+   "step": 2
+  },
+  {
+   "id": "SEA_CREATURE_RING",
+   "name": "Sea Creature Ring",
+   "tier": "UNCOMMON",
+   "family": "SEA_CREATURE",
+   "step": 1
+  },
+  {
+   "id": "SEA_CREATURE_TALISMAN",
+   "name": "Sea Creature Talisman",
+   "family": "SEA_CREATURE",
+   "step": 0
+  },
+  {
+   "id": "SHADY_RING",
+   "name": "Shady Ring",
+   "tier": "UNCOMMON",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SHARP_SHARK_TOOTH_NECKLACE",
+   "name": "Sharp Shark Tooth Necklace",
+   "tier": "EPIC",
+   "family": "SHARK_TOOTH_NECKLACE",
+   "step": 3
+  },
+  {
+   "id": "SHENS_REGALIA",
+   "name": "Shen's Regalia",
+   "tier": "LEGENDARY"
+  },
+  {
+   "id": "SKELETON_TALISMAN",
+   "name": "Skeleton Talisman"
+  },
+  {
+   "id": "SMALL_FISH_BOWL",
+   "name": "Small Fish Bowl",
+   "tier": "COMMON",
+   "family": "FISH_BOWL",
+   "step": 0
+  },
+  {
+   "id": "SMOOTH_CHOCOLATE_BAR",
+   "name": "Smooth Chocolate Bar",
+   "tier": "UNCOMMON",
+   "family": "CHOCOLATE",
+   "step": 1
+  },
+  {
+   "id": "SOULFLOW_BATTERY",
+   "name": "Soulflow Battery",
+   "tier": "RARE",
+   "family": "SOULFLOW",
+   "step": 1
+  },
+  {
+   "id": "SOULFLOW_PILE",
+   "name": "Soulflow Pile",
+   "tier": "UNCOMMON",
+   "family": "SOULFLOW",
+   "step": 0
+  },
+  {
+   "id": "SOULFLOW_SUPERCELL",
+   "name": "Soulflow Supercell",
+   "tier": "EPIC",
+   "family": "SOULFLOW",
+   "step": 2
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_1",
+   "name": "Soul Campfire Initiate Badge I",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 1,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_10",
+   "name": "Soul Campfire Cultist Badge III",
+   "tier": "RARE",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 10,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_11",
+   "name": "Soul Campfire Cultist Badge IV",
+   "tier": "RARE",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 11,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_12",
+   "name": "Soul Campfire Cultist Badge V",
+   "tier": "RARE",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 12,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_13",
+   "name": "Soul Campfire Scion Badge I",
+   "tier": "EPIC",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 13,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_14",
+   "name": "Soul Campfire Scion Badge II",
+   "tier": "EPIC",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 14,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_15",
+   "name": "Soul Campfire Scion Badge III",
+   "tier": "EPIC",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 15,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_16",
+   "name": "Soul Campfire Scion Badge IV",
+   "tier": "EPIC",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 16,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_17",
+   "name": "Soul Campfire Scion Badge V",
+   "tier": "EPIC",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 17,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_18",
+   "name": "Soul Campfire Scion Badge VI",
+   "tier": "EPIC",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 18,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_19",
+   "name": "Soul Campfire Scion Badge VII",
+   "tier": "EPIC",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 19,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_2",
+   "name": "Soul Campfire Initiate Badge II",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 2,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_20",
+   "name": "Soul Campfire Scion Badge VIII",
+   "tier": "EPIC",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 20,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_21",
+   "name": "Soul Campfire God Badge I",
+   "tier": "LEGENDARY",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 21,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_22",
+   "name": "Soul Campfire God Badge II",
+   "tier": "LEGENDARY",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 22,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_23",
+   "name": "Soul Campfire God Badge III",
+   "tier": "LEGENDARY",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 23,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_24",
+   "name": "Soul Campfire God Badge IV",
+   "tier": "LEGENDARY",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 24,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_25",
+   "name": "Soul Campfire God Badge V",
+   "tier": "LEGENDARY",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 25,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_26",
+   "name": "Soul Campfire God Badge VI",
+   "tier": "LEGENDARY",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 26,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_27",
+   "name": "Soul Campfire God Badge VII",
+   "tier": "LEGENDARY",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 27,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_28",
+   "name": "Soul Campfire God Badge VIII",
+   "tier": "LEGENDARY",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 28,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_29",
+   "name": "Soul Campfire God Badge IX",
+   "tier": "LEGENDARY",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 29,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_3",
+   "name": "Soul Campfire Initiate Badge III",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 3,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_4",
+   "name": "Soul Campfire Adept Badge I",
+   "tier": "UNCOMMON",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 4,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_5",
+   "name": "Soul Campfire Adept Badge II",
+   "tier": "UNCOMMON",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 5,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_6",
+   "name": "Soul Campfire Adept Badge III",
+   "tier": "UNCOMMON",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 6,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_7",
+   "name": "Soul Campfire Adept Badge IV",
+   "tier": "UNCOMMON",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 7,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_8",
+   "name": "Soul Campfire Cultist Badge I",
+   "tier": "RARE",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 8,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SOUL_CAMPFIRE_TALISMAN_9",
+   "name": "Soul Campfire Cultist Badge II",
+   "tier": "RARE",
+   "family": "SOUL_CAMPFIRE_TALISMAN",
+   "step": 9,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SPEED_ARTIFACT",
+   "name": "Speed Artifact",
+   "tier": "RARE",
+   "family": "SPEED",
+   "step": 2
+  },
+  {
+   "id": "SPEED_RELIC",
+   "name": "Speed Relic",
+   "tier": "EPIC",
+   "family": "SPEED",
+   "step": 3
+  },
+  {
+   "id": "SPEED_RING",
+   "name": "Speed Ring",
+   "tier": "UNCOMMON",
+   "family": "SPEED",
+   "step": 1
+  },
+  {
+   "id": "SPEED_TALISMAN",
+   "name": "Speed Talisman",
+   "family": "SPEED",
+   "step": 0
+  },
+  {
+   "id": "SPIDER_ARTIFACT",
+   "name": "Spider Artifact",
+   "tier": "EPIC",
+   "family": "SPIDER",
+   "step": 2
+  },
+  {
+   "id": "SPIDER_RING",
+   "name": "Spider Ring",
+   "tier": "RARE",
+   "family": "SPIDER",
+   "step": 1
+  },
+  {
+   "id": "SPIDER_TALISMAN",
+   "name": "Spider Talisman",
+   "tier": "UNCOMMON",
+   "family": "SPIDER",
+   "step": 0
+  },
+  {
+   "id": "SPIKED_ATROCITY",
+   "name": "Spiked Atrocity",
+   "tier": "EPIC"
+  },
+  {
+   "id": "SQUASH_RING",
+   "name": "Squash Ring",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "STUDENT_STUDIES",
+   "name": "Student's Studies",
+   "tier": "UNCOMMON",
+   "family": "ACADEMIC",
+   "step": 1,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "SUNSHINE_CRYSTAL",
+   "name": "Sunshine Crystal",
+   "tier": "EPIC"
+  },
+  {
+   "id": "SURVIVOR_CUBE",
+   "name": "Survivor Cube",
+   "tier": "RARE",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "TALISMAN_OF_SPACE",
+   "name": "Talisman of Space",
+   "tier": "UNCOMMON",
+   "family": "SPACE",
+   "step": 0
+  },
+  {
+   "id": "TARANTULA_RING",
+   "name": "Tarantula Ring",
+   "tier": "LEGENDARY",
+   "family": "TARANTULA",
+   "step": 1
+  },
+  {
+   "id": "TARANTULA_TALISMAN",
+   "name": "Tarantula Talisman",
+   "tier": "EPIC",
+   "family": "TARANTULA",
+   "step": 0
+  },
+  {
+   "id": "TEST_BUCKET_PLEASE_IGNORE",
+   "name": "Test Bucket Please Ignore",
+   "tier": "UNCOMMON",
+   "origin": "RIFT",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "TINY_DANCER",
+   "name": "Tiny Dancer",
+   "tier": "UNCOMMON",
+   "origin": "RIFT",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "TITANIUM_ARTIFACT",
+   "name": "Titanium Artifact",
+   "tier": "EPIC",
+   "family": "TITANIUM",
+   "step": 2
+  },
+  {
+   "id": "TITANIUM_RELIC",
+   "name": "Titanium Relic",
+   "tier": "LEGENDARY",
+   "family": "TITANIUM",
+   "step": 3
+  },
+  {
+   "id": "TITANIUM_RING",
+   "name": "Titanium Ring",
+   "tier": "RARE",
+   "family": "TITANIUM",
+   "step": 1
+  },
+  {
+   "id": "TITANIUM_TALISMAN",
+   "name": "Titanium Talisman",
+   "tier": "UNCOMMON",
+   "family": "TITANIUM",
+   "step": 0
+  },
+  {
+   "id": "TORRHUS_ARTIFACT",
+   "name": "Torrhus Artifact",
+   "tier": "RARE",
+   "family": "TORRHUS",
+   "step": 2
+  },
+  {
+   "id": "TORRHUS_RING",
+   "name": "Torrhus Ring",
+   "tier": "UNCOMMON",
+   "family": "TORRHUS",
+   "step": 1
+  },
+  {
+   "id": "TORRHUS_TALISMAN",
+   "name": "Torrhus Talisman",
+   "tier": "COMMON",
+   "family": "TORRHUS",
+   "step": 0
+  },
+  {
+   "id": "TRAPPER_CREST",
+   "name": "Trapper Crest",
+   "tier": "COMMON"
+  },
+  {
+   "id": "TREASURE_ARTIFACT",
+   "name": "Treasure Artifact",
+   "tier": "LEGENDARY",
+   "family": "TREASURE",
+   "step": 2
+  },
+  {
+   "id": "TREASURE_RING",
+   "name": "Treasure Ring",
+   "tier": "EPIC",
+   "family": "TREASURE",
+   "step": 1
+  },
+  {
+   "id": "TREASURE_TALISMAN",
+   "name": "Treasure Talisman",
+   "tier": "RARE",
+   "family": "TREASURE",
+   "step": 0
+  },
+  {
+   "id": "TWO_IQ_POINT",
+   "name": "2 IQ Points",
+   "tier": "UNCOMMON",
+   "origin": "RIFT",
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "VACCINE_ARTIFACT",
+   "name": "Vaccine Artifact",
+   "tier": "RARE",
+   "family": "VACCINE",
+   "step": 2
+  },
+  {
+   "id": "VACCINE_RING",
+   "name": "Vaccine Ring",
+   "tier": "UNCOMMON",
+   "family": "VACCINE",
+   "step": 1
+  },
+  {
+   "id": "VACCINE_TALISMAN",
+   "name": "Vaccine Talisman",
+   "family": "VACCINE",
+   "step": 0
+  },
+  {
+   "id": "VAMPIRE_DENTIST_RELIC",
+   "name": "Vampire Dentist Relic",
+   "tier": "LEGENDARY",
+   "origin": "RIFT"
+  },
+  {
+   "id": "VILLAGE_TALISMAN",
+   "name": "Village Affinity Talisman"
+  },
+  {
+   "id": "VOTER_BADGE",
+   "name": "Voter's Badge",
+   "tier": "COMMON",
+   "family": "VOTER_BADGE",
+   "step": 0,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "VOTER_BADGE_ELITE",
+   "name": "Elite Voter's Badge",
+   "tier": "RARE",
+   "family": "VOTER_BADGE",
+   "step": 2,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "VOTER_BADGE_SUPREME",
+   "name": "Supreme Voter's Badge",
+   "tier": "EPIC",
+   "family": "VOTER_BADGE",
+   "step": 3,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "VOTER_BADGE_VIP",
+   "name": "VIP Voter's Badge",
+   "tier": "UNCOMMON",
+   "family": "VOTER_BADGE",
+   "step": 1,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "WARDING_TRINKET",
+   "name": "Warding Trinket",
+   "tier": "EPIC",
+   "origin": "RIFT"
+  },
+  {
+   "id": "WEDDING_RING_0",
+   "name": "Shiny Yellow Rock",
+   "family": "WEDDING_RING",
+   "step": 0,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "WEDDING_RING_1",
+   "name": "Yellow Rock of Love",
+   "family": "WEDDING_RING",
+   "step": 1,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "WEDDING_RING_2",
+   "name": "Mediocre Ring of Love",
+   "tier": "UNCOMMON",
+   "family": "WEDDING_RING",
+   "step": 2,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "WEDDING_RING_3",
+   "name": "Rubbish Ring of Love",
+   "tier": "UNCOMMON",
+   "family": "WEDDING_RING",
+   "step": 3
+  },
+  {
+   "id": "WEDDING_RING_4",
+   "name": "Modest Ring of Love",
+   "tier": "RARE",
+   "family": "WEDDING_RING",
+   "step": 4,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "WEDDING_RING_5",
+   "name": "Refined Ring of Love",
+   "tier": "RARE",
+   "family": "WEDDING_RING",
+   "step": 5,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "WEDDING_RING_6",
+   "name": "Classy Ring of Love",
+   "tier": "RARE",
+   "family": "WEDDING_RING",
+   "step": 6,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "WEDDING_RING_7",
+   "name": "Exquisite Ring of Love",
+   "tier": "EPIC",
+   "family": "WEDDING_RING",
+   "step": 7,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "WEDDING_RING_8",
+   "name": "Invaluable Ring of Love",
+   "tier": "EPIC",
+   "family": "WEDDING_RING",
+   "step": 8,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "WEDDING_RING_9",
+   "name": "Legendary Ring of Love",
+   "tier": "LEGENDARY",
+   "family": "WEDDING_RING",
+   "step": 9,
+   "soulbound": "COOP"
+  },
+  {
+   "id": "WHITE_GIFT_TALISMAN",
+   "name": "White Gift Talisman",
+   "tier": "COMMON"
+  },
+  {
+   "id": "WITCH_ARTIFACT",
+   "name": "Witch's Artifact",
+   "tier": "RARE",
+   "family": "WITCH",
+   "step": 2
+  },
+  {
+   "id": "WITCH_RING",
+   "name": "Witch's Ring",
+   "tier": "UNCOMMON",
+   "family": "WITCH",
+   "step": 1
+  },
+  {
+   "id": "WITCH_TALISMAN",
+   "name": "Witch's Talisman",
+   "tier": "COMMON",
+   "family": "WITCH",
+   "step": 0
+  },
+  {
+   "id": "WITHER_ARTIFACT",
+   "name": "Wither Artifact",
+   "tier": "EPIC",
+   "family": "WITHER",
+   "step": 2
+  },
+  {
+   "id": "WITHER_RELIC",
+   "name": "Wither Relic",
+   "tier": "LEGENDARY",
+   "family": "WITHER",
+   "step": 3
+  },
+  {
+   "id": "WOLF_PAW",
+   "name": "Wolf Paw",
+   "tier": "UNCOMMON",
+   "family": "PAW",
+   "step": 0,
+   "soulbound": "SOLO"
+  },
+  {
+   "id": "WOLF_RING",
+   "name": "Wolf Ring",
+   "tier": "RARE",
+   "family": "WOLF",
+   "step": 1
+  },
+  {
+   "id": "WOLF_TALISMAN",
+   "name": "Wolf Talisman",
+   "tier": "UNCOMMON",
+   "family": "WOLF",
+   "step": 0
+  },
+  {
+   "id": "WOOD_TALISMAN",
+   "name": "Wood Affinity Talisman",
+   "tier": "UNCOMMON"
+  },
+  {
+   "id": "ZOMBIE_ARTIFACT",
+   "name": "Zombie Artifact",
+   "tier": "RARE",
+   "family": "ZOMBIE",
+   "step": 2
+  },
+  {
+   "id": "ZOMBIE_RING",
+   "name": "Zombie Ring",
+   "tier": "UNCOMMON",
+   "family": "ZOMBIE",
+   "step": 1
+  },
+  {
+   "id": "ZOMBIE_TALISMAN",
+   "name": "Zombie Talisman",
+   "family": "ZOMBIE",
+   "step": 0
+  }
+ ]
+}

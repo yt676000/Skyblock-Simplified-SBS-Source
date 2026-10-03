@@ -1,0 +1,32 @@
+{
+  "required": true,
+  "package": "sbs.modid.client.core.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "CommandMouseMixin",
+    "MouseScrollZoomMixin",
+    "ScreenOpacityInputMixin",
+    "SearchSignMouseMixin",
+    "MouseSensitivityMixin",
+    "MouseTurnMixin",
+    "KeepMousePositionMixin",
+    "AutoSprintMixin",
+    "InspectorMouseMixin",
+    "InspectorKeyMixin",
+    "BuildKeyMixin",
+    "BuildScrollMixin",
+    "BuildWandMixin",
+    "FreecamCameraMixin",
+    "FreecamInputMixin",
+    "FreecamTurnMixin",
+    "FreecamClickMixin",
+    "FreecamInteractionGuardMixin",
+    "FreecamPacketGuardMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

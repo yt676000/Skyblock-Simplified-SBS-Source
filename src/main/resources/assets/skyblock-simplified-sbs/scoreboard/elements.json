@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 1,
+  "dataVersion": 3,
+  "generatedAt": "2026-08-06",
+  "elements": [
+    {
+      "id": "date_server",
+      "name": "Date & Server",
+      "pattern": "\\d{2}/\\d{2}/\\d{2}",
+      "example": "08/05/26 m13BD",
+      "note": ""
+    },
+    {
+      "id": "server_id",
+      "name": "Server ID",
+      "pattern": "(?i)^(server\\s*:\\s*)?[a-z]{1,6}\\d{1,3}[a-z]{1,3}$",
+      "example": "m13BD",
+      "note": "Only when Hypixel puts the lobby id on a line of its own."
+    },
+    {
+      "id": "skyblock_date",
+      "name": "SkyBlock Date",
+      "pattern": "(?i)(early|late)?\\s*(spring|summer|autumn|winter)\\s+\\d+",
+      "example": "Late Autumn 27th",
+      "note": ""
+    },
+    {
+      "id": "skyblock_time",
+      "name": "SkyBlock Time",
+      "pattern": "(?i)\\d{1,2}:\\d{2}\\s*[ap]m",
+      "example": "1:10am",
+      "note": ""
+    },
+    {
+      "id": "purse",
+      "name": "Purse",
+      "pattern": "(?i)^(purse|piggy)\\s*:",
+      "example": "Purse: 1,234",
+      "note": ""
+    },
+    {
+      "id": "bits",
+      "name": "Bits",
+      "pattern": "(?i)^bits\\s*:",
+      "example": "Bits: 11,315",
+      "note": ""
+    },
+    {
+      "id": "motes",
+      "name": "Motes",
+      "pattern": "(?i)^motes\\s*:",
+      "example": "Motes: 1,024",
+      "note": "The Rift only."
+    },
+    {
+      "id": "rift_time",
+      "name": "Rift Time",
+      "pattern": "Ф",
+      "example": "Ф1:23:45",
+      "note": "The Rift only - matched on its own glyph, like the location marker."
+    },
+    {
+      "id": "copper",
+      "name": "Copper",
+      "pattern": "(?i)^copper\\s*:",
+      "example": "Copper: 512",
+      "note": "The Garden only."
+    },
+    {
+      "id": "north_stars",
+      "name": "North Stars",
+      "pattern": "(?i)^north\\s+stars\\s*:",
+      "example": "North Stars: 240",
+      "note": "Jerry's Workshop only."
+    },
+    {
+      "id": "mithril_powder",
+      "name": "Mithril Powder",
+      "pattern": "(?i)^mithril\\s+powder\\s*:",
+      "example": "Mithril Powder: 84,200",
+      "note": "Dwarven Mines / Crystal Hollows only."
+    },
+    {
+      "id": "gemstone_powder",
+      "name": "Gemstone Powder",
+      "pattern": "(?i)^gemstone\\s+powder\\s*:",
+      "example": "Gemstone Powder: 12,050",
+      "note": "Crystal Hollows only."
+    },
+    {
+      "id": "glacite_powder",
+      "name": "Glacite Powder",
+      "pattern": "(?i)^glacite\\s+powder\\s*:",
+      "example": "Glacite Powder: 3,900",
+      "note": "Glacite Mineshafts only."
+    },
+    {
+      "id": "heat",
+      "name": "Heat",
+      "pattern": "(?i)^heat\\s*:",
+      "example": "Heat: 42",
+      "note": "While a drill is overheating."
+    },
+    {
+      "id": "cold",
+      "name": "Cold",
+      "pattern": "(?i)^cold\\s*:",
+      "example": "Cold: -12",
+      "note": "Glacite Mineshafts only."
+    },
+    {
+      "id": "commissions",
+      "name": "Commissions",
+      "pattern": "(?i)^commissions\\b",
+      "example": "Commissions",
+      "note": "Dwarven Mines / Glacite Mineshafts - the header plus each commission under it.",
+      "body": true
+    },
+    {
+      "id": "objective",
+      "name": "Objective",
+      "pattern": "(?i)^objective\\b",
+      "example": "Objective",
+      "note": "The header plus the task lines under it, kept together.",
+      "body": true
+    },
+    {
+      "id": "slayer_quest",
+      "name": "Slayer Quest",
+      "pattern": "(?i)^slayer\\s+quest\\b",
+      "example": "Slayer Quest",
+      "note": "While a slayer quest is active.",
+      "body": true
+    },
+    {
+      "id": "dungeon_cleared",
+      "name": "Dungeon: Cleared",
+      "pattern": "(?i)^cleared\\s*:\\s*\\d+\\s*%",
+      "example": "Cleared: 62% (312)",
+      "note": "Inside a dungeon run."
+    },
+    {
+      "id": "dungeon_time",
+      "name": "Dungeon: Time Elapsed",
+      "pattern": "(?i)^time\\s+elapsed\\s*:",
+      "example": "Time Elapsed: 04m 20s",
+      "note": "Inside a dungeon run."
+    },
+    {
+      "id": "dungeon_deaths",
+      "name": "Dungeon: Team Deaths",
+      "pattern": "(?i)^team\\s+deaths\\s*:",
+      "example": "Team Deaths: 1",
+      "note": "Inside a dungeon run."
+    },
+    {
+      "id": "dungeon_secrets",
+      "name": "Dungeon: Secrets Found",
+      "pattern": "(?i)^secrets\\s+found\\s*:",
+      "example": "Secrets Found: 18",
+      "note": "Inside a dungeon run."
+    },
+    {
+      "id": "dungeon_puzzles",
+      "name": "Dungeon: Puzzles",
+      "pattern": "(?i)^puzzles\\s*:",
+      "example": "Puzzles: (2)",
+      "note": "Inside a dungeon run.",
+      "body": true
+    },
+    {
+      "id": "dungeon_crypts",
+      "name": "Dungeon: Crypts",
+      "pattern": "(?i)^crypts\\s*:",
+      "example": "Crypts: 5",
+      "note": "Inside a dungeon run."
+    },
+    {
+      "id": "dungeon_keys",
+      "name": "Dungeon: Keys",
+      "pattern": "(?i)^keys\\s*:",
+      "example": "Keys: ❉ 1 ■ 1",
+      "note": "Inside a dungeon run."
+    },
+    {
+      "id": "dungeon_party",
+      "name": "Dungeon: Party",
+      "pattern": "(?i)^\\[[a-z]\\]\\s+\\S",
+      "example": "[M] Player (Mage V)",
+      "note": "Inside a dungeon run - every teammate row, kept together."
+    },
+    {
+      "id": "milestone",
+      "name": "Milestone",
+      "pattern": "(?i)\\bmilestone\\b",
+      "example": "Farming Milestone Ⅰ",
+      "note": "Garden and dungeon milestone rows."
+    },
+    {
+      "id": "reputation",
+      "name": "Faction Reputation",
+      "pattern": "(?i)^reputation\\s*:",
+      "example": "Reputation: 2,400",
+      "note": "Crimson Isle only."
+    },
+    {
+      "id": "garden_visitors",
+      "name": "Garden: Visitors",
+      "pattern": "(?i)^visitors\\s*:",
+      "example": "Visitors: 3",
+      "note": "The Garden only."
+    },
+    {
+      "id": "garden_pests",
+      "name": "Garden: Pests",
+      "pattern": "(?i)^pests\\s*:",
+      "example": "Pests: 4",
+      "note": "The Garden only."
+    },
+    {
+      "id": "jacob_contest",
+      "name": "Jacob's Contest",
+      "pattern": "(?i)jacob'?s\\s+contest",
+      "example": "Jacob's Contest",
+      "note": "While a farming contest is running.",
+      "body": true
+    },
+    {
+      "id": "trapper",
+      "name": "Trapper Quest",
+      "pattern": "(?i)^(trapper|tracker\\s+mob)\\b",
+      "example": "Tracker Mob Location",
+      "note": "While a Trevor quest is active.",
+      "body": true
+    },
+    {
+      "id": "event",
+      "name": "Event",
+      "pattern": "(?i)^(spooky\\s+festival|new\\s+year\\s+celebration|season\\s+of\\s+jerry|traveling\\s+zoo|dark\\s+auction|mining\\s+fiesta|fishing\\s+festival|jerry'?s\\s+workshop|bingo|carnival|election\\s+over|mayor\\s+election)\\b",
+      "example": "Dark Auction",
+      "note": "Whichever seasonal event is running, plus its countdown.",
+      "body": true
+    },
+    {
+      "id": "location",
+      "name": "Location",
+      "pattern": "⏣|^\\s*[^\\p{L}\\p{N}\\s\\[(]\\s+\\p{L}",
+      "example": "⏣ Village",
+      "note": "Matched on the marker glyph Hypixel prefixes it with, whichever one that is.",
+      "weak": true
+    },
+    {
+      "id": "website",
+      "name": "Website",
+      "pattern": "(?i)hypixel\\.net",
+      "example": "www.hypixel.net",
+      "note": ""
+    }
+  ]
+}

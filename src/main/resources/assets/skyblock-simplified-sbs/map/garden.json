@@ -1,0 +1,11 @@
+{
+  "id": "garden",
+  "name": "The Garden",
+  "island": "The Garden",
+  "travel": "/warp garden",
+  "note": "Plot layout is per player. The Garden module's plot grid knows your own plots; add fixed spots (barn, composter) to \"locations\" here.",
+  "warps": [
+    { "id": "garden", "command": "/warp garden", "label": "The Garden" }
+  ],
+  "locations": []
+}

@@ -1,0 +1,50 @@
+{
+  "required": true,
+  "package": "sbs.modid.client.core.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "ArmorStandTickCullMixin",
+    "BlockUpdateMixin",
+    "ChunkCacheRadiusMixin",
+    "ChunkPacketPositionAccessor",
+    "ChunkStreamMixin",
+    "ClientCommandsMixin",
+    "ClientPacketListenerAccessor",
+    "CommandKeyMixin",
+    "ConfigPhaseTraceMixin",
+    "DianaDevLogInputMixin",
+    "DianaDevLogMixin",
+    "DianaPacketCountMixin",
+    "EntityDataProbeMixin",
+    "ExampleClientMixin",
+    "FarTerrainAtmosphericFogMixin",
+    "FarTerrainFogMixin",
+    "GuiForegroundMixin",
+    "GuiTrackingMixin",
+    "HeadProfileRemapMixin",
+    "HypixelServerPinMixin",
+    "ItemModelRemapMixin",
+    "McefBrowserEnvironmentMixin",
+    "OptionInstanceAccessor",
+    "OverlayRenderMixin",
+    "PackSourceAddMixin",
+    "ParticleProbeMixin",
+    "PauseScreenMixin",
+    "PongResponseMixin",
+    "RenderDistanceMixin",
+    "ServerPackBypassMixin",
+    "SoundControlMixin",
+    "SoundProbeMixin",
+    "TimeUpdateMixin",
+    "TitleScreenBrandingMixin",
+    "TitleScreenHypixelButtonMixin",
+    "TooltipStyleStripMixin",
+    "WindowTitleMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

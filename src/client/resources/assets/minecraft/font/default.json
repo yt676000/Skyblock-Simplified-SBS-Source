@@ -1,0 +1,11 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "skyblock-simplified-sbs:font/sbs_badge.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\udb80\udc00"]
+    }
+  ]
+}

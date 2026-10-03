@@ -1,0 +1,23 @@
+{
+  "id": "park",
+  "name": "The Park",
+  "island": "The Park",
+  "travel": "/warp park",
+  "warps": [
+    { "id": "park", "command": "/warp park", "label": "The Park", "x": -277, "y": 80, "z": -17, "note": "Birch Park" },
+    { "id": "howl", "command": "/warp howl", "label": "Howling Cave", "x": -370, "y": 84, "z": -64 },
+    { "id": "jungle", "command": "/warp jungle", "label": "Jungle Island", "x": -415, "y": 130, "z": -121 }
+  ],
+  "locations": [
+    { "name": "Birch Park", "category": "FORAGING", "area": "Birch Park", "x": -277, "y": 80, "z": -17, "warp": "park", "note": "Charlie" },
+    { "name": "Spruce Woods", "category": "FORAGING", "area": "Spruce Woods", "x": -363, "y": 89, "z": 44, "note": "Gustave" },
+    { "name": "Jungle Island", "category": "FORAGING", "area": "Jungle Island", "x": -415, "y": 130, "z": -121, "warp": "jungle", "note": "Juliette" },
+    { "name": "Savanna Woodland", "category": "FORAGING", "area": "Savanna Woodland", "x": -452, "y": 110, "z": 29, "note": "Master Tactician Funk" },
+    { "name": "Dark Thicket", "category": "FORAGING", "area": "Dark Thicket", "x": -465, "y": 120, "z": -42, "note": "Molbert" },
+    { "name": "Howling Cave", "category": "COMBAT", "area": "Howling Cave", "x": -370, "y": 84, "z": -64, "warp": "howl", "note": "Old Shaman Nyko" },
+    { "name": "Melody's Plateau", "category": "POI", "area": "Melody's Plateau", "x": -411, "y": 109, "z": 72, "note": "Melody's harp" },
+    { "name": "Trials of Fire", "category": "COMBAT", "area": "Trials of Fire", "x": -364, "y": 102, "z": -90, "note": "Ryan" },
+    { "name": "Viking Longhouse", "category": "NPC", "area": "Spruce Woods", "x": -335, "y": 92, "z": 73, "note": "Melancholic Viking" },
+    { "name": "Kelly", "category": "NPC", "area": "Spruce Woods", "x": -350, "y": 94, "z": 33 }
+  ]
+}

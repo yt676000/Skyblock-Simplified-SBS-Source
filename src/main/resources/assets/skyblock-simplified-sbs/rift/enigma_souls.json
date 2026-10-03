@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "dataVersion": 1,
+  "generatedAt": "2026-08-07",
+  "totalSouls": 52,
+  "souls": [
+    {
+      "id": "rift-27b63b",
+      "name": "Next to Enigma",
+      "x": -26,
+      "y": 71,
+      "z": 90,
+      "area": "Enigma's Crib",
+      "instruction": "In the pool of water beside Enigma. Right-click it.",
+      "requirement": "PICKUP",
+      "minPlayers": 1,
+      "certainty": "WIKI"
+    },
+    {
+      "id": "rift-18a832",
+      "name": "Two Plates",
+      "x": -128,
+      "y": 72,
+      "z": 77,
+      "area": "Wyld Woods",
+      "instruction": "Two players have to stand on the nearby pressure plates at the same time.",
+      "requirement": "COOPERATION",
+      "minPlayers": 2,
+      "certainty": "WIKI"
+    },
+    {
+      "id": "rift-d06e4f",
+      "name": "Between Branches",
+      "x": -107,
+      "y": 117,
+      "z": 123,
+      "area": "Wyld Woods",
+      "instruction": "Break the glass block wedged between the branches. Larva Silk is what cuts it.",
+      "requirement": "ITEM",
+      "minPlayers": 1,
+      "certainty": "WIKI",
+      "requiredItem": "Larva Silk"
+    },
+    {
+      "id": "rift-093be2",
+      "name": "Roy",
+      "x": -204,
+      "y": 75,
+      "z": 49,
+      "area": "Black Lagoon",
+      "instruction": "Bought from Roy, for Deadgehog Spine and motes.",
+      "requirement": "PURCHASE",
+      "minPlayers": 1,
+      "certainty": "WIKI",
+      "guideSection": "Lagoon"
+    },
+    {
+      "id": "rift-af60a6",
+      "name": "Lonely Avaeikx",
+      "x": -33,
+      "y": 66,
+      "z": -24,
+      "area": "Lonely Terrace",
+      "instruction": "Sit with the NPC and stay there. It takes about three minutes.",
+      "requirement": "WAIT",
+      "minPlayers": 1,
+      "certainty": "WIKI",
+      "guideSection": "Village Plaza"
+    },
+    {
+      "id": "rift-73548c",
+      "name": "Spinning Runes",
+      "x": -92,
+      "y": 73,
+      "z": 36,
+      "area": "Black Lagoon",
+      "instruction": "Click the runes until every one of them faces the Runic Tree.",
+      "requirement": "PUZZLE",
+      "minPlayers": 1,
+      "certainty": "WIKI",
+      "guideSection": "Lagoon"
+    },
+    {
+      "id": "rift-4a745e",
+      "name": "Castle Fleespook",
+      "x": 182,
+      "y": 92,
+      "z": 124,
+      "area": "Stillgore Chateau",
+      "instruction": "Follow the Fleespook and keep up with it until it stops.",
+      "requirement": "FOLLOW",
+      "minPlayers": 1,
+      "certainty": "WIKI"
+    },
+    {
+      "id": "rift-e165ab",
+      "name": "Lagoon Cave",
+      "x": 43,
+      "y": 91,
+      "z": 56,
+      "area": "Lagoon Cave",
+      "instruction": "At the end of the parkour course. Getting there is the whole puzzle.",
+      "requirement": "TRAVERSAL",
+      "minPlayers": 1,
+      "certainty": "WIKI",
+      "guideSection": "Lagoon"
+    },
+    {
+      "id": "rift-9b9d7c",
+      "name": "Leap of Faith",
+      "x": 26,
+      "y": 166,
+      "z": 7,
+      "area": "The Mountaintop",
+      "instruction": "On a floating platform reached across invisible barriers.",
+      "requirement": "TRAVERSAL",
+      "minPlayers": 1,
+      "certainty": "WIKI"
+    },
+    {
+      "id": "rift-6455d8",
+      "name": "Ikrus",
+      "x": 8,
+      "y": 157,
+      "z": 59,
+      "area": "The Mountaintop",
+      "instruction": "Given by Ikrus once his quest is finished.",
+      "requirement": "PREREQUISITE",
+      "minPlayers": 1,
+      "certainty": "WIKI"
+    }
+  ]
+}

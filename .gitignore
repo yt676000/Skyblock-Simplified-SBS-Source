@@ -1,0 +1,64 @@
+# Build output. Anchored with a leading slash so these only ever mean the repo
+# root: an unanchored rule matches a directory of that name at ANY depth, and
+# source packages are allowed to be called "build" or "out".
+/build/
+/out/
+/classes/
+
+# Gradle
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# The dev client's game directory: worlds, logs, screenshots, caches, and the
+# personal config.json. Never shared - it is per-developer state.
+#
+# MUST stay anchored: unanchored "run/" also matched the dungeons/run source
+# package, so every new class in it was silently untracked - a file could be
+# written, built against and then simply not exist for anyone else.
+/run/
+
+# Log4j output from Gradle tasks that boot mod classes in the repo root - `test` and
+# `codeIndex` both do. They were tracked for a while, which made every test run dirty eight
+# files nobody had edited and made `git status` useless for seeing real work. Committing them
+# does not help: the next task rewrites them and they come straight back.
+#
+# Anchored for the same reason as /run/ below it: `run/logs/` is the dev client's own log
+# directory and is already covered, and an unanchored rule would swallow any source or
+# resource directory that happens to be called "logs".
+/logs/
+
+# Loom / Minecraft
+remappedSrc/
+*.launch
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+bin/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated code index (./gradlew codeIndex). Never committed: it is touched by every branch,
+# it is large enough that loading it as context defeats the AGENTS.md length rule, and generated
+# on demand it cannot be stale. It is a search target, not a document.
+code-index.md
+
+# Agent worktrees. Created inside the repo by the agent tooling, so a bulk `git add` records the
+# directory as a gitlink (mode 160000) pointing at a commit that exists on no other machine - a
+# broken entry on a fresh clone, and not a real submodule since there is no .gitmodules. Anchored
+# to the repo root so it cannot match a `worktrees` directory somewhere in the sources.
+/.claude/worktrees/
+
+# Per-session agent status records, written by the SessionStart/Stop hooks in
+# .claude/settings.json. Local coordination between concurrent sessions, not repository
+# content: every machine has different ones and they are meaningless anywhere else.
+/.claude/agents/

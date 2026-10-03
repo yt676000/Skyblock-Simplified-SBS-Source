@@ -1,0 +1,26 @@
+{
+  "required": true,
+  "package": "sbs.modid.client.core.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "GuiHudOpacityMixin",
+    "GuiOutlineMarkerMixin",
+    "GuiRenderCaptureMixin",
+    "GuiTextRenderStateAccessor",
+    "GuiTextReplaceMixin",
+    "HudMixin",
+    "FreecamHudMixin",
+    "InventoryEffectsMixin",
+    "PlayerTabOverlayAccessor",
+    "PlayerTabOverlayMixin",
+    "SbsTabBadgeMixin",
+    "ScreenEffectFireMixin",
+    "XpBarMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

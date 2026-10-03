@@ -1,0 +1,39 @@
+{
+  "id": "dwarven_mines",
+  "name": "Dwarven Mines",
+  "island": "Dwarven Mines",
+  "travel": "/warp mines",
+  "warps": [
+    { "id": "mines", "command": "/warp mines", "label": "Dwarven Village", "x": -10, "y": 201, "z": -103 },
+    { "id": "forge", "command": "/warp forge", "label": "The Forge", "x": -22, "y": 151, "z": -49 },
+    { "id": "base", "command": "/warp base", "label": "Base Camp", "x": 2, "y": 121, "z": 237, "note": "Glacite" }
+  ],
+  "locations": [
+    { "name": "Dwarven Village", "category": "POI", "area": "Dwarven Village", "x": -10, "y": 201, "z": -103, "warp": "mines", "note": "Shops, bank, Emissary" },
+    { "name": "Dwarven Bank", "category": "BANK", "area": "Dwarven Village", "x": 13, "y": 201, "z": -148, "note": "Banker Broadjaw" },
+    { "name": "Dwarven Tavern", "category": "NPC", "area": "Dwarven Village", "x": 29, "y": 202, "z": -151 },
+    { "name": "The Forge", "category": "MINING", "area": "The Forge", "x": -22, "y": 151, "z": -49, "warp": "forge", "note": "Forger", "commission": { "x": -5, "y": 147, "z": -48 } },
+    { "name": "Forge Basin", "category": "MINING", "area": "Forge Basin", "x": -6, "y": 145, "z": -18, "warp": "forge", "note": "Jotraeline Greatforge" },
+    { "name": "The Lift", "category": "PORTAL", "area": "The Lift", "x": -79, "y": 200, "z": -123, "note": "Lift Operator" },
+    { "name": "Royal Palace", "category": "POI", "area": "Royal Palace", "x": 129, "y": 196, "z": 196, "note": "King, HotM" },
+    { "name": "Grand Library", "category": "POI", "area": "Royal Palace", "x": 191, "y": 216, "z": 154, "note": "Dalbrek" },
+    { "name": "Royal Mines", "category": "MINING", "area": "Royal Mines", "x": 181, "y": 150, "z": 60, "note": "Marigold", "commission": { "x": 169, "y": 150, "z": 32 } },
+    { "name": "Cliffside Veins", "category": "MINING", "area": "Cliffside Veins", "x": -47, "y": 192, "z": 44, "commission": { "x": 43, "y": 134, "z": 21 } },
+    { "name": "Rampart's Quarry", "category": "MINING", "area": "Rampart's Quarry", "x": -72, "y": 153, "z": -10, "note": "Emissary Carlton", "commission": { "x": -76, "y": 153, "z": -10 } },
+    { "name": "Upper Mines", "category": "MINING", "area": "Upper Mines", "x": -132, "y": 174, "z": -50, "note": "Emissary Fraiser", "commission": { "x": -131, "y": 174, "z": -52 } },
+    { "name": "Lava Springs", "category": "MINING", "area": "Lava Springs", "x": 58, "y": 198, "z": -8, "note": "Emissary Lilith", "commission": { "x": 51, "y": 198, "z": -16 } },
+    { "name": "Goblin Burrows", "category": "MINING", "area": "Goblin Burrows", "x": -93, "y": 143, "z": 144, "commission": { "x": -93, "y": 143, "z": 144 } },
+    { "name": "Great Ice Wall", "category": "MINING", "area": "Great Ice Wall", "x": 2, "y": 128, "z": 162, "commission": { "x": 2, "y": 128, "z": 162 } },
+    { "name": "Far Reserve", "category": "MINING", "area": "Far Reserve", "x": -131, "y": 150, "z": 69, "commission": { "x": -131, "y": 150, "z": 69 } },
+    { "name": "Divan's Gateway", "category": "SECRET", "area": "Divan's Gateway", "x": -9, "y": 128, "z": 59, "note": "Bylma" },
+    { "name": "Abandoned Quarry", "category": "MINING", "area": "Abandoned Quarry", "x": -158, "y": 149, "z": -14, "note": "Guard Gornum" },
+    { "name": "Hanging Court", "category": "POI", "area": "Hanging Court", "x": 86, "y": 187, "z": 114, "note": "Ticket Master" },
+    { "name": "Ironman's Guild", "category": "NPC", "area": "Dwarven Mines", "x": -67, "y": 221, "z": -121 },
+    { "name": "Fetchur", "category": "NPC", "area": "Dwarven Mines", "x": 84, "y": 224, "z": -118, "note": "Daily fetch quest" },
+    { "name": "Puzzler", "category": "NPC", "area": "Dwarven Mines", "x": 181, "y": 196, "z": 135, "note": "Daily puzzle" },
+    { "name": "Dwarven Base Camp", "category": "POI", "area": "Dwarven Base Camp", "x": 2, "y": 121, "z": 237, "warp": "base", "note": "Glacite gateway" },
+    { "name": "Fossil Research Center", "category": "MINING", "area": "Fossil Research Center", "x": 28, "y": 120, "z": 238, "warp": "base", "note": "Dr. Stone" },
+    { "name": "Glacite Tunnels", "category": "MINING", "area": "Glacite Tunnels", "x": -26, "y": 125, "z": 299, "warp": "base" },
+    { "name": "Grandpa Wolf's Cave", "category": "NPC", "area": "Glacite Tunnels", "x": -55, "y": 125, "z": 331, "warp": "base" }
+  ]
+}

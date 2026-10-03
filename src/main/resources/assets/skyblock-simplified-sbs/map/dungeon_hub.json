@@ -1,0 +1,11 @@
+{
+  "id": "dungeon_hub",
+  "name": "Dungeon Hub",
+  "island": "Dungeon Hub",
+  "travel": "/warp dungeon_hub",
+  "note": "Places are not catalogued yet - append to \"locations\" (name, category, x/y/z) and they appear on the map with no code change.",
+  "warps": [
+    { "id": "dungeon_hub", "command": "/warp dungeon_hub", "label": "Dungeon Hub" }
+  ],
+  "locations": []
+}

@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 2,
+  "dataVersion": 2,
+  "speedTolerance": 0.0005,
+  "offsetTolerance": 0.02,
+  "arrowColorTolerance": 0.5,
+  "signatures": [
+    {
+      "role": "MARKER",
+      "types": ["minecraft:enchant", "minecraft:enchanted_hit"],
+      "count": 5,
+      "speed": 0.05,
+      "offsets": [0.5, 0.4, 0.5],
+      "note": "the swirl above a burrow: says one is here, never which kind"
+    },
+    {
+      "role": "START",
+      "types": ["minecraft:enchanted_hit", "minecraft:crit_magic"],
+      "count": 4,
+      "speed": 0.01,
+      "offsets": [0.5, 0.1, 0.5],
+      "note": "head of a chain"
+    },
+    {
+      "role": "MOB",
+      "types": ["minecraft:crit"],
+      "count": 3,
+      "speed": 0.01,
+      "offsets": [0.5, 0.1, 0.5],
+      "note": "same particle type as FOOTSTEP - the count and speed are the whole difference"
+    },
+    {
+      "role": "TREASURE",
+      "types": ["minecraft:dripping_lava", "minecraft:falling_lava", "minecraft:landing_lava"],
+      "count": 2,
+      "speed": 0.01,
+      "offsets": [0.35, 0.1, 0.35],
+      "note": "same particle type as SPADE_TRAIL - the speed is the whole difference"
+    },
+    {
+      "role": "FOOTSTEP",
+      "types": ["minecraft:crit"],
+      "count": 1,
+      "speed": 0.0,
+      "offsets": [0.05, 0.0, 0.05],
+      "note": "the trail leading to a burrow"
+    },
+    {
+      "role": "REMOVED",
+      "types": ["minecraft:large_smoke"],
+      "speed": 0.01,
+      "offsets": [0.0, 0.0, 0.0],
+      "note": "the burrow here is gone; count deliberately unmatched"
+    },
+    {
+      "role": "SPADE_TRAIL",
+      "types": ["minecraft:dripping_lava", "minecraft:falling_lava"],
+      "count": 2,
+      "speed": -0.5,
+      "note": "one point of the ability's arc; offsets unmatched, negative speed is the tag"
+    },
+    {
+      "role": "ARROW",
+      "types": ["minecraft:dust"],
+      "count": 0,
+      "speed": 1.0,
+      "note": "one arrow particle; offsets are a colour payload and must stay unmatched"
+    }
+  ],
+  "arrowBands": [],
+  "chains": [
+    {"tier": "ANCESTRAL", "erudite": false, "length": 4},
+    {"tier": "ANCESTRAL", "erudite": true, "length": 6}
+  ],
+  "hubBounds": {
+    "minX": -283.0,
+    "minY": 60.0,
+    "minZ": -208.0,
+    "maxX": 175.0,
+    "maxY": 105.0,
+    "maxZ": 205.0
+  },
+  "groundBlocks": [
+    "minecraft:grass_block",
+    "minecraft:air"
+  ],
+  "groundCover": [
+    "minecraft:air",
+    "minecraft:short_grass",
+    "minecraft:tall_grass",
+    "minecraft:fern",
+    "minecraft:large_fern",
+    "minecraft:dandelion",
+    "minecraft:poppy",
+    "minecraft:blue_orchid",
+    "minecraft:allium",
+    "minecraft:azure_bluet",
+    "minecraft:red_tulip",
+    "minecraft:orange_tulip",
+    "minecraft:white_tulip",
+    "minecraft:pink_tulip",
+    "minecraft:oxeye_daisy",
+    "minecraft:sunflower",
+    "minecraft:lilac",
+    "minecraft:rose_bush",
+    "minecraft:peony",
+    "minecraft:spruce_fence",
+    "minecraft:oak_leaves",
+    "minecraft:spruce_leaves",
+    "minecraft:birch_leaves",
+    "minecraft:jungle_leaves",
+    "minecraft:acacia_leaves",
+    "minecraft:dark_oak_leaves"
+  ],
+  "spadeCurve": {
+    "pitchShift": 0.75,
+    "controlScale": 24.0,
+    "controlOffset": 25.0,
+    "parameterScale": 3.0,
+    "landingDrop": 0.5,
+    "certainty": "ESTIMATED"
+  }
+}

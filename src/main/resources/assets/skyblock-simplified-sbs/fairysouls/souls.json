@@ -1,0 +1,2065 @@
+{
+  "schemaVersion": 1,
+  "dataVersion": 1,
+  "generatedAt": "2026-08-07",
+  "totalSouls": 289,
+  "islands": [
+    {
+      "island": "Hub",
+      "count": 80,
+      "souls": [
+        {
+          "id": "hub-1",
+          "x": 18,
+          "y": 68,
+          "z": -3,
+          "area": "Village"
+        },
+        {
+          "id": "hub-2",
+          "x": 36,
+          "y": 66,
+          "z": -35,
+          "area": "Fashion Shop"
+        },
+        {
+          "id": "hub-3",
+          "x": 38,
+          "y": 67,
+          "z": -36,
+          "area": "Village"
+        },
+        {
+          "id": "hub-4",
+          "x": -39,
+          "y": 56,
+          "z": -11,
+          "area": "Shen's Auction"
+        },
+        {
+          "id": "hub-5",
+          "x": -15,
+          "y": 87,
+          "z": -52,
+          "area": "Village"
+        },
+        {
+          "id": "hub-6",
+          "x": -34,
+          "y": 86,
+          "z": -35,
+          "area": "Village"
+        },
+        {
+          "id": "hub-7",
+          "x": -15,
+          "y": 101,
+          "z": -76,
+          "area": "Village"
+        },
+        {
+          "id": "hub-8",
+          "x": 12,
+          "y": 87,
+          "z": -66,
+          "area": "Village"
+        },
+        {
+          "id": "hub-9",
+          "x": 66,
+          "y": 98,
+          "z": -60,
+          "area": "Abiphones & Co."
+        },
+        {
+          "id": "hub-10",
+          "x": 73,
+          "y": 59,
+          "z": 6,
+          "area": "Rabbit House"
+        },
+        {
+          "id": "hub-11",
+          "x": 158,
+          "y": 92,
+          "z": 8,
+          "area": "Colosseum",
+          "walkable": false
+        },
+        {
+          "id": "hub-12",
+          "x": 153,
+          "y": 64,
+          "z": 45,
+          "area": "Colosseum"
+        },
+        {
+          "id": "hub-13",
+          "x": 80,
+          "y": 66,
+          "z": 26,
+          "area": "Wilderness"
+        },
+        {
+          "id": "hub-14",
+          "x": -64,
+          "y": 77,
+          "z": -72,
+          "area": "Thaumaturgist"
+        },
+        {
+          "id": "hub-15",
+          "x": -117,
+          "y": 73,
+          "z": -163,
+          "area": "Graveyard"
+        },
+        {
+          "id": "hub-16",
+          "x": -127,
+          "y": 75,
+          "z": -185,
+          "area": "Graveyard"
+        },
+        {
+          "id": "hub-17",
+          "x": -77,
+          "y": 74,
+          "z": -152,
+          "area": "Graveyard"
+        },
+        {
+          "id": "hub-18",
+          "x": -92,
+          "y": 59,
+          "z": -138,
+          "area": "Catacombs Entrance"
+        },
+        {
+          "id": "hub-19",
+          "x": 15,
+          "y": 82,
+          "z": -127,
+          "area": "Mining District"
+        },
+        {
+          "id": "hub-20",
+          "x": 8,
+          "y": 64,
+          "z": -137,
+          "area": "Mining District"
+        },
+        {
+          "id": "hub-21",
+          "x": -11,
+          "y": 73,
+          "z": -164,
+          "area": "Coal Mine"
+        },
+        {
+          "id": "hub-22",
+          "x": -3,
+          "y": 79,
+          "z": -147,
+          "area": "Coal Mine"
+        },
+        {
+          "id": "hub-23",
+          "x": 98,
+          "y": 76,
+          "z": -29,
+          "area": "Fishing Outpost"
+        },
+        {
+          "id": "hub-24",
+          "x": 106,
+          "y": 64,
+          "z": -62,
+          "area": "Fishing Outpost"
+        },
+        {
+          "id": "hub-25",
+          "x": 145,
+          "y": 84,
+          "z": -67,
+          "area": "Fisherman's Hut"
+        },
+        {
+          "id": "hub-26",
+          "x": 77,
+          "y": 102,
+          "z": -88,
+          "area": "Farm"
+        },
+        {
+          "id": "hub-27",
+          "x": 82,
+          "y": 97,
+          "z": -139,
+          "area": "Farm"
+        },
+        {
+          "id": "hub-28",
+          "x": 87,
+          "y": 68,
+          "z": -154,
+          "area": "Farm"
+        },
+        {
+          "id": "hub-29",
+          "x": 136,
+          "y": 74,
+          "z": -105,
+          "area": "Farm"
+        },
+        {
+          "id": "hub-30",
+          "x": 61,
+          "y": 80,
+          "z": -139,
+          "area": "Farm"
+        },
+        {
+          "id": "hub-31",
+          "x": 70,
+          "y": 73,
+          "z": -106,
+          "area": "Farm"
+        },
+        {
+          "id": "hub-32",
+          "x": -106,
+          "y": 85,
+          "z": -22,
+          "area": "Foraging Camp"
+        },
+        {
+          "id": "hub-33",
+          "x": -116,
+          "y": 73,
+          "z": -20,
+          "area": "Foraging Camp"
+        },
+        {
+          "id": "hub-34",
+          "x": -188,
+          "y": 79,
+          "z": -56,
+          "area": "Forest"
+        },
+        {
+          "id": "hub-35",
+          "x": 49,
+          "y": 77,
+          "z": 93,
+          "area": "Wizard Tower"
+        },
+        {
+          "id": "hub-36",
+          "x": 45,
+          "y": 117,
+          "z": 94,
+          "area": "Wizard Tower"
+        },
+        {
+          "id": "hub-37",
+          "x": 44,
+          "y": 121,
+          "z": 88,
+          "area": "Wizard Tower"
+        },
+        {
+          "id": "hub-38",
+          "x": 41,
+          "y": 106,
+          "z": 101,
+          "area": "Wizard Tower"
+        },
+        {
+          "id": "hub-39",
+          "x": 45,
+          "y": 148,
+          "z": 98,
+          "area": "Wizard Tower"
+        },
+        {
+          "id": "hub-40",
+          "x": 162,
+          "y": 46,
+          "z": 69,
+          "area": "Wilderness"
+        },
+        {
+          "id": "hub-41",
+          "x": 147,
+          "y": 53,
+          "z": 88,
+          "area": "Wilderness"
+        },
+        {
+          "id": "hub-42",
+          "x": 123,
+          "y": 68,
+          "z": 152,
+          "area": "Wilderness"
+        },
+        {
+          "id": "hub-43",
+          "x": 169,
+          "y": 60,
+          "z": 129,
+          "area": "Wilderness"
+        },
+        {
+          "id": "hub-44",
+          "x": 145,
+          "y": 69,
+          "z": 173,
+          "area": "Wilderness"
+        },
+        {
+          "id": "hub-45",
+          "x": 82,
+          "y": 61,
+          "z": 196,
+          "area": "Wilderness"
+        },
+        {
+          "id": "hub-46",
+          "x": 78,
+          "y": 109,
+          "z": 87,
+          "area": "Wilderness"
+        },
+        {
+          "id": "hub-47",
+          "x": 132,
+          "y": 144,
+          "z": 114,
+          "area": "Wilderness",
+          "walkable": false
+        },
+        {
+          "id": "hub-48",
+          "x": 103,
+          "y": 67,
+          "z": 110,
+          "area": "Wilderness"
+        },
+        {
+          "id": "hub-49",
+          "x": 119,
+          "y": 119,
+          "z": 124,
+          "area": "Wilderness"
+        },
+        {
+          "id": "hub-50",
+          "x": -183,
+          "y": 80,
+          "z": 29,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-51",
+          "x": -166,
+          "y": 79,
+          "z": 93,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-52",
+          "x": -133,
+          "y": 74,
+          "z": 133,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-53",
+          "x": -152,
+          "y": 67,
+          "z": 123,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-54",
+          "x": -195,
+          "y": 55,
+          "z": 153,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-55",
+          "x": -191,
+          "y": 102,
+          "z": 109,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-56",
+          "x": -245,
+          "y": 75,
+          "z": 149,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-57",
+          "x": -248,
+          "y": 74,
+          "z": 125,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-58",
+          "x": -261,
+          "y": 56,
+          "z": 115,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-59",
+          "x": -260,
+          "y": 96,
+          "z": 48,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-60",
+          "x": -262,
+          "y": 102,
+          "z": 67,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-61",
+          "x": -259,
+          "y": 114,
+          "z": 85,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-62",
+          "x": -229,
+          "y": 123,
+          "z": 84,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-63",
+          "x": -252,
+          "y": 132,
+          "z": 51,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-64",
+          "x": -207,
+          "y": 100,
+          "z": 66,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-65",
+          "x": -214,
+          "y": 103,
+          "z": 89,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-66",
+          "x": -233,
+          "y": 86,
+          "z": 84,
+          "area": "Ruins"
+        },
+        {
+          "id": "hub-67",
+          "x": -48,
+          "y": 117,
+          "z": 129,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-68",
+          "x": -60,
+          "y": 107,
+          "z": 33,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-69",
+          "x": -56,
+          "y": 115,
+          "z": 58,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-70",
+          "x": -50,
+          "y": 132,
+          "z": 62,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-71",
+          "x": 27,
+          "y": 84,
+          "z": 83,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-72",
+          "x": 9,
+          "y": 104,
+          "z": 64,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-73",
+          "x": 12,
+          "y": 134,
+          "z": 72,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-74",
+          "x": -52,
+          "y": 161,
+          "z": 73,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-75",
+          "x": -21,
+          "y": 156,
+          "z": 69,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-76",
+          "x": -22,
+          "y": 167,
+          "z": 66,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-77",
+          "x": 10,
+          "y": 178,
+          "z": 52,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-78",
+          "x": -38,
+          "y": 194,
+          "z": 65,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-79",
+          "x": -9,
+          "y": 188,
+          "z": 70,
+          "area": "Mountain"
+        },
+        {
+          "id": "hub-80",
+          "x": -3,
+          "y": 193,
+          "z": 62,
+          "area": "Mountain"
+        }
+      ]
+    },
+    {
+      "island": "The Farming Islands",
+      "count": 20,
+      "souls": [
+        {
+          "id": "brn-1",
+          "x": 182,
+          "y": 99,
+          "z": -235,
+          "area": "The Barn"
+        },
+        {
+          "id": "brn-2",
+          "x": 96,
+          "y": 96,
+          "z": -287,
+          "area": "Windmill",
+          "walkable": false
+        },
+        {
+          "id": "brn-3",
+          "x": 143,
+          "y": 90,
+          "z": -243,
+          "area": "The Barn",
+          "walkable": false
+        },
+        {
+          "id": "brn-4",
+          "x": 99,
+          "y": 112,
+          "z": -275,
+          "area": "The Barn",
+          "walkable": false
+        },
+        {
+          "id": "brn-5",
+          "x": 183,
+          "y": 99,
+          "z": -305,
+          "area": "The Barn"
+        },
+        {
+          "id": "brn-6",
+          "x": 126,
+          "y": 91,
+          "z": -304,
+          "area": "The Barn"
+        },
+        {
+          "id": "brn-7",
+          "x": 155,
+          "y": 23,
+          "z": -204,
+          "area": "The Barn"
+        },
+        {
+          "id": "md-1",
+          "x": 152,
+          "y": 67,
+          "z": -361,
+          "area": "Desert Settlement"
+        },
+        {
+          "id": "md-2",
+          "x": 145,
+          "y": 77,
+          "z": -374,
+          "area": "Desert Settlement"
+        },
+        {
+          "id": "md-3",
+          "x": 111,
+          "y": 63,
+          "z": -447,
+          "area": "Oasis"
+        },
+        {
+          "id": "md-4",
+          "x": 150,
+          "y": 60,
+          "z": -448,
+          "area": "Oasis"
+        },
+        {
+          "id": "md-5",
+          "x": 138,
+          "y": 72,
+          "z": -587,
+          "area": "Mushroom Desert"
+        },
+        {
+          "id": "md-6",
+          "x": 279,
+          "y": 112,
+          "z": -541,
+          "area": "Trapper's Den"
+        },
+        {
+          "id": "md-7",
+          "x": 387,
+          "y": 78,
+          "z": -365,
+          "area": "Shepherd's Keep"
+        },
+        {
+          "id": "md-8",
+          "x": 261,
+          "y": 133,
+          "z": -348,
+          "area": "Mushroom Desert",
+          "walkable": false
+        },
+        {
+          "id": "md-9",
+          "x": 273,
+          "y": 141,
+          "z": -467,
+          "area": "Desert Mountain",
+          "walkable": false
+        },
+        {
+          "id": "md-10",
+          "x": 263,
+          "y": 177,
+          "z": -565,
+          "area": "Desert Mountain",
+          "walkable": false
+        },
+        {
+          "id": "md-11",
+          "x": 254,
+          "y": 70,
+          "z": -493,
+          "area": "Mushroom Gorge"
+        },
+        {
+          "id": "md-12",
+          "x": 193,
+          "y": 66,
+          "z": -468,
+          "area": "Glowing Mushroom Cave"
+        },
+        {
+          "id": "md-13",
+          "x": 271,
+          "y": 56,
+          "z": -361,
+          "area": "Overgrown Mushroom Cave"
+        }
+      ]
+    },
+    {
+      "island": "Gold Mine",
+      "count": 12,
+      "souls": [
+        {
+          "id": "gm-1",
+          "x": 21,
+          "y": 36,
+          "z": -320,
+          "area": "Gold Mine"
+        },
+        {
+          "id": "gm-2",
+          "x": -19,
+          "y": 142,
+          "z": -364,
+          "area": "Gold Mine"
+        },
+        {
+          "id": "gm-3",
+          "x": 19,
+          "y": 57,
+          "z": -341,
+          "area": "Gold Mine"
+        },
+        {
+          "id": "gm-4",
+          "x": -37,
+          "y": 78,
+          "z": -308,
+          "area": "Gold Mine"
+        },
+        {
+          "id": "gm-5",
+          "x": -47,
+          "y": 75,
+          "z": -298,
+          "area": "Gold Mine"
+        },
+        {
+          "id": "gm-6",
+          "x": -62,
+          "y": 104,
+          "z": -289,
+          "area": "Gold Mine"
+        },
+        {
+          "id": "gm-7",
+          "x": -44,
+          "y": 100,
+          "z": -344,
+          "area": "Gold Mine"
+        },
+        {
+          "id": "gm-8",
+          "x": -26,
+          "y": 94,
+          "z": -340,
+          "area": "Gold Mine"
+        },
+        {
+          "id": "gm-9",
+          "x": -23,
+          "y": 113,
+          "z": -353,
+          "area": "Gold Mine"
+        },
+        {
+          "id": "gm-10",
+          "x": 17,
+          "y": 86,
+          "z": -312,
+          "area": "Gold Mine"
+        },
+        {
+          "id": "gm-11",
+          "x": -1,
+          "y": 80,
+          "z": -337,
+          "area": "Gold Mine"
+        },
+        {
+          "id": "gm-12",
+          "x": -11,
+          "y": 76,
+          "z": -395,
+          "area": "Gold Mine"
+        }
+      ]
+    },
+    {
+      "island": "Deep Caverns",
+      "count": 21,
+      "souls": [
+        {
+          "id": "dc-1",
+          "x": 9,
+          "y": 170,
+          "z": 44,
+          "area": "Deep Caverns",
+          "walkable": false
+        },
+        {
+          "id": "dc-2",
+          "x": 3,
+          "y": 152,
+          "z": 85,
+          "area": "Deep Caverns"
+        },
+        {
+          "id": "dc-3",
+          "x": 3,
+          "y": 182,
+          "z": 50,
+          "area": "Deep Caverns"
+        },
+        {
+          "id": "dc-4",
+          "x": 71,
+          "y": 167,
+          "z": -12,
+          "area": "Deep Caverns"
+        },
+        {
+          "id": "dc-5",
+          "x": -2,
+          "y": 255,
+          "z": -1,
+          "area": "Deep Caverns"
+        },
+        {
+          "id": "dc-6",
+          "x": 57,
+          "y": 161,
+          "z": 19,
+          "area": "Gunpowder Mines",
+          "walkable": false
+        },
+        {
+          "id": "dc-7",
+          "x": 29,
+          "y": 149,
+          "z": 14,
+          "area": "Gunpowder Mines"
+        },
+        {
+          "id": "dc-8",
+          "x": -18,
+          "y": 163,
+          "z": 26,
+          "area": "Gunpowder Mines"
+        },
+        {
+          "id": "dc-9",
+          "x": 22,
+          "y": 156,
+          "z": -42,
+          "area": "Gunpowder Mines"
+        },
+        {
+          "id": "dc-10",
+          "x": -35,
+          "y": 127,
+          "z": 28,
+          "area": "Lapis Quarry"
+        },
+        {
+          "id": "dc-11",
+          "x": 44,
+          "y": 98,
+          "z": 23,
+          "area": "Pigmen's Den"
+        },
+        {
+          "id": "dc-12",
+          "x": -11,
+          "y": 102,
+          "z": -16,
+          "area": "Pigmen's Den"
+        },
+        {
+          "id": "dc-13",
+          "x": 18,
+          "y": 74,
+          "z": 74,
+          "area": "Slimehill"
+        },
+        {
+          "id": "dc-14",
+          "x": -39,
+          "y": 73,
+          "z": 1,
+          "area": "Slimehill"
+        },
+        {
+          "id": "dc-15",
+          "x": 0,
+          "y": 65,
+          "z": 57,
+          "area": "Slimehill"
+        },
+        {
+          "id": "dc-16",
+          "x": -8,
+          "y": 74,
+          "z": -44,
+          "area": "Slimehill"
+        },
+        {
+          "id": "dc-17",
+          "x": -21,
+          "y": 25,
+          "z": 72,
+          "area": "Diamond Reserve"
+        },
+        {
+          "id": "dc-18",
+          "x": -60,
+          "y": 37,
+          "z": 52,
+          "area": "Diamond Reserve"
+        },
+        {
+          "id": "dc-19",
+          "x": -71,
+          "y": 13,
+          "z": 5,
+          "area": "Obsidian Sanctuary"
+        },
+        {
+          "id": "dc-20",
+          "x": 3,
+          "y": 14,
+          "z": 51,
+          "area": "Obsidian Sanctuary"
+        },
+        {
+          "id": "dc-21",
+          "x": -76,
+          "y": 13,
+          "z": 24,
+          "area": "Obsidian Sanctuary"
+        }
+      ]
+    },
+    {
+      "island": "Dwarven Mines",
+      "count": 15,
+      "souls": [
+        {
+          "id": "dm-1",
+          "x": -9,
+          "y": 230,
+          "z": -135,
+          "area": "Dwarven Village",
+          "walkable": false
+        },
+        {
+          "id": "dm-2",
+          "x": 22,
+          "y": 127,
+          "z": 184,
+          "area": "Dwarven Mines"
+        },
+        {
+          "id": "dm-3",
+          "x": -204,
+          "y": 131,
+          "z": 199,
+          "area": "Goblin Burrows",
+          "walkable": false
+        },
+        {
+          "id": "dm-4",
+          "x": -110,
+          "y": 142,
+          "z": 143,
+          "area": "Goblin Burrows",
+          "walkable": false
+        },
+        {
+          "id": "dm-5",
+          "x": -115,
+          "y": 141,
+          "z": 154,
+          "area": "Goblin Burrows",
+          "walkable": false
+        },
+        {
+          "id": "dm-6",
+          "x": 133,
+          "y": 104,
+          "z": 104,
+          "area": "Royal Mines"
+        },
+        {
+          "id": "dm-7",
+          "x": -21,
+          "y": 208,
+          "z": -59,
+          "area": "Rampart's Quarry",
+          "walkable": false
+        },
+        {
+          "id": "dm-8",
+          "x": 155,
+          "y": 189,
+          "z": 123,
+          "area": "Royal Palace"
+        },
+        {
+          "id": "dm-9",
+          "x": -139,
+          "y": 220,
+          "z": -89,
+          "area": "Upper Mines",
+          "walkable": false
+        },
+        {
+          "id": "dm-10",
+          "x": 34,
+          "y": 102,
+          "z": 86,
+          "area": "Divan's Gateway"
+        },
+        {
+          "id": "dm-11",
+          "x": -53,
+          "y": 205,
+          "z": 50,
+          "area": "Cliffside Veins"
+        },
+        {
+          "id": "dm-12",
+          "x": -195,
+          "y": 124,
+          "z": -15,
+          "area": "Abandoned Quarry"
+        },
+        {
+          "id": "dm-13",
+          "x": 20,
+          "y": 121,
+          "z": 240,
+          "area": "Fossil Research Center"
+        },
+        {
+          "id": "dm-14",
+          "x": -19,
+          "y": 121,
+          "z": 397,
+          "area": "Great Glacite Lake"
+        },
+        {
+          "id": "dm-15",
+          "x": 111,
+          "y": 160,
+          "z": 412,
+          "area": "Glacite Tunnels"
+        }
+      ]
+    },
+    {
+      "island": "Spider's Den",
+      "count": 19,
+      "souls": [
+        {
+          "id": "sd-1",
+          "x": -198,
+          "y": 160,
+          "z": -331,
+          "area": "Spider's Den"
+        },
+        {
+          "id": "sd-2",
+          "x": -185,
+          "y": 135,
+          "z": -290,
+          "area": "Spider's Den"
+        },
+        {
+          "id": "sd-3",
+          "x": -203,
+          "y": 169,
+          "z": -320,
+          "area": "Spider's Den"
+        },
+        {
+          "id": "sd-4",
+          "x": -301,
+          "y": 92,
+          "z": -171,
+          "area": "Spider's Den"
+        },
+        {
+          "id": "sd-5",
+          "x": -297,
+          "y": 90,
+          "z": -169,
+          "area": "Spider's Den"
+        },
+        {
+          "id": "sd-6",
+          "x": -294,
+          "y": 36,
+          "z": -274,
+          "area": "Arachne's Burrow"
+        },
+        {
+          "id": "sd-7",
+          "x": -309,
+          "y": 63,
+          "z": -185,
+          "area": "Arachne's Sanctuary"
+        },
+        {
+          "id": "sd-8",
+          "x": -309,
+          "y": 66,
+          "z": -245,
+          "area": "Arachne's Burrow"
+        },
+        {
+          "id": "sd-9",
+          "x": -204,
+          "y": 94,
+          "z": -241,
+          "area": "Spider's Den",
+          "walkable": false
+        },
+        {
+          "id": "sd-10",
+          "x": -279,
+          "y": 127,
+          "z": -177,
+          "area": "Grandma's House",
+          "walkable": false
+        },
+        {
+          "id": "sd-11",
+          "x": -336,
+          "y": 82,
+          "z": -153,
+          "area": "Spider's Den"
+        },
+        {
+          "id": "sd-12",
+          "x": -422,
+          "y": 106,
+          "z": -206,
+          "area": "Spider's Den"
+        },
+        {
+          "id": "sd-13",
+          "x": -336,
+          "y": 111,
+          "z": -253,
+          "area": "Spider's Den"
+        },
+        {
+          "id": "sd-14",
+          "x": -322,
+          "y": 95,
+          "z": -281,
+          "area": "Spider's Den"
+        },
+        {
+          "id": "sd-15",
+          "x": -222,
+          "y": 74,
+          "z": -361,
+          "area": "Spider's Den"
+        },
+        {
+          "id": "sd-16",
+          "x": -140,
+          "y": 85,
+          "z": -335,
+          "area": "Spider's Den"
+        },
+        {
+          "id": "sd-17",
+          "x": -147,
+          "y": 78,
+          "z": -299,
+          "area": "Spider Mound"
+        },
+        {
+          "id": "sd-18",
+          "x": -180,
+          "y": 68,
+          "z": -306,
+          "area": "Gravel Mines"
+        },
+        {
+          "id": "sd-19",
+          "x": -194,
+          "y": 67,
+          "z": -323,
+          "area": "Gravel Mines"
+        }
+      ]
+    },
+    {
+      "island": "Crimson Isle",
+      "count": 29,
+      "souls": [
+        {
+          "id": "ci-1",
+          "x": -361,
+          "y": 69,
+          "z": -425,
+          "area": "Stronghold"
+        },
+        {
+          "id": "ci-2",
+          "x": -247,
+          "y": 44,
+          "z": -512,
+          "area": "Crimson Isle"
+        },
+        {
+          "id": "ci-3",
+          "x": -342,
+          "y": 101,
+          "z": -484,
+          "area": "Stronghold"
+        },
+        {
+          "id": "ci-4",
+          "x": -361,
+          "y": 133,
+          "z": -469,
+          "area": "Stronghold",
+          "walkable": false
+        },
+        {
+          "id": "ci-5",
+          "x": -352,
+          "y": 191,
+          "z": -553,
+          "area": "Stronghold",
+          "walkable": false
+        },
+        {
+          "id": "ci-6",
+          "x": -346,
+          "y": 75,
+          "z": -552,
+          "area": "Stronghold"
+        },
+        {
+          "id": "ci-7",
+          "x": -462,
+          "y": 78,
+          "z": -698,
+          "area": "Crimson Isle"
+        },
+        {
+          "id": "ci-8",
+          "x": -480,
+          "y": 104,
+          "z": -593,
+          "area": "Crimson Isle",
+          "walkable": false
+        },
+        {
+          "id": "ci-9",
+          "x": -383,
+          "y": 71,
+          "z": -883,
+          "area": "Aura's Lab",
+          "walkable": false
+        },
+        {
+          "id": "ci-10",
+          "x": -396,
+          "y": 108,
+          "z": -764,
+          "area": "Blazing Volcano"
+        },
+        {
+          "id": "ci-11",
+          "x": -343,
+          "y": 235,
+          "z": -780,
+          "area": "Blazing Volcano",
+          "walkable": false
+        },
+        {
+          "id": "ci-12",
+          "x": -500,
+          "y": 127,
+          "z": -795,
+          "area": "Burning Desert",
+          "walkable": false
+        },
+        {
+          "id": "ci-13",
+          "x": -690,
+          "y": 122,
+          "z": -752,
+          "area": "Dragontail"
+        },
+        {
+          "id": "ci-14",
+          "x": -606,
+          "y": 154,
+          "z": -800,
+          "area": "Dragontail",
+          "walkable": false
+        },
+        {
+          "id": "ci-15",
+          "x": -644,
+          "y": 125,
+          "z": -689,
+          "area": "Dragontail"
+        },
+        {
+          "id": "ci-16",
+          "x": -726,
+          "y": 144,
+          "z": -891,
+          "area": "Dragontail"
+        },
+        {
+          "id": "ci-17",
+          "x": -721,
+          "y": 125,
+          "z": -811,
+          "area": "Dragontail"
+        },
+        {
+          "id": "ci-18",
+          "x": -717,
+          "y": 164,
+          "z": -981,
+          "area": "The Bastion",
+          "walkable": false
+        },
+        {
+          "id": "ci-19",
+          "x": -297,
+          "y": 81,
+          "z": -835,
+          "area": "Mystic Marsh"
+        },
+        {
+          "id": "ci-20",
+          "x": -79,
+          "y": 139,
+          "z": -779,
+          "area": "Scarleton",
+          "walkable": false
+        },
+        {
+          "id": "ci-21",
+          "x": 14,
+          "y": 108,
+          "z": -769,
+          "area": "Scarleton",
+          "walkable": false
+        },
+        {
+          "id": "ci-22",
+          "x": -106,
+          "y": 89,
+          "z": -883,
+          "area": "Cathedral"
+        },
+        {
+          "id": "ci-23",
+          "x": -31,
+          "y": 178,
+          "z": -907,
+          "area": "Cathedral",
+          "walkable": false
+        },
+        {
+          "id": "ci-24",
+          "x": -35,
+          "y": 116,
+          "z": -1055,
+          "area": "Cathedral"
+        },
+        {
+          "id": "ci-25",
+          "x": -412,
+          "y": 58,
+          "z": -935,
+          "area": "Crimson Isle"
+        },
+        {
+          "id": "ci-26",
+          "x": -310,
+          "y": 156,
+          "z": -1008,
+          "area": "The Wasteland",
+          "walkable": false
+        },
+        {
+          "id": "ci-27",
+          "x": -380,
+          "y": 141,
+          "z": -1020,
+          "area": "Forgotten Skull",
+          "walkable": false
+        },
+        {
+          "id": "ci-28",
+          "x": -445,
+          "y": 110,
+          "z": -1026,
+          "area": "Crimson Isle"
+        },
+        {
+          "id": "ci-29",
+          "x": -479,
+          "y": 114,
+          "z": -972,
+          "area": "Crimson Isle"
+        }
+      ]
+    },
+    {
+      "island": "The End",
+      "count": 12,
+      "souls": [
+        {
+          "id": "end-1",
+          "x": -517,
+          "y": 100,
+          "z": -295,
+          "area": "The End"
+        },
+        {
+          "id": "end-2",
+          "x": -583,
+          "y": 208,
+          "z": -272,
+          "area": "The End"
+        },
+        {
+          "id": "end-3",
+          "x": -587,
+          "y": 122,
+          "z": -276,
+          "area": "The End"
+        },
+        {
+          "id": "end-4",
+          "x": -696,
+          "y": 116,
+          "z": -256,
+          "area": "The End"
+        },
+        {
+          "id": "end-5",
+          "x": -587,
+          "y": 48,
+          "z": -293,
+          "area": "The End",
+          "walkable": false
+        },
+        {
+          "id": "end-6",
+          "x": -657,
+          "y": 36,
+          "z": -201,
+          "area": "The End"
+        },
+        {
+          "id": "end-7",
+          "x": -492,
+          "y": 21,
+          "z": -175,
+          "area": "The End"
+        },
+        {
+          "id": "end-8",
+          "x": -492,
+          "y": 81,
+          "z": -275,
+          "area": "The End"
+        },
+        {
+          "id": "end-9",
+          "x": -545,
+          "y": 92,
+          "z": -257,
+          "area": "The End"
+        },
+        {
+          "id": "end-10",
+          "x": -609,
+          "y": 84,
+          "z": -230,
+          "area": "Dragon's Nest",
+          "walkable": false
+        },
+        {
+          "id": "end-11",
+          "x": -723,
+          "y": 75,
+          "z": -222,
+          "area": "Dragon's Nest",
+          "walkable": false
+        },
+        {
+          "id": "end-12",
+          "x": -748,
+          "y": 106,
+          "z": -284,
+          "area": "The End"
+        }
+      ]
+    },
+    {
+      "island": "The Park",
+      "count": 12,
+      "souls": [
+        {
+          "id": "park-1",
+          "x": -292,
+          "y": 69,
+          "z": 13,
+          "area": "Birch Park"
+        },
+        {
+          "id": "park-2",
+          "x": -305,
+          "y": 70,
+          "z": -34,
+          "area": "Birch Park"
+        },
+        {
+          "id": "park-3",
+          "x": -305,
+          "y": 75,
+          "z": -83,
+          "area": "Birch Park"
+        },
+        {
+          "id": "park-4",
+          "x": -339,
+          "y": 99,
+          "z": 67,
+          "area": "Spruce Woods",
+          "walkable": false
+        },
+        {
+          "id": "park-5",
+          "x": -370,
+          "y": 89,
+          "z": -44,
+          "area": "Dark Thicket"
+        },
+        {
+          "id": "park-6",
+          "x": -434,
+          "y": 121,
+          "z": 56,
+          "area": "Savanna Woodland",
+          "walkable": false
+        },
+        {
+          "id": "park-7",
+          "x": -419,
+          "y": 90,
+          "z": 42,
+          "area": "Soul Cave",
+          "walkable": false
+        },
+        {
+          "id": "park-8",
+          "x": -482,
+          "y": 118,
+          "z": -33,
+          "area": "Jungle Island"
+        },
+        {
+          "id": "park-9",
+          "x": -458,
+          "y": 118,
+          "z": -85,
+          "area": "Jungle Island"
+        },
+        {
+          "id": "park-10",
+          "x": -479,
+          "y": 107,
+          "z": -60,
+          "area": "Spirit Cave",
+          "walkable": false
+        },
+        {
+          "id": "park-11",
+          "x": -465,
+          "y": 108,
+          "z": -105,
+          "area": "Jungle Island"
+        },
+        {
+          "id": "park-12",
+          "x": -412,
+          "y": 123,
+          "z": -118,
+          "area": "Jungle Island"
+        }
+      ]
+    },
+    {
+      "island": "Moonglade Marsh",
+      "count": 12,
+      "souls": [
+        {
+          "id": "mm-1",
+          "x": -565,
+          "y": 95,
+          "z": 17,
+          "area": "Moonglade Marsh"
+        },
+        {
+          "id": "mm-2",
+          "x": -601,
+          "y": 128,
+          "z": -20,
+          "area": "Tangleburg"
+        },
+        {
+          "id": "mm-3",
+          "x": -598,
+          "y": 107,
+          "z": 16,
+          "area": "Moonglade Marsh"
+        },
+        {
+          "id": "mm-4",
+          "x": -556,
+          "y": 94,
+          "z": 60,
+          "area": "Moonglade Marsh"
+        },
+        {
+          "id": "mm-5",
+          "x": -663,
+          "y": 64,
+          "z": 62,
+          "area": "Moonglade Marsh"
+        },
+        {
+          "id": "mm-6",
+          "x": -737,
+          "y": 101,
+          "z": -17,
+          "area": "Tranquility Sanctum"
+        },
+        {
+          "id": "mm-7",
+          "x": -707,
+          "y": 131,
+          "z": 1,
+          "area": "West Reaches"
+        },
+        {
+          "id": "mm-8",
+          "x": -702,
+          "y": 169,
+          "z": -2,
+          "area": "Murkwater Outpost"
+        },
+        {
+          "id": "mm-9",
+          "x": -586,
+          "y": 90,
+          "z": -26,
+          "area": "Wyrmgrove Tomb"
+        },
+        {
+          "id": "mm-10",
+          "x": -620,
+          "y": 66,
+          "z": 32,
+          "area": "Murkwater Depths"
+        },
+        {
+          "id": "mm-11",
+          "x": -621,
+          "y": 108,
+          "z": -86,
+          "area": "Red House"
+        },
+        {
+          "id": "mm-12",
+          "x": -696,
+          "y": 76,
+          "z": -44,
+          "area": "Stride-Ember Fissure"
+        }
+      ],
+      "questLogName": "Galatea"
+    },
+    {
+      "island": "Torrhus Canyon",
+      "count": 12,
+      "souls": [
+        {
+          "id": "tc-1",
+          "x": -618,
+          "y": 125,
+          "z": 179,
+          "area": "Spring Depths"
+        },
+        {
+          "id": "tc-2",
+          "x": -603,
+          "y": 167,
+          "z": 234,
+          "area": "Torrhus Heights"
+        },
+        {
+          "id": "tc-3",
+          "x": -706,
+          "y": 98,
+          "z": 142,
+          "area": "Torrhus Canyon",
+          "walkable": false
+        },
+        {
+          "id": "tc-4",
+          "x": -565,
+          "y": 136,
+          "z": 243,
+          "area": "Torrhus Heights",
+          "walkable": false
+        },
+        {
+          "id": "tc-5",
+          "x": -640,
+          "y": 90,
+          "z": 158,
+          "area": "Torrhus Canyon"
+        },
+        {
+          "id": "tc-6",
+          "x": -677,
+          "y": 102,
+          "z": 262,
+          "area": "Torrhus Canyon"
+        },
+        {
+          "id": "tc-7",
+          "x": -627,
+          "y": 122,
+          "z": 285,
+          "area": "Torrhus Canyon"
+        },
+        {
+          "id": "tc-8",
+          "x": -567,
+          "y": 81,
+          "z": 272,
+          "area": "Torrhus Canyon"
+        },
+        {
+          "id": "tc-9",
+          "x": -554,
+          "y": 94,
+          "z": 256,
+          "area": "Torrhus Canyon"
+        },
+        {
+          "id": "tc-10",
+          "x": -678,
+          "y": 62,
+          "z": 258,
+          "area": "Torrhus Canyon"
+        },
+        {
+          "id": "tc-11",
+          "x": -711,
+          "y": 59,
+          "z": 290,
+          "area": "Torrhus Canyon"
+        },
+        {
+          "id": "tc-12",
+          "x": -727,
+          "y": 125,
+          "z": 152,
+          "area": "Torrhus Canyon"
+        }
+      ],
+      "questLogName": "Galatea"
+    },
+    {
+      "island": "Critter Safari",
+      "count": 4,
+      "souls": [
+        {
+          "id": "sf-1",
+          "x": 5,
+          "y": 106,
+          "z": 18,
+          "area": "Critter Safari"
+        },
+        {
+          "id": "sf-2",
+          "x": -162,
+          "y": 60,
+          "z": 63,
+          "area": "Critter Safari"
+        },
+        {
+          "id": "sf-3",
+          "x": -75,
+          "y": 40,
+          "z": -32,
+          "area": "Critter Safari"
+        },
+        {
+          "id": "sf-4",
+          "x": 40,
+          "y": 63,
+          "z": -14,
+          "area": "Critter Safari"
+        }
+      ]
+    },
+    {
+      "island": "Backwater Bayou",
+      "count": 5,
+      "souls": [
+        {
+          "id": "bb-1",
+          "x": 2,
+          "y": 67,
+          "z": 10,
+          "area": "Backwater Bayou"
+        },
+        {
+          "id": "bb-2",
+          "x": 16,
+          "y": 59,
+          "z": -7,
+          "area": "Backwater Bayou"
+        },
+        {
+          "id": "bb-3",
+          "x": 33,
+          "y": 61,
+          "z": -46,
+          "area": "Backwater Bayou"
+        },
+        {
+          "id": "bb-4",
+          "x": 62,
+          "y": 76,
+          "z": 5,
+          "area": "Backwater Bayou"
+        },
+        {
+          "id": "bb-5",
+          "x": 72,
+          "y": 115,
+          "z": -12,
+          "area": "Backwater Bayou"
+        }
+      ]
+    },
+    {
+      "island": "Lotus Atoll",
+      "count": 6,
+      "souls": [
+        {
+          "id": "la-1",
+          "x": 86,
+          "y": 65,
+          "z": -12,
+          "area": "Lotus Eater's Cave"
+        },
+        {
+          "id": "la-2",
+          "x": 12,
+          "y": 66,
+          "z": 28,
+          "area": "Lotus Atoll"
+        },
+        {
+          "id": "la-3",
+          "x": 24,
+          "y": 142,
+          "z": -68,
+          "area": "Lotus Highlands"
+        },
+        {
+          "id": "la-4",
+          "x": 70,
+          "y": 118,
+          "z": 8,
+          "area": "Lotus Atoll",
+          "walkable": false
+        },
+        {
+          "id": "la-5",
+          "x": 1,
+          "y": 70,
+          "z": -15,
+          "area": "Lotus Atoll"
+        },
+        {
+          "id": "la-6",
+          "x": 89,
+          "y": 78,
+          "z": 27,
+          "area": "Lotus Atoll",
+          "walkable": false
+        }
+      ]
+    },
+    {
+      "island": "Jerry's Workshop",
+      "count": 5,
+      "souls": [
+        {
+          "id": "wi-1",
+          "x": -95,
+          "y": 77,
+          "z": 20,
+          "area": "Terry's Shack"
+        },
+        {
+          "id": "wi-2",
+          "x": -44,
+          "y": 87,
+          "z": 76,
+          "area": "Jerry's Workshop"
+        },
+        {
+          "id": "wi-3",
+          "x": -7,
+          "y": 108,
+          "z": 107,
+          "area": "Jerry's Workshop"
+        },
+        {
+          "id": "wi-4",
+          "x": 56,
+          "y": 108,
+          "z": 64,
+          "area": "Jerry's Workshop"
+        },
+        {
+          "id": "wi-5",
+          "x": 74,
+          "y": 109,
+          "z": -18,
+          "area": "Jerry's Workshop"
+        }
+      ]
+    },
+    {
+      "island": "The Rift",
+      "count": 1,
+      "souls": [
+        {
+          "id": "rd-1",
+          "x": 253,
+          "y": 123,
+          "z": 90,
+          "area": "Fairylosophy Tower"
+        }
+      ]
+    },
+    {
+      "island": "Dungeon Hub",
+      "count": 7,
+      "souls": [
+        {
+          "id": "dh-1",
+          "x": 17,
+          "y": 124,
+          "z": -58,
+          "area": "Dungeon Hub",
+          "walkable": false
+        },
+        {
+          "id": "dh-2",
+          "x": 1,
+          "y": 134,
+          "z": 75,
+          "area": "Dungeon Hub",
+          "walkable": false
+        },
+        {
+          "id": "dh-3",
+          "x": 10,
+          "y": 164,
+          "z": -10,
+          "area": "Dungeon Hub",
+          "walkable": false
+        },
+        {
+          "id": "dh-4",
+          "x": -139,
+          "y": 46,
+          "z": -1,
+          "area": "Dungeon Hub",
+          "walkable": false
+        },
+        {
+          "id": "dh-5",
+          "x": -55,
+          "y": 82,
+          "z": -10,
+          "area": "Dungeon Hub",
+          "walkable": false
+        },
+        {
+          "id": "dh-6",
+          "x": -4,
+          "y": 21,
+          "z": -17,
+          "area": "Dungeon Hub",
+          "walkable": false
+        },
+        {
+          "id": "dh-7",
+          "x": 14,
+          "y": 60,
+          "z": 99,
+          "area": "Dungeon Hub",
+          "walkable": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+	"schemaVersion": 1,
+	"id": "skyblock-simplified-sbs",
+	"version": "${version}",
+	"name": "Skyblock Simplified",
+	"description": "An all-in-one, modular Skyblock utility mod that unifies the most useful Skyblock features in a single modern, clean interface.",
+	"authors": [
+		"Panikstrange"
+	],
+	"contact": {
+		"homepage": "https://skyblocksimplified.de",
+		"discord": "https://discord.gg/qS99Q2zHVb",
+		"sources": "https://github.com/yt676000/Skyblock-Simplified-SBS"
+	},
+	"license": "GPL-3.0-or-later",
+	"icon": "assets/skyblock-simplified-sbs/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"sbs.modid.SkyblockSimplifiedSBS"
+		],
+		"client": [
+			"sbs.modid.client.SkyblockSimplifiedSBSClient"
+		]
+	},
+	"mixins": [
+		"skyblock-simplified-sbs.mixins.json",
+		{ "config": "sbs.client.core.mixins.json", "environment": "client" },
+		{ "config": "sbs.client.chat.mixins.json", "environment": "client" },
+		{ "config": "sbs.client.hud.mixins.json", "environment": "client" },
+		{ "config": "sbs.client.input.mixins.json", "environment": "client" },
+		{ "config": "sbs.client.inventory.mixins.json", "environment": "client" },
+		{ "config": "sbs.client.item.mixins.json", "environment": "client" },
+		{ "config": "sbs.client.render.mixins.json", "environment": "client" },
+		{ "config": "sbs.client.theme.mixins.json", "environment": "client" }
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "26.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"mcef-modern": ">=0.3.3"
+	}
+}

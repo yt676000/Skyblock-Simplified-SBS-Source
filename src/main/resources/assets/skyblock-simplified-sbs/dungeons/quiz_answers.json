@@ -1,0 +1,7 @@
+{
+  "_note": "Oruo's question bank. Ships EMPTY on purpose: not one question here has been seen in a real run, and a guessed answer fails the room for the whole party. Rows are added from the full question text QuizSolver logs under [SBS][Puzzle] when it meets one it does not know. Row shape: {\"question\": \"<text as Oruo prints it>\", \"answer\": \"<the correct option, exactly as its button label reads>\"}. Bump dataVersion with every addition.",
+  "schemaVersion": 1,
+  "dataVersion": 1,
+  "generatedAt": "2026-08-10",
+  "questions": []
+}

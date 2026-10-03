@@ -1,0 +1,41 @@
+{
+  "required": true,
+  "package": "sbs.modid.client.core.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "ArmorStandRenderCullMixin",
+    "BlockBreakParticleMixin",
+    "CameraFovMixin",
+    "DarkModeClockMixin",
+    "DarkModeLightmapMixin",
+    "DragonDeathHideMixin",
+    "EndBlockShadeFabricMixin",
+    "EndBlockShadeMixin",
+    "EntityRenderStateMixin",
+    "EntityScaleMixin",
+    "FallingBlockHideMixin",
+    "FarmingSoundMuteMixin",
+    "GhostSwirlDimMixin",
+    "HeldItemScaleMixin",
+    "ItemEntityScaleMixin",
+    "ItemModelReloadMixin",
+    "LightmapFullbrightMixin",
+    "LivingEntityUseAccessor",
+    "ParticleCleanupMixin",
+    "PlayerNoteNametagMixin",
+    "SbsBadgeMixin",
+    "SbsCapeMixin",
+    "SelfNametagMixin",
+    "SingleQuadParticleAccessor",
+    "StreamerNametagMixin",
+    "SwingSpeedMixin",
+    "ThirdPersonCrosshairMixin",
+    "ThirdPersonItemMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

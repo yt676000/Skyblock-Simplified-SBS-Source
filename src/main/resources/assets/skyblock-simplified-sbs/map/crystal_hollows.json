@@ -1,0 +1,13 @@
+{
+  "id": "crystal_hollows",
+  "name": "Crystal Hollows",
+  "island": "Crystal Hollows",
+  "travel": "/warp crystals",
+  "note": "The Hollows are regenerated every few hours, so fixed coordinates only hold for the Nucleus and the fixed structures. Anything you add here should be one of those. The places you see on this map come from HollowsDetector instead: what you walked into during this lobby. The bounds below are ESTIMATED - a guess at the extent, never checked in game - and must match HollowsGeometry.MIN / MAX.",
+  "bounds": { "minX": 202, "minZ": 202, "maxX": 823, "maxZ": 823 },
+  "warps": [
+    { "id": "crystals", "command": "/warp crystals", "label": "Crystal Hollows" },
+    { "id": "nucleus", "command": "/warp nucleus", "label": "Crystal Nucleus" }
+  ],
+  "locations": []
+}

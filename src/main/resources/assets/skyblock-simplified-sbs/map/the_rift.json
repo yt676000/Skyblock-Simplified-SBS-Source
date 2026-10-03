@@ -1,0 +1,11 @@
+{
+  "id": "the_rift",
+  "name": "The Rift",
+  "island": "The Rift",
+  "travel": "/warp rift",
+  "note": "Places are not catalogued yet - append to \"locations\" (name, category, x/y/z) and they appear on the map with no code change.",
+  "warps": [
+    { "id": "rift", "command": "/warp rift", "label": "The Rift" }
+  ],
+  "locations": []
+}

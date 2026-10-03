@@ -1,0 +1,11 @@
+{
+  "id": "private_island",
+  "name": "Private Island",
+  "island": "Private Island",
+  "travel": "/warp home",
+  "note": "Your island's layout is your own, so nothing is catalogued here: add your own places to \"locations\" in this file and they appear on the map.",
+  "warps": [
+    { "id": "home", "command": "/warp home", "label": "Private Island" }
+  ],
+  "locations": []
+}

@@ -1,0 +1,22 @@
+{
+  "required": true,
+  "package": "sbs.modid.client.core.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "AbstractSliderButtonAccessor",
+    "CreativeSpriteMixin",
+    "CreativeThemeMixin",
+    "FontProviderAccessor",
+    "RecipeBookScopeMixin",
+    "RecipeBookSpriteMixin",
+    "SbsWidgetThemeMixin",
+    "ScreenOpacityMixin",
+    "SpriteIconButtonAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

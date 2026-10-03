@@ -1,0 +1,19 @@
+{
+  "id": "the_end",
+  "name": "The End",
+  "island": "The End",
+  "travel": "/warp end",
+  "warps": [
+    { "id": "end", "command": "/warp end", "label": "The End", "x": -494, "y": 121, "z": -241 },
+    { "id": "drag", "command": "/warp drag", "label": "Dragon's Nest", "x": -607, "y": 22, "z": -284 },
+    { "id": "void", "command": "/warp void", "label": "Void Slate", "x": -597, "y": 5, "z": -272 }
+  ],
+  "locations": [
+    { "name": "End Portal Room", "category": "PORTAL", "area": "The End", "x": -494, "y": 121, "z": -241, "warp": "end", "note": "Guber" },
+    { "name": "Dragon's Nest", "category": "BOSS", "area": "Dragon's Nest", "x": -607, "y": 22, "z": -284, "warp": "drag", "note": "Ender Dragon, Gregory" },
+    { "name": "Void Slate", "category": "COMBAT", "area": "Void Slate", "x": -597, "y": 5, "z": -272, "warp": "void", "note": "Tyzzo" },
+    { "name": "Pearl Dealer", "category": "SHOP", "area": "The End", "x": -504, "y": 101, "z": -284 },
+    { "name": "Lone Adventurer", "category": "NPC", "area": "The End", "x": -524, "y": 101, "z": -275 },
+    { "name": "Zealot Bruiser Hideout", "category": "COMBAT", "area": "Zealot Bruiser Hideout", "x": -560, "y": 100, "z": -290, "note": "Approximate - correct in place if it is off" }
+  ]
+}

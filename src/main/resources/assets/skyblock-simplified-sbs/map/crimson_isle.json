@@ -1,0 +1,39 @@
+{
+  "id": "crimson_isle",
+  "name": "Crimson Isle",
+  "island": "Crimson Isle",
+  "travel": "/warp nether",
+  "note": "Warps whose arrival point is not catalogued yet are listed without a position - they are shown, but never picked as the nearest warp.",
+  "warps": [
+    { "id": "nether", "command": "/warp nether", "label": "Crimson Isle", "x": -563, "y": 98, "z": -681, "note": "Dragontail" },
+    { "id": "dojo", "command": "/warp dojo", "label": "Dojo", "x": -234, "y": 108, "z": -602 },
+    { "id": "magma", "command": "/warp magma", "label": "Magma Boss" },
+    { "id": "kuudra", "command": "/warp kuudra", "label": "Kuudra" },
+    { "id": "smoldering", "command": "/warp smoldering", "label": "Smoldering Tomb" }
+  ],
+  "locations": [
+    { "name": "Dragontail", "category": "POI", "area": "Dragontail", "x": -563, "y": 98, "z": -681, "warp": "nether", "note": "Barbarian town" },
+    { "name": "Dragontail Bank", "category": "BANK", "area": "Dragontail", "x": -612, "y": 100, "z": -786, "note": "Bruto" },
+    { "name": "Dragontail Bazaar", "category": "BAZAAR", "area": "Dragontail", "x": -624, "y": 101, "z": -794, "note": "Barter" },
+    { "name": "Dragontail Auction House", "category": "AUCTION", "area": "Dragontail", "x": -636, "y": 103, "z": -784, "note": "Bromm" },
+    { "name": "Dragontail Blacksmith", "category": "SHOP", "area": "Dragontail", "x": -549, "y": 98, "z": -707, "note": "Igor" },
+    { "name": "Dragontail Townsquare", "category": "POI", "area": "Dragontail", "x": -631, "y": 100, "z": -805, "note": "Pam" },
+    { "name": "Chief's Hut", "category": "NPC", "area": "Dragontail", "x": -580, "y": 115, "z": -687, "note": "Chief Scorn" },
+    { "name": "Barbarian Emissary", "category": "NPC", "area": "Dragontail", "x": -580, "y": 99, "z": -710 },
+    { "name": "Scarleton", "category": "POI", "area": "Scarleton", "x": -61, "y": 107, "z": -812, "note": "Mage town" },
+    { "name": "Scarleton Bank", "category": "BANK", "area": "Scarleton", "x": -83, "y": 108, "z": -775, "note": "Belanor" },
+    { "name": "Scarleton Bazaar", "category": "BAZAAR", "area": "Scarleton", "x": -71, "y": 107, "z": -757, "note": "Selenar" },
+    { "name": "Scarleton Auction House", "category": "AUCTION", "area": "Scarleton", "x": -60, "y": 108, "z": -746, "note": "Elmar" },
+    { "name": "Scarleton Blacksmith", "category": "SHOP", "area": "Scarleton", "x": -82, "y": 92, "z": -734, "note": "Alwin" },
+    { "name": "Throne Room", "category": "NPC", "area": "Scarleton", "x": -117, "y": 105, "z": -754, "note": "Queen Nyx" },
+    { "name": "Mage Council", "category": "NPC", "area": "Scarleton", "x": -121, "y": 82, "z": -756 },
+    { "name": "Cathedral", "category": "POI", "area": "Scarleton", "x": -101, "y": 91, "z": -872, "note": "Eludore" },
+    { "name": "The Wasteland", "category": "COMBAT", "area": "The Wasteland", "x": -289, "y": 127, "z": -982, "note": "Desperate Engineer" },
+    { "name": "Forgotten Skull", "category": "COMBAT", "area": "The Wasteland", "x": -371, "y": 114, "z": -1042, "note": "Crag, Vesuvius, Vulcan" },
+    { "name": "Dojo", "category": "COMBAT", "area": "Dojo", "x": -234, "y": 108, "z": -602, "warp": "dojo", "note": "Master Tao" },
+    { "name": "Stronghold", "category": "COMBAT", "area": "Stronghold", "x": -360, "y": 189, "z": -552, "note": "Arch" },
+    { "name": "The Bastion", "category": "COMBAT", "area": "The Bastion", "x": -668, "y": 126, "z": -924, "note": "Corm" },
+    { "name": "Odger's Hut", "category": "SLAYER", "area": "The Wasteland", "x": -373, "y": 207, "z": -810, "note": "Odger, trophy fishing" },
+    { "name": "Plhlegblast Pool", "category": "FISHING", "area": "The Wasteland", "x": -390, "y": 81, "z": -701, "note": "Kuudra Believer" }
+  ]
+}

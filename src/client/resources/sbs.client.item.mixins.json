@@ -1,0 +1,25 @@
+{
+  "required": true,
+  "package": "sbs.modid.client.core.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "CustomSkinArmorMixin",
+    "CustomSkinModelMixin",
+    "EnchantTooltipMixin",
+    "ItemCooldownsMixin",
+    "ItemNameMixin",
+    "ItemRarityMixin",
+    "ItemUseMixin",
+    "PriceHistoryKeyMixin",
+    "PriceTooltipMixin",
+    "RecipeLookupKeyMixin",
+    "ScreenTooltipReplaceMixin",
+    "ScrollableTooltipsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

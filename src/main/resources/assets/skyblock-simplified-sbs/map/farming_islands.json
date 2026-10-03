@@ -1,0 +1,14 @@
+{
+  "id": "farming_islands",
+  "name": "The Barn / Mushroom Desert",
+  "island": "The Farming Islands",
+  "travel": "/warp barn",
+  "note": "Places are not catalogued yet - append to \"locations\" (name, category, x/y/z) and they appear on the map with no code change.",
+  "warps": [
+    { "id": "barn", "command": "/warp barn", "label": "The Barn" },
+    { "id": "desert", "command": "/warp desert", "label": "Mushroom Desert" },
+    { "id": "trapper", "command": "/warp trapper", "label": "Trapper" },
+    { "id": "glowing", "command": "/warp glowing", "label": "Glowing Mushroom Cave" }
+  ],
+  "locations": []
+}

@@ -1,0 +1,269 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+	// One shared formatter. Without it, two developers' editors produce diffs that
+	// are pure whitespace and conflict on every file they both touch.
+	id 'com.diffplug.spotless' version '6.25.0'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+repositories {
+	// Modrinth maven – MCEF Modern (embedded Chromium for the Item Price History browser).
+	maven {
+		name = "Modrinth"
+		url = "https://api.modrinth.com/maven"
+		content {
+			includeGroup "maven.modrinth"
+		}
+	}
+	mavenCentral()
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"skyblock-simplified-sbs" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+dependencies {
+	// To change the versions see the gradle.properties file
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+	// Fabric API. This is technically optional, but you probably want it anyway.
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// MCEF Modern: embedded Chromium (JCEF) – bundled into our jar (jar-in-jar) so the mod
+	// stays a single file; the ~100 MB CEF natives are downloaded by it on first use.
+	implementation "maven.modrinth:mcef-modern:0.3.3+mc26.2.jcef146.0.10"
+	include "maven.modrinth:mcef-modern:0.3.3+mc26.2.jcef146.0.10"
+
+	// JCEF API classes for compilation only (request handlers etc.). At runtime these come from
+	// MCEF Modern's nested jar; libs/jcef-api.jar is the identical artifact extracted from it.
+	compileOnly files("libs/jcef-api.jar")
+
+}
+
+// Machine-enforces the one UI rule that kept being broken by accident: "never a click-through
+// above two options". The rule was written down
+// emphatically and still got violated by a new settings row with nine options, because prose in a
+// conventions file is only read by whoever thinks to look.
+//
+// A frozen per-file BASELINE rather than a blanket ban: the cyclers below predate the rule and
+// rewriting all seventeen at once is its own change. The count is what is enforced, so an existing
+// screen cannot quietly grow another one either, and a file not listed here must have none.
+// Fixing a legacy screen means lowering its number in the same commit.
+ext.cyclerBaseline = [
+	'core/config/SbsSettingsModule.java'         : 2,
+	'core/keybind/KeybindEditScreen.java'        : 2,
+	'helper/slothotkey/ui/SlotHotkeyEditScreen.java': 1,
+	'helper/sound/SoundManagerModule.java'       : 1,
+	'helper/storage/StorageSearchScreen.java'    : 1,
+	'helper/texture/ui/TexturePackScreen.java'   : 1,
+	'helper/visual/ui/VisualsScreen.java'        : 3,
+	'social/party/ui/PartyCreateScreen.java'     : 5,
+	'ui/screen/HypixelGuiScreen.java'            : 3,
+	'ui/screen/ItemOverlayScreen.java'           : 1,
+	// The factory and the widget itself - where a cycler is legitimately named.
+	'ui/settings/SettingRow.java'                : 2,
+]
+
+// The one slider widget. A second one is how the mod ended up with two different looks for the same
+// setting in the first place: a full-width slider whose track WAS the whole row sat next to a bounded
+// one, so half the percentages moved when you clicked their label and half did not. Deleting the old
+// class fixed the existing rows; this stops the next one being written from scratch on a screen that
+// did not want to import the shared widget.
+ext.sliderWidget = 'ui/component/SciFiRangeSlider.java'
+
+// The one scrollbar, for the same reason as the one slider - except this rule is about something
+// worse than inconsistency. A hand-drawn bar is two lines of g.fill and no input handling, so it
+// LOOKS like a control and is not: the player grabs it, drags, and nothing moves. That is worse
+// than no bar at all, because a list with no bar at least tells the truth about what it offers.
+// Eighteen of them shipped before anyone noticed, and the one that got reported was reported as
+// "the slider doesn't work" - which is exactly what it is.
+//
+// Same shape as the cycler baseline above, and the same rule: a file not listed must have none, a
+// listed one may not grow, and fixing a screen means lowering its number in the same commit.
+// Detected on the arithmetic no shared caller ever writes - a thumb position or height, or a
+// scrollbar width constant of its own.
+ext.scrollbarWidget = 'ui/component/SciFiScrollbar.java'
+ext.handRolledScrollbars = [
+	'core/keybind/CommandKeybindsScreen.java'        : 8,
+	'helper/customskin/ui/CustomSkinScreen.java'     : 3,
+	'helper/inventory/ui/MissingAccessoriesScreen.java': 4,
+	'helper/loadouts/LoadoutsOverlay.java'           : 3,
+	'helper/pets/PetsOverlay.java'                   : 3,
+	'helper/quest/ui/QuestDetailScreen.java'         : 3,
+	'helper/slothotkey/ui/SlotHotkeysScreen.java'    : 8,
+	'helper/storage/StorageSearchScreen.java'        : 3,
+	'helper/streamer/ui/StreamerAliasScreen.java'    : 10,
+	'helper/warp/WarpMenuScreen.java'                : 3,
+	// An INDICATOR, not a control: a HUD card cannot be dragged, so this one draws where the
+	// container's scroll is and offers nothing. Listed rather than exempted so it stays visible.
+	'skills/fishing/render/FishingHud.java'          : 3,
+	'social/chat/ui/IrcNamesScreen.java'             : 3,
+	// The Player Viewer's shared draw helper - one entry covering every page that calls it.
+	'social/playerviewer/ui/PvDraw.java'             : 3,
+	// These two do handle their own drags, so they work; they are still a second and third copy
+	// of the same maths and belong on the shared one.
+	'ui/component/ProfileSelector.java'              : 7,
+	'ui/component/ReorderableList.java'              : 8,
+	'ui/component/SciFiModuleList.java'              : 8,
+	'ui/screen/IconPickerScreen.java'                : 3,
+	'ui/screen/TextEditorScreen.java'                : 10,
+]
+
+tasks.register('uiControlCheck') {
+	group = 'verification'
+	description = 'Fails on a new cycling control, a second slider widget, or a hand-drawn scrollbar.'
+	def root = file('src/client/java/sbs/modid/client')
+	def baseline = project.ext.cyclerBaseline
+	def sliderWidget = project.ext.sliderWidget
+	def scrollbarWidget = project.ext.scrollbarWidget
+	def scrollbarBaseline = project.ext.handRolledScrollbars
+	inputs.dir root
+	outputs.upToDateWhen { false }
+	doLast {
+		def offenders = []
+		def sliders = []
+		def scrollbars = []
+		root.eachFileRecurse { f ->
+			if (!f.name.endsWith('.java')) {
+				return
+			}
+			def rel = root.toPath().relativize(f.toPath()).toString().replace('\\', '/')
+			def lines = f.readLines()
+			if (rel != sliderWidget && lines.any { it.contains('extends AbstractSliderButton') }) {
+				sliders << "  ${rel}"
+			}
+			if (rel != scrollbarWidget) {
+				def bars = lines.count {
+					it.contains('thumbH') || it.contains('thumbY') || it.contains('SCROLLBAR_WIDTH')
+				}
+				def allowedBars = scrollbarBaseline.getOrDefault(rel, 0)
+				if (bars > allowedBars) {
+					scrollbars << "  ${rel}: ${bars} scrollbar line(s), baseline allows ${allowedBars}"
+				}
+			}
+			if (f.name == 'SciFiCycleButton.java') {
+				return
+			}
+			def found = lines.count { it.contains('new SciFiCycleButton(') || it.contains('SettingRow.cycle(') }
+			def allowed = baseline.getOrDefault(rel, 0)
+			if (found > allowed) {
+				offenders << "  ${rel}: ${found} cycling control(s), baseline allows ${allowed}"
+			}
+		}
+		if (scrollbars) {
+			throw new GradleException(
+				"There is one scrollbar, ${scrollbarWidget}.\n" +
+				scrollbars.join('\n') +
+				"\n\nA hand-drawn bar looks draggable and is not, which is worse than no bar at all.\n" +
+				"Use SciFiScrollbar: set() the track box each frame, render() it, and route mouseClicked /\n" +
+				"mouseDragged / mouseReleased through it BEFORE the rows.\n" +
+				"If you converted a legacy screen instead, lower its number in build.gradle's handRolledScrollbars.")
+		}
+		if (offenders) {
+			throw new GradleException(
+				"Cycling controls are banned above two options.\n" +
+				offenders.join('\n') +
+				"\n\nUse SettingRow.enumOptions / options (6+ values) or SciFiSegmentedSwitch (2-5).\n" +
+				"If you deliberately removed one instead, lower its number in build.gradle's cyclerBaseline.")
+		}
+		if (sliders) {
+			throw new GradleException(
+				"There is one slider widget, ${sliderWidget}.\n" +
+				sliders.join('\n') +
+				"\n\nUse SettingRow.rangeSlider, or the widget directly on a screen that builds its own rows.")
+		}
+	}
+}
+
+tasks.named('check') { dependsOn 'uiControlCheck' }
+
+// Deliberately conservative: it enforces the things that actually cause noise
+// diffs (line endings, trailing whitespace, import order) and does NOT reformat
+// existing code. A full reformat would rewrite all ~290 files at once and bury
+// every real change in the resulting diff for weeks.
+spotless {
+	// LF everywhere. The tree was CRLF, which is why every file
+	// looked "unformatted": a CR reads as trailing whitespace. Normalising it is a one-time
+	// change that has to happen BEFORE anyone opens a branch - afterwards it would conflict
+	// with all of them at once.
+	lineEndings = 'UNIX'
+
+	java {
+		target 'src/*/java/**/*.java'
+		endWithNewline()
+		trimTrailingWhitespace()
+		// NOTE: import ordering and unused-import removal are deliberately NOT enforced.
+		// Measured on this codebase they would rewrite 113 and 106 of 290 files
+		// respectively - one commit touching a third of the mod, burying every real change
+		// under a reformat and conflicting with every open branch. That is the exact
+		// problem this config exists to prevent. The two rules above are the ones that
+		// actually cause whitespace conflicts, and the tree is already clean under them.
+		// Turn the others on later via a dedicated, coordinated "format everything" PR
+		// merged when no feature branch is open.
+	}
+	format 'misc', {
+		target '*.gradle', '*.properties', '.gitignore'
+		endWithNewline()
+		trimTrailingWhitespace()
+	}
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+}
+
+java {
+	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+	// if it is present.
+	// If you remove this line, sources will not be generated.
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+	// The GPL requires the licence text to travel with the binary, so it ships at the
+	// root of the jar under its normal name - that is where anyone who opens the jar
+	// looks for it. The template used to rename it to LICENSE_<projectName> to dodge
+	// collisions when jars are merged; nothing is merged into this one (MCEF is nested
+	// whole under META-INF/jars/ and keeps its own LICENSE), so the plain name is safe.
+	from("LICENSE")
+}
+
+// configure the maven publication
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			from components.java
+		}
+	}
+
+	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+	repositories {
+		// Add repositories to publish to here.
+		// Notice: This block does NOT have the same function as the block in the top level.
+		// The repositories here will be used for publishing your artifact, not for
+		// retrieving dependencies.
+	}
+}

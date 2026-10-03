@@ -1,0 +1,11 @@
+{
+  "id": "gold_mine",
+  "name": "Gold Mine",
+  "island": "Gold Mine",
+  "travel": "/warp gold",
+  "note": "Places are not catalogued yet - append to \"locations\" (name, category, x/y/z) and they appear on the map with no code change.",
+  "warps": [
+    { "id": "gold", "command": "/warp gold", "label": "Gold Mine" }
+  ],
+  "locations": []
+}

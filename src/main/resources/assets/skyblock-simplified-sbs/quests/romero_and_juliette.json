@@ -1,0 +1,221 @@
+{
+  "id": "romero_and_juliette",
+  "name": "Romero and Juliette",
+  "description": "Reunite Romero and Juliette by running their errands across SkyBlock.",
+  "npcs": {
+    "juliette": {
+      "name": "Juliette",
+      "hint": "Juliette always stands in the same spot on Jungle Island.",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Juliette (Jungle Island)"}
+    }
+  },
+  "steps": [
+    {
+      "id": "rj_01",
+      "title": "Talk to Juliette",
+      "hint": "Jungle Island - Juliette never moves, she is always here.",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Juliette (Jungle Island)"},
+      "advance_on": ["He wears glasses and blends well in a crowd!"]
+    },
+
+    {
+      "id": "rj_02",
+      "title": "Find Romero in the cave",
+      "hint": "Savanna Woodland, in a cave under Master Tactician Funk.",
+      "waypoint": {"x": -458, "y": 100, "z": 30, "label": "Romero (Cave)"},
+      "advance_on": ["Could you find some gold for me, please?"]
+    },
+    {
+      "id": "rj_03",
+      "title": "Bring 1x Yellow Rock to Romero",
+      "hint": "Mine gold ore in the Savanna caves - do NOT use Silk Touch.",
+      "waypoint": {"x": -434, "y": 107, "z": 45, "label": "Gold Ore"},
+      "item": {"id": "YELLOW_ROCK", "name": "Yellow Rock", "amount": 1},
+      "advance_on": ["Here, could you do me a favor and bring this gift back to Juliette?"]
+    },
+    {
+      "id": "rj_04",
+      "title": "Bring the Poorly Wrapped Rock to Juliette",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Juliette (Jungle Island)"},
+      "advance_on": ["He said he was getting groceries at the downtown markets."]
+    },
+
+    {
+      "id": "rj_05",
+      "title": "Find Romero at the flower house",
+      "hint": "Village, near Marco's hut.",
+      "waypoint": {"x": 89, "y": 75, "z": 15, "label": "Romero (Village)"},
+      "advance_on": ["Could you help out and get some flowers?"]
+    },
+    {
+      "id": "rj_06",
+      "title": "Bring 15x Poppy to Romero",
+      "item": {"id": "POPPY", "name": "Poppy", "amount": 15},
+      "advance_on": ["Please bring the bouquet to Juliette!"]
+    },
+    {
+      "id": "rj_07",
+      "title": "Bring the Rose Bouquet to Juliette",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Juliette (Jungle Island)"},
+      "advance_on": ["He's at some sort of emerald altar..."]
+    },
+
+    {
+      "id": "rj_08",
+      "title": "Find Romero at the Emerald Altar",
+      "hint": "Graveyard, on the left at the Emerald Altar.",
+      "waypoint": {"x": -118, "y": 74, "z": -171, "label": "Romero (Altar)"},
+      "advance_on": ["Could you bring me some emerald?"]
+    },
+    {
+      "id": "rj_09",
+      "title": "Bring 64x Emerald to Romero",
+      "item": {"id": "EMERALD", "name": "Emerald", "amount": 64},
+      "advance_on": ["Now bring this gift to Juliette!"]
+    },
+    {
+      "id": "rj_10",
+      "title": "Bring the Fake Emerald Altar to Juliette",
+      "hint": "Juliette has no unique line here - she simply sends you on.",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Juliette (Jungle Island)"},
+      "advance_on": ["Hey, you again!"]
+    },
+
+    {
+      "id": "rj_11",
+      "title": "Find Romero on the Crimson Isle",
+      "hint": "Near the entrance, in an underground nether wart farm.",
+      "waypoint": {"x": -389, "y": 94, "z": -479, "label": "Romero (Crimson Isle)"},
+      "advance_on": ["I need some decent mushrooms."]
+    },
+    {
+      "id": "rj_12",
+      "title": "Bring 1x Enchanted Red Mushroom Block to Romero",
+      "item": {"id": "ENCHANTED_HUGE_MUSHROOM_2", "name": "Enchanted Red Mushroom Block", "amount": 1},
+      "advance_on": ["There's some stew for Juliette!"]
+    },
+    {
+      "id": "rj_13",
+      "title": "Bring the Mushroom & Warts Stew to Juliette",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Juliette (Jungle Island)"},
+      "advance_on": ["Go find him!"]
+    },
+
+    {
+      "id": "rj_14",
+      "title": "Find Romero on the Mountain",
+      "hint": "Wooden platform on the side of the ruins.",
+      "waypoint": {"x": -54, "y": 169, "z": 73, "label": "Romero (Mountain)"},
+      "advance_on": ["I wish I could jump like a Rabbit and grab a chunk of it."]
+    },
+    {
+      "id": "rj_15",
+      "title": "Bring 1x Rabbit VI Potion to Romero",
+      "hint": "Brew it with Cheap or Decent Coffee. Must NOT be a splash potion.",
+      "item": {"id": "POTION_RABBIT", "name": "Rabbit VI Potion", "amount": 1},
+      "advance_on": ["Bring the chunk to Juliette!"]
+    },
+    {
+      "id": "rj_16",
+      "title": "Bring the Chunk of the Moon to Juliette",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Juliette (Jungle Island)"},
+      "advance_on": ["Please find him, wherever that is!"]
+    },
+
+    {
+      "id": "rj_17",
+      "title": "Find Romero in the Gold Mine",
+      "hint": "Steeply down on the left, next to a campfire.",
+      "waypoint": {"x": -22, "y": 35, "z": -339, "label": "Romero (Gold Mine)"},
+      "advance_on": ["Now I just need enough heat to melt it!"]
+    },
+    {
+      "id": "rj_18",
+      "title": "Bring 1x Enchanted Lava Bucket to Romero",
+      "item": {"id": "ENCHANTED_LAVA_BUCKET", "name": "Enchanted Lava Bucket", "amount": 1},
+      "advance_on": ["Can you please bring this one to Juliette?"]
+    },
+    {
+      "id": "rj_19",
+      "title": "Bring the Secret Gift to Juliette",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Juliette (Jungle Island)"},
+      "advance_on": ["He told me he's in his home."]
+    },
+
+    {
+      "id": "rj_20",
+      "title": "Find Romero in the treehouse",
+      "hint": "Wilderness, the highest treehouse near Tia the Fairy.",
+      "waypoint": {"x": 146, "y": 111, "z": 113, "label": "Romero (Treehouse)"},
+      "advance_on": ["Going to need someone wicked smart to solve it."]
+    },
+    {
+      "id": "rj_21",
+      "title": "Reach 1,291 Intelligence and talk to Romero",
+      "hint": "1,291 Intelligence = 1,391 Mana. No item needed.",
+      "requirement": {"type": "intelligence", "amount": 1291},
+      "advance_on": ["Please, bring it to Juliette and show her how smart I am."]
+    },
+    {
+      "id": "rj_22",
+      "title": "Bring the Solved Rubix Prism to Juliette",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Juliette (Jungle Island)"},
+      "advance_on": ["Can you find Romero before he hurts himself?"]
+    },
+
+    {
+      "id": "rj_23",
+      "title": "Find Romero in the Colosseum",
+      "hint": "Left side, under a path (the armoury).",
+      "waypoint": {"x": 129, "y": 68, "z": 37, "label": "Romero (Colosseum)"},
+      "advance_on": ["I'll need my favorite weapon, can you fetch it for me?"]
+    },
+    {
+      "id": "rj_24",
+      "title": "Bring 1x Emerald Blade to Romero",
+      "item": {"id": "EMERALD_BLADE", "name": "Emerald Blade", "amount": 1},
+      "advance_on": ["Please bring this poem to Juliette."]
+    },
+    {
+      "id": "rj_25",
+      "title": "Bring the Poem of True Love to Juliette",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Juliette (Jungle Island)"},
+      "advance_on": ["Please find him, I'm worried!"]
+    },
+
+    {
+      "id": "rj_26",
+      "title": "Find Romero in the Mushroom Desert",
+      "hint": "In a small house - the smallest house in SkyBlock.",
+      "waypoint": {"x": 297, "y": 87, "z": -562, "label": "Romero (Desert)"},
+      "advance_on": ["I need a ridiculous amount of flowers."]
+    },
+    {
+      "id": "rj_27",
+      "title": "Bring 1x Flower Minion to Romero",
+      "item": {"id": "FLOWER_GENERATOR_1", "name": "Flower Minion", "amount": 1},
+      "advance_on": ["With this, I can get enough flowers to win Juliette back!"]
+    },
+    {
+      "id": "rj_28",
+      "title": "Bring the Flower Maelstrom to Juliette",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Juliette (Jungle Island)"},
+      "advance_on": ["We're making it official!"]
+    },
+
+    {
+      "id": "rj_29",
+      "title": "Wear a Tuxedo and talk to Romero",
+      "hint": "Romero stands next to Juliette on Jungle Island. The cheapest 3m set is enough.",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Romero & Juliette (Jungle Island)"},
+      "requirement": {"type": "armor", "name": "Tuxedo"},
+      "advance_on": ["Please, one last time, give this to Juliette."]
+    },
+    {
+      "id": "rj_30",
+      "title": "Give the final gift to Juliette",
+      "waypoint": {"x": -416, "y": 130, "z": -122, "label": "Juliette (Jungle Island)"},
+      "advance_on": ["We can't thank you enough for bringing us together!"]
+    }
+  ]
+}

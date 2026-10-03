@@ -1,0 +1,926 @@
+{
+ "schemaVersion": 1,
+ "dataVersion": 1,
+ "fuels": [
+  {
+   "id": "COAL",
+   "name": "Coal",
+   "speedPct": 5,
+   "outputMult": 1.0,
+   "durationHours": 0.5,
+   "permanent": false
+  },
+  {
+   "id": "COAL_BLOCK",
+   "name": "Block of Coal",
+   "speedPct": 5,
+   "outputMult": 1.0,
+   "durationHours": 5,
+   "permanent": false
+  },
+  {
+   "id": "ENCHANTED_BREAD",
+   "name": "Enchanted Bread",
+   "speedPct": 5,
+   "outputMult": 1.0,
+   "durationHours": 12,
+   "permanent": false
+  },
+  {
+   "id": "ENCHANTED_COAL",
+   "name": "Enchanted Coal",
+   "speedPct": 10,
+   "outputMult": 1.0,
+   "durationHours": 24,
+   "permanent": false
+  },
+  {
+   "id": "ENCHANTED_CHARCOAL",
+   "name": "Enchanted Charcoal",
+   "speedPct": 20,
+   "outputMult": 1.0,
+   "durationHours": 36,
+   "permanent": false
+  },
+  {
+   "id": "SOLAR_PANEL",
+   "name": "Solar Panel",
+   "speedPct": 25,
+   "outputMult": 1.0,
+   "durationHours": 0,
+   "permanent": true,
+   "note": "day only (6AM-7PM SkyBlock time) and only while the island is loaded"
+  },
+  {
+   "id": "ENCHANTED_LAVA_BUCKET",
+   "name": "Enchanted Lava Bucket",
+   "speedPct": 25,
+   "outputMult": 1.0,
+   "durationHours": 0,
+   "permanent": true
+  },
+  {
+   "id": "MAGMA_BUCKET",
+   "name": "Magma Bucket",
+   "speedPct": 30,
+   "outputMult": 1.0,
+   "durationHours": 0,
+   "permanent": true
+  },
+  {
+   "id": "PLASMA_BUCKET",
+   "name": "Plasma Bucket",
+   "speedPct": 35,
+   "outputMult": 1.0,
+   "durationHours": 0,
+   "permanent": true
+  },
+  {
+   "id": "EVERBURNING_FLAME",
+   "name": "Everburning Flame",
+   "speedPct": 40,
+   "outputMult": 1.0,
+   "durationHours": 0,
+   "permanent": true
+  },
+  {
+   "id": "HAMSTER_WHEEL",
+   "name": "Hamster Wheel",
+   "speedPct": 50,
+   "outputMult": 1.0,
+   "durationHours": 24,
+   "permanent": false
+  },
+  {
+   "id": "FOUL_FLESH",
+   "name": "Foul Flesh",
+   "speedPct": 90,
+   "outputMult": 1.0,
+   "durationHours": 5,
+   "permanent": false
+  },
+  {
+   "id": "TASTY_CHEESE",
+   "name": "Tasty Cheese",
+   "speedPct": 0,
+   "outputMult": 2.0,
+   "durationHours": 1,
+   "permanent": false
+  },
+  {
+   "id": "CATALYST",
+   "name": "Catalyst",
+   "speedPct": 0,
+   "outputMult": 3.0,
+   "durationHours": 3,
+   "permanent": false
+  },
+  {
+   "id": "HYPER_CATALYST",
+   "name": "Hyper Catalyst",
+   "speedPct": 0,
+   "outputMult": 4.0,
+   "durationHours": 6,
+   "permanent": false
+  },
+  {
+   "id": "THORNY_VINES",
+   "name": "Thorny Vines",
+   "speedPct": 20,
+   "outputMult": 1.0,
+   "durationHours": 0,
+   "permanent": true,
+   "restrictType": "FLOWER",
+   "replaceItem": "WILD_ROSE",
+   "replaceAmount": 1.0,
+   "note": "Flower Minions exclusively produce Wild Roses"
+  },
+  {
+   "id": "DAYSWITCH",
+   "name": "Dayswitch",
+   "speedPct": 20,
+   "outputMult": 1.0,
+   "durationHours": 0,
+   "permanent": true,
+   "restrictType": "SUNFLOWER",
+   "replaceItem": "DOUBLE_PLANT",
+   "replaceAmount": 2.0,
+   "note": "Sunflower Minions exclusively produce Sunflowers"
+  },
+  {
+   "id": "NIGHTSWITCH",
+   "name": "Nightswitch",
+   "speedPct": 20,
+   "outputMult": 1.0,
+   "durationHours": 0,
+   "permanent": true,
+   "restrictType": "SUNFLOWER",
+   "replaceItem": "MOONFLOWER",
+   "replaceAmount": 2.0,
+   "note": "Sunflower Minions exclusively produce Moonflowers"
+  },
+  {
+   "id": "JACOBS_TICKET",
+   "name": "Jacob's Participation Medal",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "durationHours": 72,
+   "permanent": false,
+   "note": "farming minions occasionally produce Jacob's Tickets (rate unknown); no longer obtainable except by trade"
+  },
+  {
+   "id": "INFERNO_FUEL_CRUDE_GABAGOOL",
+   "name": "Inferno Minion Fuel (Crude Gabagool)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 10,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "CRUDE_GABAGOOL",
+   "specialtyAmount": 1.0,
+   "specialtyChance": 0.8,
+   "note": "rare fuel: 10x speed (effective 11x - the game adds 1); 80% of harvests yield 1x Crude Gabagool instead of the normal drop"
+  },
+  {
+   "id": "INFERNO_FUEL_NETHER_STALK",
+   "name": "Inferno Minion Fuel (Nether Wart)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 10,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "NETHER_STALK",
+   "specialtyAmount": 5.0,
+   "specialtyChance": 0.8,
+   "note": "rare fuel: 10x speed (effective 11x - the game adds 1); 80% of harvests yield 5x Nether Wart instead of the normal drop"
+  },
+  {
+   "id": "INFERNO_FUEL_MAGMA_CREAM",
+   "name": "Inferno Minion Fuel (Magma Cream)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 10,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "MAGMA_CREAM",
+   "specialtyAmount": 2.0,
+   "specialtyChance": 0.8,
+   "note": "rare fuel: 10x speed (effective 11x - the game adds 1); 80% of harvests yield 2x Magma Cream instead of the normal drop"
+  },
+  {
+   "id": "INFERNO_FUEL_BLAZE_ROD",
+   "name": "Inferno Minion Fuel (Blaze Rod)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 10,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "BLAZE_ROD",
+   "specialtyAmount": 1.0,
+   "specialtyChance": 0.8,
+   "note": "rare fuel: 10x speed (effective 11x - the game adds 1); 80% of harvests yield 1x Blaze Rod instead of the normal drop"
+  },
+  {
+   "id": "INFERNO_FUEL_GLOWSTONE_DUST",
+   "name": "Inferno Minion Fuel (Glowstone Dust)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 10,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "GLOWSTONE_DUST",
+   "specialtyAmount": 2.5,
+   "specialtyChance": 0.8,
+   "note": "rare fuel: 10x speed (effective 11x - the game adds 1); 80% of harvests yield 2.5x Glowstone Dust instead of the normal drop"
+  },
+  {
+   "id": "INFERNO_HEAVY_CRUDE_GABAGOOL",
+   "name": "Heavy Inferno Minion Fuel (Crude Gabagool)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 15,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "CRUDE_GABAGOOL",
+   "specialtyAmount": 1.0,
+   "specialtyChance": 0.8,
+   "note": "epic fuel: 15x speed (effective 16x - the game adds 1); 80% of harvests yield 1x Crude Gabagool instead of the normal drop"
+  },
+  {
+   "id": "INFERNO_HEAVY_NETHER_STALK",
+   "name": "Heavy Inferno Minion Fuel (Nether Wart)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 15,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "NETHER_STALK",
+   "specialtyAmount": 5.0,
+   "specialtyChance": 0.8,
+   "note": "epic fuel: 15x speed (effective 16x - the game adds 1); 80% of harvests yield 5x Nether Wart instead of the normal drop"
+  },
+  {
+   "id": "INFERNO_HEAVY_MAGMA_CREAM",
+   "name": "Heavy Inferno Minion Fuel (Magma Cream)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 15,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "MAGMA_CREAM",
+   "specialtyAmount": 2.0,
+   "specialtyChance": 0.8,
+   "note": "epic fuel: 15x speed (effective 16x - the game adds 1); 80% of harvests yield 2x Magma Cream instead of the normal drop"
+  },
+  {
+   "id": "INFERNO_HEAVY_BLAZE_ROD",
+   "name": "Heavy Inferno Minion Fuel (Blaze Rod)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 15,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "BLAZE_ROD",
+   "specialtyAmount": 1.0,
+   "specialtyChance": 0.8,
+   "note": "epic fuel: 15x speed (effective 16x - the game adds 1); 80% of harvests yield 1x Blaze Rod instead of the normal drop"
+  },
+  {
+   "id": "INFERNO_HEAVY_GLOWSTONE_DUST",
+   "name": "Heavy Inferno Minion Fuel (Glowstone Dust)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 15,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "GLOWSTONE_DUST",
+   "specialtyAmount": 2.5,
+   "specialtyChance": 0.8,
+   "note": "epic fuel: 15x speed (effective 16x - the game adds 1); 80% of harvests yield 2.5x Glowstone Dust instead of the normal drop"
+  },
+  {
+   "id": "INFERNO_HYPERGOLIC_CRUDE_GABAGOOL",
+   "name": "Hypergolic Inferno Minion Fuel (Crude Gabagool)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 20,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "CRUDE_GABAGOOL",
+   "specialtyAmount": 1.0,
+   "specialtyChance": 0.8,
+   "note": "legendary fuel: 20x speed (effective 21x - the game adds 1); 80% of harvests yield 1x Crude Gabagool instead of the normal drop",
+   "rareDrops": [
+    {
+     "item": "CHILI_PEPPER",
+     "chance": 0.007352941176
+    },
+    {
+     "item": "INFERNO_VERTEX",
+     "chance": 0.000168067227
+    },
+    {
+     "item": "INFERNO_APEX",
+     "chance": 7.63889e-07
+    },
+    {
+     "item": "REAPER_PEPPER",
+     "chance": 2.182539e-06
+    },
+    {
+     "item": "GABAGOOL_THE_FISH",
+     "chance": 2.54629e-07
+    }
+   ]
+  },
+  {
+   "id": "INFERNO_HYPERGOLIC_NETHER_STALK",
+   "name": "Hypergolic Inferno Minion Fuel (Nether Wart)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 20,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "NETHER_STALK",
+   "specialtyAmount": 5.0,
+   "specialtyChance": 0.8,
+   "note": "legendary fuel: 20x speed (effective 21x - the game adds 1); 80% of harvests yield 5x Nether Wart instead of the normal drop",
+   "rareDrops": [
+    {
+     "item": "CHILI_PEPPER",
+     "chance": 0.007352941176
+    },
+    {
+     "item": "INFERNO_VERTEX",
+     "chance": 0.000168067227
+    },
+    {
+     "item": "INFERNO_APEX",
+     "chance": 7.63889e-07
+    },
+    {
+     "item": "REAPER_PEPPER",
+     "chance": 2.182539e-06
+    },
+    {
+     "item": "GABAGOOL_THE_FISH",
+     "chance": 2.54629e-07
+    }
+   ]
+  },
+  {
+   "id": "INFERNO_HYPERGOLIC_MAGMA_CREAM",
+   "name": "Hypergolic Inferno Minion Fuel (Magma Cream)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 20,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "MAGMA_CREAM",
+   "specialtyAmount": 2.0,
+   "specialtyChance": 0.8,
+   "note": "legendary fuel: 20x speed (effective 21x - the game adds 1); 80% of harvests yield 2x Magma Cream instead of the normal drop",
+   "rareDrops": [
+    {
+     "item": "CHILI_PEPPER",
+     "chance": 0.007352941176
+    },
+    {
+     "item": "INFERNO_VERTEX",
+     "chance": 0.000168067227
+    },
+    {
+     "item": "INFERNO_APEX",
+     "chance": 7.63889e-07
+    },
+    {
+     "item": "REAPER_PEPPER",
+     "chance": 2.182539e-06
+    },
+    {
+     "item": "GABAGOOL_THE_FISH",
+     "chance": 2.54629e-07
+    }
+   ]
+  },
+  {
+   "id": "INFERNO_HYPERGOLIC_BLAZE_ROD",
+   "name": "Hypergolic Inferno Minion Fuel (Blaze Rod)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 20,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "BLAZE_ROD",
+   "specialtyAmount": 1.0,
+   "specialtyChance": 0.8,
+   "note": "legendary fuel: 20x speed (effective 21x - the game adds 1); 80% of harvests yield 1x Blaze Rod instead of the normal drop",
+   "rareDrops": [
+    {
+     "item": "CHILI_PEPPER",
+     "chance": 0.007352941176
+    },
+    {
+     "item": "INFERNO_VERTEX",
+     "chance": 0.000168067227
+    },
+    {
+     "item": "INFERNO_APEX",
+     "chance": 7.63889e-07
+    },
+    {
+     "item": "REAPER_PEPPER",
+     "chance": 2.182539e-06
+    },
+    {
+     "item": "GABAGOOL_THE_FISH",
+     "chance": 2.54629e-07
+    }
+   ]
+  },
+  {
+   "id": "INFERNO_HYPERGOLIC_GLOWSTONE_DUST",
+   "name": "Hypergolic Inferno Minion Fuel (Glowstone Dust)",
+   "speedPct": 0,
+   "outputMult": 1.0,
+   "speedMult": 20,
+   "durationHours": 24,
+   "permanent": false,
+   "restrictType": "INFERNO",
+   "specialtyItem": "GLOWSTONE_DUST",
+   "specialtyAmount": 2.5,
+   "specialtyChance": 0.8,
+   "note": "legendary fuel: 20x speed (effective 21x - the game adds 1); 80% of harvests yield 2.5x Glowstone Dust instead of the normal drop",
+   "rareDrops": [
+    {
+     "item": "CHILI_PEPPER",
+     "chance": 0.007352941176
+    },
+    {
+     "item": "INFERNO_VERTEX",
+     "chance": 0.000168067227
+    },
+    {
+     "item": "INFERNO_APEX",
+     "chance": 7.63889e-07
+    },
+    {
+     "item": "REAPER_PEPPER",
+     "chance": 2.182539e-06
+    },
+    {
+     "item": "GABAGOOL_THE_FISH",
+     "chance": 2.54629e-07
+    }
+   ]
+  }
+ ],
+ "hoppers": [
+  {
+   "id": "BUDGET_HOPPER",
+   "name": "Budget Hopper",
+   "cut": 0.5
+  },
+  {
+   "id": "ENCHANTED_HOPPER",
+   "name": "Enchanted Hopper",
+   "cut": 0.7
+  }
+ ],
+ "upgrades": [
+  {
+   "id": "FLYCATCHER",
+   "name": "Flycatcher",
+   "kind": "speed",
+   "speedPct": 20
+  },
+  {
+   "id": "MINION_EXPANDER",
+   "name": "Minion Expander",
+   "kind": "speed",
+   "speedPct": 5
+  },
+  {
+   "id": "COMPACTOR",
+   "name": "Compactor",
+   "kind": "compact_block"
+  },
+  {
+   "id": "SUPER_COMPACTOR_3000",
+   "name": "Super Compactor 3000",
+   "kind": "compact_ench"
+  },
+  {
+   "id": "DWARVEN_COMPACTOR",
+   "name": "Dwarven Super Compactor",
+   "kind": "compact_smelt"
+  },
+  {
+   "id": "DIAMOND_SPREADING",
+   "name": "Diamond Spreading",
+   "kind": "spread",
+   "chance": 0.1,
+   "item": "DIAMOND"
+  },
+  {
+   "id": "POTATO_SPREADING",
+   "name": "Potato Spreading",
+   "kind": "spread",
+   "chance": 0.05,
+   "item": "POTATO_ITEM",
+   "islandLimit": 1
+  },
+  {
+   "id": "SLEEPY_HOLLOW",
+   "name": "Sleepy Hollow",
+   "kind": "spread",
+   "chance": 0.00015,
+   "item": "PURPLE_CANDY",
+   "islandLimit": 1
+  },
+  {
+   "id": "KRAMPUS_HELMET",
+   "name": "Krampus Helmet",
+   "kind": "spread",
+   "chance": 4.5e-05,
+   "item": "RED_GIFT",
+   "islandLimit": 1
+  },
+  {
+   "id": "LESSER_SOULFLOW_ENGINE",
+   "name": "Lesser Soulflow Engine",
+   "kind": "cooldown",
+   "cooldownSeconds": 185,
+   "item": "RAW_SOULFLOW",
+   "outputMult": 0.5,
+   "note": "offline cadence; 180s while the island is loaded"
+  },
+  {
+   "id": "SOULFLOW_ENGINE",
+   "name": "Soulflow Engine",
+   "kind": "cooldown",
+   "cooldownSeconds": 105,
+   "item": "RAW_SOULFLOW",
+   "outputMult": 0.5,
+   "note": "offline cadence; +3% soulflow per tier on a Voidling Minion"
+  },
+  {
+   "id": "BERBERIS_FUEL_INJECTOR",
+   "name": "Berberis Fuel Injector",
+   "kind": "cooldown",
+   "cooldownSeconds": 300,
+   "item": "LUSH_BERBERIS",
+   "speedPct": 15,
+   "restrictSkill": "FARMING"
+  },
+  {
+   "id": "AUTO_SMELTER",
+   "name": "Auto Smelter",
+   "kind": "transform",
+   "smelts": true
+  },
+  {
+   "id": "FLINT_SHOVEL",
+   "name": "Flint Shovel",
+   "kind": "transform",
+   "from": "GRAVEL",
+   "to": "FLINT",
+   "restrictType": "GRAVEL"
+  },
+  {
+   "id": "ENCHANTED_SHEARS",
+   "name": "Enchanted Shears",
+   "kind": "transform",
+   "restrictType": "SHEEP",
+   "adds": [
+    {
+     "item": "WOOL",
+     "amount": 2
+    }
+   ],
+   "note": "2x Wool average per sheared sheep, on top of the kill drops"
+  },
+  {
+   "id": "ENCHANTED_EGG",
+   "name": "Enchanted Egg",
+   "kind": "transform",
+   "restrictType": "CHICKEN",
+   "adds": [
+    {
+     "item": "EGG",
+     "amount": 1
+    }
+   ],
+   "note": "+1 Egg per cycle while unloaded (+2 while the island is loaded)"
+  },
+  {
+   "id": "CORRUPT_SOIL",
+   "name": "Corrupt Soil",
+   "kind": "transform",
+   "restrictTypes": [
+    "ZOMBIE",
+    "REVENANT",
+    "VOIDLING",
+    "INFERNO",
+    "VAMPIRE",
+    "SKELETON",
+    "CREEPER",
+    "SPIDER",
+    "TARANTULA",
+    "CAVE_SPIDER",
+    "BLAZE",
+    "MAGMA_CUBE",
+    "ENDERMAN",
+    "GHAST",
+    "SLIME",
+    "COW",
+    "PIG",
+    "CHICKEN",
+    "SHEEP",
+    "RABBIT"
+   ],
+   "adds": [
+    {
+     "item": "SULPHUR",
+     "amount": 1
+    },
+    {
+     "item": "CORRUPTED_FRAGMENT",
+     "amount": 1
+    }
+   ],
+   "note": "one Sulphur + one Corrupted Fragment per harvest while unloaded; several of the listed minions make more while the island is loaded"
+  }
+ ],
+ "smeltMap": {
+  "IRON_ORE": "IRON_INGOT",
+  "GOLD_ORE": "GOLD_INGOT",
+  "CACTUS": "INK_SACK-2",
+  "SAND": "GLASS",
+  "OAK_LOG": "COAL",
+  "SPRUCE_LOG": "COAL",
+  "BIRCH_LOG": "COAL",
+  "DARK_OAK_LOG": "COAL",
+  "ACACIA_LOG": "COAL",
+  "JUNGLE_LOG": "COAL",
+  "COBBLESTONE": "STONE",
+  "CLAY_BALL": "BRICK"
+ },
+ "blockMap": {
+  "IRON_INGOT": {
+   "to": "IRON_BLOCK",
+   "ratio": 9
+  },
+  "GOLD_INGOT": {
+   "to": "GOLD_BLOCK",
+   "ratio": 9
+  },
+  "DIAMOND": {
+   "to": "DIAMOND_BLOCK",
+   "ratio": 9
+  },
+  "INK_SACK-4": {
+   "to": "LAPIS_BLOCK",
+   "ratio": 9
+  },
+  "REDSTONE": {
+   "to": "REDSTONE_BLOCK",
+   "ratio": 9
+  },
+  "EMERALD": {
+   "to": "EMERALD_BLOCK",
+   "ratio": 9
+  },
+  "COAL": {
+   "to": "COAL_BLOCK",
+   "ratio": 9
+  },
+  "SLIME_BALL": {
+   "to": "SLIME_BLOCK",
+   "ratio": 9
+  },
+  "ICE": {
+   "to": "PACKED_ICE",
+   "ratio": 9
+  },
+  "MELON": {
+   "to": "MELON_BLOCK",
+   "ratio": 9
+  },
+  "GLOWSTONE_DUST": {
+   "to": "GLOWSTONE",
+   "ratio": 4
+  },
+  "CLAY_BALL": {
+   "to": "CLAY",
+   "ratio": 4
+  },
+  "SNOW_BALL": {
+   "to": "SNOW_BLOCK",
+   "ratio": 4
+  },
+  "QUARTZ": {
+   "to": "QUARTZ_BLOCK",
+   "ratio": 4
+  }
+ },
+ "storages": [
+  {
+   "id": "SMALL_ENCHANTED_CHEST",
+   "name": "Small Storage",
+   "slots": 3
+  },
+  {
+   "id": "MEDIUM_ENCHANTED_CHEST",
+   "name": "Medium Storage",
+   "slots": 9
+  },
+  {
+   "id": "LARGE_ENCHANTED_CHEST",
+   "name": "Large Storage",
+   "slots": 15
+  },
+  {
+   "id": "XLARGE_ENCHANTED_CHEST",
+   "name": "X-Large Storage",
+   "slots": 21
+  },
+  {
+   "id": "XXLARGE_ENCHANTED_CHEST",
+   "name": "XX-Large Storage",
+   "slots": 27
+  }
+ ],
+ "crystals": [
+  {
+   "id": "FARM_CRYSTAL",
+   "name": "Farm Crystal",
+   "skill": "FARMING",
+   "speedPct": 10
+  },
+  {
+   "id": "WOODCUTTING_CRYSTAL",
+   "name": "Woodcutting Crystal",
+   "skill": "FORAGING",
+   "speedPct": 10
+  },
+  {
+   "id": "MITHRIL_CRYSTAL",
+   "name": "Mithril Crystal",
+   "skill": "MINING",
+   "speedPct": 10
+  },
+  {
+   "id": "WINTER_CRYSTAL",
+   "name": "Winter Crystal",
+   "skill": null,
+   "speedPct": 5,
+   "note": "Snow and Ice Minions only"
+  },
+  {
+   "id": "CORNUCOPIA_CRYSTAL",
+   "name": "Cornucopia Crystal",
+   "skill": "FARMING",
+   "speedPct": 10,
+   "perUniqueSkillPct": 1,
+   "note": "+1% per unique Farming Minion placed"
+  }
+ ],
+ "beacon": {
+  "perTierPct": 2,
+  "maxTier": 5,
+  "scorchedBonusPct": 1,
+  "powerHours": 48,
+  "powerItem": "POWER_CRYSTAL",
+  "scorchedPowerItem": "SCORCHED_POWER_CRYSTAL"
+ },
+ "islandWide": [
+  {
+   "id": "POSTCARD",
+   "name": "Postcard",
+   "speedPct": 5,
+   "note": "one per island; obtained from a failed Free Will"
+  }
+ ],
+ "permanentPerMinion": [
+  {
+   "id": "MITHRIL_INFUSION",
+   "name": "Mithril Infusion",
+   "speedPct": 10
+  },
+  {
+   "id": "FREE_WILL",
+   "name": "Free Will",
+   "speedPct": 10,
+   "stayChanceBase": 0.5,
+   "stayChancePerTier": 0.04,
+   "note": "failure deletes the minion and mails a Postcard"
+  }
+ ],
+ "mayors": [
+  {
+   "name": "Cole",
+   "perk": "Prospection",
+   "skill": "MINING",
+   "speedPct": 25
+  },
+  {
+   "name": "Derpy",
+   "perk": "TURBO MINIONS!!!",
+   "outputMult": 2.0
+  }
+ ],
+ "pets": [
+  {
+   "id": "RABBIT_PET",
+   "name": "Rabbit Pet",
+   "maxSpeedPct": 30,
+   "note": "Farming crop minions only (not Chicken/Cow/Pig/Rabbit/Sheep)"
+  },
+  {
+   "id": "OCELOT_PET",
+   "name": "Ocelot Pet",
+   "maxSpeedPct": 30,
+   "note": "Foraging minions including Flower"
+  },
+  {
+   "id": "MAGMA_CUBE_PET",
+   "name": "Magma Cube Pet",
+   "maxSpeedPct": 30,
+   "note": "Slime and Magma Cube Minions"
+  },
+  {
+   "id": "SNAIL_PET",
+   "name": "Snail Pet",
+   "maxSpeedPct": 30,
+   "note": "Red Sand Minions"
+  },
+  {
+   "id": "PIGMAN_PET",
+   "name": "Pigman Pet",
+   "maxSpeedPct": 30,
+   "note": "Pig Minions"
+  },
+  {
+   "id": "SPIDER_PET",
+   "name": "Spider Pet",
+   "maxSpeedPct": 30,
+   "note": "Spider, Cave Spider and Tarantula Minions"
+  }
+ ],
+ "slotThresholds": [
+  5,
+  15,
+  30,
+  50,
+  75,
+  100,
+  125,
+  150,
+  175,
+  200,
+  225,
+  250,
+  275,
+  300,
+  350,
+  400,
+  450,
+  500,
+  550,
+  600,
+  650,
+  700
+ ],
+ "baseSlots": 5,
+ "communityShopSlots": 5,
+ "skyblockXpPerTier": [
+  0,
+  1,
+  1,
+  1,
+  1,
+  1,
+  1,
+  2,
+  3,
+  4,
+  6,
+  12,
+  24
+ ]
+}

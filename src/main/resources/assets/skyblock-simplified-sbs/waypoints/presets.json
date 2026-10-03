@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 3,
+  "dataVersion": 2,
+  "generatedAt": "2026-08-14",
+  "groups": [
+    {
+      "id": "honey-trees-moonglade",
+      "name": "Honey Trees",
+      "kind": "TREE",
+      "island": "Moonglade Marsh",
+      "colorHex": "00FF00",
+      "enabledByDefault": false,
+      "certainty": "ESTIMATED",
+      "points": [
+        { "id": "honey-trees-moonglade-1", "x": -614, "y": 90,  "z":  30, "name": "Tree 1" },
+        { "id": "honey-trees-moonglade-2", "x": -606, "y": 114, "z":   9, "name": "Tree 2" },
+        { "id": "honey-trees-moonglade-3", "x": -664, "y": 115, "z": -80, "name": "Tree 3" },
+        { "id": "honey-trees-moonglade-4", "x": -733, "y": 121, "z":  38, "name": "Tree 4" },
+        { "id": "honey-trees-moonglade-5", "x": -720, "y": 96,  "z":  42, "name": "Tree 5" },
+        { "id": "honey-trees-moonglade-6", "x": -609, "y": 96,  "z":  92, "name": "Tree 6" }
+      ]
+    },
+    {
+      "id": "honey-trees-torrhus",
+      "name": "Honey Trees",
+      "kind": "TREE",
+      "island": "Torrhus Canyon",
+      "colorHex": "FFAA25",
+      "enabledByDefault": false,
+      "certainty": "ESTIMATED",
+      "points": [
+        { "id": "honey-trees-torrhus-1", "x": -513, "y": 109, "z": 257, "name": "Tree 1" },
+        { "id": "honey-trees-torrhus-2", "x": -539, "y": 111, "z": 286, "name": "Tree 2" },
+        { "id": "honey-trees-torrhus-3", "x": -549, "y": 110, "z": 299, "name": "Tree 3" },
+        { "id": "honey-trees-torrhus-4", "x": -618, "y": 98,  "z": 234, "name": "Tree 4" }
+      ]
+    },
+    {
+      "id": "honey-hives-torrhus",
+      "name": "Honey Hives",
+      "kind": "HIVE",
+      "island": "Torrhus Canyon",
+      "colorHex": "00FF00",
+      "enabledByDefault": false,
+      "certainty": "ESTIMATED",
+      "points": [
+        { "id": "honey-hives-torrhus-1", "x": -696, "y": 93,  "z": 150, "name": "Hive 1" },
+        { "id": "honey-hives-torrhus-2", "x": -665, "y": 97,  "z": 167, "name": "Hive 2" },
+        { "id": "honey-hives-torrhus-3", "x": -577, "y": 102, "z": 205, "name": "Hive 3" },
+        { "id": "honey-hives-torrhus-4", "x": -606, "y": 98,  "z": 275, "name": "Hive 4" },
+        { "id": "honey-hives-torrhus-5", "x": -705, "y": 92,  "z": 225, "name": "Hive 5" },
+        { "id": "honey-hives-torrhus-6", "x": -729, "y": 129, "z": 187, "name": "Hive 6" },
+        { "id": "honey-hives-torrhus-7", "x": -581, "y": 152, "z": 258, "name": "Hive 7" },
+        { "id": "honey-hives-torrhus-8", "x": -721, "y": 92,  "z": 207, "name": "Hive 8" }
+      ]
+    },
+    {
+      "id": "beacon-moonglade",
+      "name": "Beacon",
+      "kind": "LANDMARK",
+      "island": "Moonglade Marsh",
+      "colorHex": "7094FF",
+      "enabledByDefault": false,
+      "certainty": "ESTIMATED",
+      "points": [
+        { "id": "beacon-moonglade-1", "x": -687, "y": 128, "z": 65, "name": "Moonglade Beacon" }
+      ]
+    },
+    {
+      "id": "beacon-torrhus",
+      "name": "Beacon",
+      "kind": "LANDMARK",
+      "island": "Torrhus Canyon",
+      "colorHex": "7094FF",
+      "enabledByDefault": false,
+      "certainty": "ESTIMATED",
+      "points": [
+        { "id": "beacon-torrhus-1", "x": -595, "y": 123, "z": 205, "name": "Torrhus Beacon" }
+      ]
+    },
+    {
+      "id": "quest-bells-safari",
+      "name": "Quest Bells",
+      "kind": "LANDMARK",
+      "island": "Critter Safari",
+      "colorHex": "FFE45C",
+      "enabledByDefault": false,
+      "certainty": "ESTIMATED",
+      "points": [
+        { "id": "quest-bells-safari-1", "x":  -4, "y":  96, "z": -42, "name": "Bell 1" },
+        { "id": "quest-bells-safari-2", "x":  47, "y":  55, "z":  -7, "name": "Bell 2" },
+        { "id": "quest-bells-safari-3", "x": -30, "y": 125, "z":  59, "name": "Bell 3" },
+        { "id": "quest-bells-safari-4", "x": -90, "y": 109, "z":  16, "name": "Bell 4" },
+        { "id": "quest-bells-safari-5", "x": -50, "y":  81, "z":   0, "name": "Bell 5" },
+        { "id": "quest-bells-safari-6", "x": -68, "y":  66, "z": -43, "name": "Bell 6" },
+        { "id": "quest-bells-safari-7", "x": -96, "y":  46, "z": -57, "name": "Bell 7" }
+      ]
+    },
+    {
+      "id": "troodon-critter-safari",
+      "name": "Troodon",
+      "kind": "CRITTER",
+      "module": "critter_waypoints",
+      "island": "Critter Safari",
+      "colorHex": "00FF00",
+      "enabledByDefault": false,
+      "certainty": "ESTIMATED",
+      "points": [
+        { "id": "troodon-critter-safari-1", "x": 109, "y": 90, "z": -27, "name": "Troodon 1" },
+        { "id": "troodon-critter-safari-2", "x": 131, "y": 79, "z": -62, "name": "Troodon 2" },
+        { "id": "troodon-critter-safari-3", "x": 104, "y": 81, "z": -95, "name": "Troodon 3" }
+      ]
+    },
+    {
+      "id": "snoozle-walls-safari",
+      "name": "Snoozle Walls",
+      "kind": "LANDMARK",
+      "module": "critter_finder",
+      "island": "Critter Safari",
+      "zone": "Cavern",
+      "colorHex": "00FF00",
+      "maxDistance": 0,
+      "enabledByDefault": false,
+      "certainty": "WIKI",
+      "points": [
+        { "id": "snoozle-walls-safari-1", "x":  126, "y": 40, "z": 74, "name": "Snoozle Wall 1" },
+        { "id": "snoozle-walls-safari-2", "x":  114, "y": 40, "z": 87, "name": "Snoozle Wall 2" },
+        { "id": "snoozle-walls-safari-3", "x":  -70, "y": 40, "z": 68, "name": "Snoozle Wall 3" },
+        { "id": "snoozle-walls-safari-4", "x":  -96, "y": 41, "z": 17, "name": "Snoozle Wall 4" },
+        { "id": "snoozle-walls-safari-5", "x":  -95, "y": 41, "z": 42, "name": "Snoozle Wall 5" }
+      ]
+    }
+  ]
+}

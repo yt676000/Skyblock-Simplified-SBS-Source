@@ -1,0 +1,43 @@
+{
+  "required": true,
+  "package": "sbs.modid.client.core.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "AbstractContainerScreenAccessor",
+    "AbstractRecipeBookScreenAccessor",
+    "AttackTrackMixin",
+    "BazaarPrerenderInputMixin",
+    "BlockBreakTrackMixin",
+    "BlockInteractMixin",
+    "ContainerContentMixin",
+    "ContainerSearchBarMixin",
+    "ContainerTooltipSuppressMixin",
+    "HotmWatchKeyMixin",
+    "InventoryButtonsInputMixin",
+    "InventoryWindowBarMixin",
+    "InventoryWindowMixin",
+    "ItemProtectionDropMixin",
+    "ItemProtectionGuardMixin",
+    "ItemProtectionInputMixin",
+    "LayoutOpenerSlotMixin",
+    "MayorVoteMixin",
+    "PetPickMixin",
+    "RecipeBookButtonMixin",
+    "SbsContainerThemeMixin",
+    "SlotDecorationMixin",
+    "MousematSignMixin",
+    "SignSearchMixin",
+    "SlotBindingInputMixin",
+    "SlotHotkeyMixin",
+    "SlotLockDropMixin",
+    "SlotLockGuardMixin",
+    "SlotLockInputMixin",
+    "TransparentInventoryMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

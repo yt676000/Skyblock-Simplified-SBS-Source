@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "dataVersion": 1,
+  "note": "Rare drops from breaking crops. Item names and ids are facts from the community wiki (not copied prose). None has been seen in this project's logs yet: certainty stays 'WIKI' until a real line is logged under [SBS][FarmDrops].",
+  "drops": [
+    {"name": "Cropie", "id": "CROPIE", "certainty": "WIKI"},
+    {"name": "Squash", "id": "SQUASH", "certainty": "WIKI"},
+    {"name": "Fermento", "id": "FERMENTO", "certainty": "WIKI"},
+    {"name": "Burrowing Spores", "id": "BURROWING_SPORES", "certainty": "WIKI"}
+  ]
+}

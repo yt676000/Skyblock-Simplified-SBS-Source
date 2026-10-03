@@ -1,0 +1,1610 @@
+{
+ "schemaVersion": 1,
+ "dataVersion": 1,
+ "generatedAt": "2026-08-20T20:45:43Z",
+ "source": "api.hypixel.net/v2/skyblock/bazaar (keyless) SHARD_* products",
+ "levelling": {},
+ "unconsumable": [],
+ "shards": [
+  {
+   "name": "ABYSSAL_LANTERN",
+   "displayName": "Abyssal Lantern",
+   "canonicalId": "ATTRIBUTE_SHARD_ABYSSAL_LANTERN;1"
+  },
+  {
+   "name": "ABYSSAL_MINER",
+   "displayName": "Abyssal Miner",
+   "canonicalId": "ATTRIBUTE_SHARD_ABYSSAL_MINER;1"
+  },
+  {
+   "name": "AERO",
+   "displayName": "Aero",
+   "canonicalId": "ATTRIBUTE_SHARD_AERO;1"
+  },
+  {
+   "name": "ALLIGATOR",
+   "displayName": "Alligator",
+   "canonicalId": "ATTRIBUTE_SHARD_ALLIGATOR;1"
+  },
+  {
+   "name": "ANANKE",
+   "displayName": "Ananke",
+   "canonicalId": "ATTRIBUTE_SHARD_ANANKE;1"
+  },
+  {
+   "name": "ANT",
+   "displayName": "Ant",
+   "canonicalId": "ATTRIBUTE_SHARD_ANT;1"
+  },
+  {
+   "name": "ANTEATER",
+   "displayName": "Anteater",
+   "canonicalId": "ATTRIBUTE_SHARD_ANTEATER;1"
+  },
+  {
+   "name": "APEX_DRAGON",
+   "displayName": "Apex Dragon",
+   "canonicalId": "ATTRIBUTE_SHARD_APEX_DRAGON;1"
+  },
+  {
+   "name": "ARACHNE",
+   "displayName": "Arachne",
+   "canonicalId": "ATTRIBUTE_SHARD_ARACHNE;1"
+  },
+  {
+   "name": "AREITA",
+   "displayName": "Areita",
+   "canonicalId": "ATTRIBUTE_SHARD_AREITA;1"
+  },
+  {
+   "name": "AZURE",
+   "displayName": "Azure",
+   "canonicalId": "ATTRIBUTE_SHARD_AZURE;1"
+  },
+  {
+   "name": "BADGER",
+   "displayName": "Badger",
+   "canonicalId": "ATTRIBUTE_SHARD_BADGER;1"
+  },
+  {
+   "name": "BAL",
+   "displayName": "Bal",
+   "canonicalId": "ATTRIBUTE_SHARD_BAL;1"
+  },
+  {
+   "name": "BAMBLOOM",
+   "displayName": "Bambloom",
+   "canonicalId": "ATTRIBUTE_SHARD_BAMBLOOM;1"
+  },
+  {
+   "name": "BAMBULEAF",
+   "displayName": "Bambuleaf",
+   "canonicalId": "ATTRIBUTE_SHARD_BAMBULEAF;1"
+  },
+  {
+   "name": "BARBARIAN_DUKE_X",
+   "displayName": "Barbarian Duke X",
+   "canonicalId": "ATTRIBUTE_SHARD_BARBARIAN_DUKE_X;1"
+  },
+  {
+   "name": "BASILISK",
+   "displayName": "Basilisk",
+   "canonicalId": "ATTRIBUTE_SHARD_BASILISK;1"
+  },
+  {
+   "name": "BAYOU_SLUDGE",
+   "displayName": "Bayou Sludge",
+   "canonicalId": "ATTRIBUTE_SHARD_BAYOU_SLUDGE;1"
+  },
+  {
+   "name": "BEACONMITE",
+   "displayName": "Beaconmite",
+   "canonicalId": "ATTRIBUTE_SHARD_BEACONMITE;1"
+  },
+  {
+   "name": "BEEHEEMOTH",
+   "displayName": "Beeheemoth",
+   "canonicalId": "ATTRIBUTE_SHARD_BEEHEEMOTH;1"
+  },
+  {
+   "name": "BEZAL",
+   "displayName": "Bezal",
+   "canonicalId": "ATTRIBUTE_SHARD_BEZAL;1"
+  },
+  {
+   "name": "BILLYGOAT",
+   "displayName": "Billygoat",
+   "canonicalId": "ATTRIBUTE_SHARD_BILLYGOAT;1"
+  },
+  {
+   "name": "BIRRIES",
+   "displayName": "Birries",
+   "canonicalId": "ATTRIBUTE_SHARD_BIRRIES;1"
+  },
+  {
+   "name": "BITBUG",
+   "displayName": "Bitbug",
+   "canonicalId": "ATTRIBUTE_SHARD_BITBUG;1"
+  },
+  {
+   "name": "BLACK_WIDOW",
+   "displayName": "Black Widow",
+   "canonicalId": "ATTRIBUTE_SHARD_BLACK_WIDOW;1"
+  },
+  {
+   "name": "BLIZZARD",
+   "displayName": "Blizzard",
+   "canonicalId": "ATTRIBUTE_SHARD_BLIZZARD;1"
+  },
+  {
+   "name": "BLOODBAT",
+   "displayName": "Bloodbat",
+   "canonicalId": "ATTRIBUTE_SHARD_BLOODBAT;1"
+  },
+  {
+   "name": "BLUE_CRAB",
+   "displayName": "Blue Crab",
+   "canonicalId": "ATTRIBUTE_SHARD_BLUE_CRAB;1"
+  },
+  {
+   "name": "BLUE_JAY",
+   "displayName": "Blue Jay",
+   "canonicalId": "ATTRIBUTE_SHARD_BLUE_JAY;1"
+  },
+  {
+   "name": "BLUEBIRD",
+   "displayName": "Bluebird",
+   "canonicalId": "ATTRIBUTE_SHARD_BLUEBIRD;1"
+  },
+  {
+   "name": "BOLT",
+   "displayName": "Bolt",
+   "canonicalId": "ATTRIBUTE_SHARD_BOLT;1"
+  },
+  {
+   "name": "BONZO",
+   "displayName": "Bonzo",
+   "canonicalId": "ATTRIBUTE_SHARD_BONZO;1"
+  },
+  {
+   "name": "BOREAL_OWL",
+   "displayName": "Boreal Owl",
+   "canonicalId": "ATTRIBUTE_SHARD_BOREAL_OWL;1"
+  },
+  {
+   "name": "BRAMBLE",
+   "displayName": "Bramble",
+   "canonicalId": "ATTRIBUTE_SHARD_BRAMBLE;1"
+  },
+  {
+   "name": "BRINELING",
+   "displayName": "Brineling",
+   "canonicalId": "ATTRIBUTE_SHARD_BRINELING;1"
+  },
+  {
+   "name": "BRUISER",
+   "displayName": "Bruiser",
+   "canonicalId": "ATTRIBUTE_SHARD_BRUISER;1"
+  },
+  {
+   "name": "BULLFROG",
+   "displayName": "Bullfrog",
+   "canonicalId": "ATTRIBUTE_SHARD_BULLFROG;1"
+  },
+  {
+   "name": "BUNBUN",
+   "displayName": "Bunbun",
+   "canonicalId": "ATTRIBUTE_SHARD_BUNBUN;1"
+  },
+  {
+   "name": "BURNINGSOUL",
+   "displayName": "Burningsoul",
+   "canonicalId": "ATTRIBUTE_SHARD_BURNINGSOUL;1"
+  },
+  {
+   "name": "CAIMAN",
+   "displayName": "Caiman",
+   "canonicalId": "ATTRIBUTE_SHARD_CAIMAN;1"
+  },
+  {
+   "name": "CARROT_KING",
+   "displayName": "Carrot King",
+   "canonicalId": "ATTRIBUTE_SHARD_CARROT_KING;1"
+  },
+  {
+   "name": "CASCADE",
+   "displayName": "Cascade",
+   "canonicalId": "ATTRIBUTE_SHARD_CASCADE;1"
+  },
+  {
+   "name": "CAVERNFISH",
+   "displayName": "Cavernfish",
+   "canonicalId": "ATTRIBUTE_SHARD_CAVERNFISH;1"
+  },
+  {
+   "name": "CAVERNSHADE",
+   "displayName": "Cavernshade",
+   "canonicalId": "ATTRIBUTE_SHARD_CAVERNSHADE;1"
+  },
+  {
+   "name": "CHAMELEON",
+   "displayName": "Chameleon",
+   "canonicalId": "ATTRIBUTE_SHARD_CHAMELEON;1"
+  },
+  {
+   "name": "CHEEKY_TIKI",
+   "displayName": "Cheeky Tiki",
+   "canonicalId": "ATTRIBUTE_SHARD_CHEEKY_TIKI;1"
+  },
+  {
+   "name": "CHILL",
+   "displayName": "Chill",
+   "canonicalId": "ATTRIBUTE_SHARD_CHILL;1"
+  },
+  {
+   "name": "CHUCKWALLA",
+   "displayName": "Chuckwalla",
+   "canonicalId": "ATTRIBUTE_SHARD_CHUCKWALLA;1"
+  },
+  {
+   "name": "CINDER_BAT",
+   "displayName": "Cinder Bat",
+   "canonicalId": "ATTRIBUTE_SHARD_CINDER_BAT;1"
+  },
+  {
+   "name": "COCOALEECH",
+   "displayName": "Cocoaleech",
+   "canonicalId": "ATTRIBUTE_SHARD_COCOALEECH;1"
+  },
+  {
+   "name": "COD",
+   "displayName": "Cod",
+   "canonicalId": "ATTRIBUTE_SHARD_COD;1"
+  },
+  {
+   "name": "CONDOR",
+   "displayName": "Condor",
+   "canonicalId": "ATTRIBUTE_SHARD_CONDOR;1"
+  },
+  {
+   "name": "CORALOT",
+   "displayName": "Coralot",
+   "canonicalId": "ATTRIBUTE_SHARD_CORALOT;1"
+  },
+  {
+   "name": "CRETAN_BULL",
+   "displayName": "Cretan Bull",
+   "canonicalId": "ATTRIBUTE_SHARD_CRETAN_BULL;1"
+  },
+  {
+   "name": "CRICKET",
+   "displayName": "Cricket",
+   "canonicalId": "ATTRIBUTE_SHARD_CRICKET;1"
+  },
+  {
+   "name": "CROCODILE",
+   "displayName": "Crocodile",
+   "canonicalId": "ATTRIBUTE_SHARD_CROCODILE;1"
+  },
+  {
+   "name": "CROPEETLE",
+   "displayName": "Cropeetle",
+   "canonicalId": "ATTRIBUTE_SHARD_CROPEETLE;1"
+  },
+  {
+   "name": "CROW",
+   "displayName": "Crow",
+   "canonicalId": "ATTRIBUTE_SHARD_CROW;1"
+  },
+  {
+   "name": "CRYO",
+   "displayName": "Cryo",
+   "canonicalId": "ATTRIBUTE_SHARD_CRYO;1"
+  },
+  {
+   "name": "CUBOA",
+   "displayName": "Cuboa",
+   "canonicalId": "ATTRIBUTE_SHARD_CUBOA;1"
+  },
+  {
+   "name": "DAEMON",
+   "displayName": "Daemon",
+   "canonicalId": "ATTRIBUTE_SHARD_DAEMON;1"
+  },
+  {
+   "name": "DIVE_GHAST",
+   "displayName": "Dive Ghast",
+   "canonicalId": "ATTRIBUTE_SHARD_DIVE_GHAST;1"
+  },
+  {
+   "name": "DODO",
+   "displayName": "Dodo",
+   "canonicalId": "ATTRIBUTE_SHARD_DODO;1"
+  },
+  {
+   "name": "DOOMSPIRAL",
+   "displayName": "Doomspiral",
+   "canonicalId": "ATTRIBUTE_SHARD_DOOMSPIRAL;1"
+  },
+  {
+   "name": "DRACONIC",
+   "displayName": "Draconic",
+   "canonicalId": "ATTRIBUTE_SHARD_DRACONIC;1"
+  },
+  {
+   "name": "DRAGONFLY",
+   "displayName": "Dragonfly",
+   "canonicalId": "ATTRIBUTE_SHARD_DRAGONFLY;1"
+  },
+  {
+   "name": "DREADWING",
+   "displayName": "Dreadwing",
+   "canonicalId": "ATTRIBUTE_SHARD_DREADWING;1"
+  },
+  {
+   "name": "DRIFTLING",
+   "displayName": "Driftling",
+   "canonicalId": "ATTRIBUTE_SHARD_DRIFTLING;1"
+  },
+  {
+   "name": "DROWNED",
+   "displayName": "Drowned",
+   "canonicalId": "ATTRIBUTE_SHARD_DROWNED;1"
+  },
+  {
+   "name": "DRYBARK",
+   "displayName": "Drybark",
+   "canonicalId": "ATTRIBUTE_SHARD_DRYBARK;1"
+  },
+  {
+   "name": "DUMPSTER_DIVER",
+   "displayName": "Dumpster Diver",
+   "canonicalId": "ATTRIBUTE_SHARD_DUMPSTER_DIVER;1"
+  },
+  {
+   "name": "DUNG_BEETLE",
+   "displayName": "Dung Beetle",
+   "canonicalId": "ATTRIBUTE_SHARD_DUNG_BEETLE;1"
+  },
+  {
+   "name": "DUPLICO",
+   "displayName": "Duplico",
+   "canonicalId": "ATTRIBUTE_SHARD_DUPLICO;1"
+  },
+  {
+   "name": "DUSTYBIT",
+   "displayName": "Dustybit",
+   "canonicalId": "ATTRIBUTE_SHARD_DUSTYBIT;1"
+  },
+  {
+   "name": "EEL",
+   "displayName": "Eel",
+   "canonicalId": "ATTRIBUTE_SHARD_EEL;1"
+  },
+  {
+   "name": "EMBER",
+   "displayName": "Ember",
+   "canonicalId": "ATTRIBUTE_SHARD_EMBER;1"
+  },
+  {
+   "name": "ENDSTONE_PROTECTOR",
+   "displayName": "Endstone Protector",
+   "canonicalId": "ATTRIBUTE_SHARD_ENDSTONE_PROTECTOR;1"
+  },
+  {
+   "name": "ENT",
+   "displayName": "Ent",
+   "canonicalId": "ATTRIBUTE_SHARD_ENT;1"
+  },
+  {
+   "name": "ETHERDRAKE",
+   "displayName": "Etherdrake",
+   "canonicalId": "ATTRIBUTE_SHARD_ETHERDRAKE;1"
+  },
+  {
+   "name": "FALCON",
+   "displayName": "Falcon",
+   "canonicalId": "ATTRIBUTE_SHARD_FALCON;1"
+  },
+  {
+   "name": "FENLORD",
+   "displayName": "Fenlord",
+   "canonicalId": "ATTRIBUTE_SHARD_FENLORD;1"
+  },
+  {
+   "name": "FIRE_EEL",
+   "displayName": "Fire Eel",
+   "canonicalId": "ATTRIBUTE_SHARD_FIRE_EEL;1"
+  },
+  {
+   "name": "FIREFLY",
+   "displayName": "Firefly",
+   "canonicalId": "ATTRIBUTE_SHARD_FIREFLY;1"
+  },
+  {
+   "name": "FIREFOX",
+   "displayName": "Firefox",
+   "canonicalId": "ATTRIBUTE_SHARD_FIREFOX;1"
+  },
+  {
+   "name": "FLAMING_SPIDER",
+   "displayName": "Flaming Spider",
+   "canonicalId": "ATTRIBUTE_SHARD_FLAMING_SPIDER;1"
+  },
+  {
+   "name": "FLARE",
+   "displayName": "Flare",
+   "canonicalId": "ATTRIBUTE_SHARD_FLARE;1"
+  },
+  {
+   "name": "FLASH",
+   "displayName": "Flash",
+   "canonicalId": "ATTRIBUTE_SHARD_FLASH;1"
+  },
+  {
+   "name": "FLIP_FLOPPER",
+   "displayName": "Flip Flopper",
+   "canonicalId": "ATTRIBUTE_SHARD_FLIP_FLOPPER;1"
+  },
+  {
+   "name": "FLITTER",
+   "displayName": "Flitter",
+   "canonicalId": "ATTRIBUTE_SHARD_FLITTER;1"
+  },
+  {
+   "name": "FLUFFLING",
+   "displayName": "Fluffling",
+   "canonicalId": "ATTRIBUTE_SHARD_FLUFFLING;1"
+  },
+  {
+   "name": "FLY",
+   "displayName": "Fly",
+   "canonicalId": "ATTRIBUTE_SHARD_FLY;1"
+  },
+  {
+   "name": "FOXTROT",
+   "displayName": "Foxtrot",
+   "canonicalId": "ATTRIBUTE_SHARD_FOXTROT;1"
+  },
+  {
+   "name": "FUNGLOOM",
+   "displayName": "Fungloom",
+   "canonicalId": "ATTRIBUTE_SHARD_FUNGLOOM;1"
+  },
+  {
+   "name": "GALAXY_FISH",
+   "displayName": "Galaxy Fish",
+   "canonicalId": "ATTRIBUTE_SHARD_GALAXY_FISH;1"
+  },
+  {
+   "name": "GAZER",
+   "displayName": "Gazer",
+   "canonicalId": "ATTRIBUTE_SHARD_GAZER;1"
+  },
+  {
+   "name": "GECKO",
+   "displayName": "Gecko",
+   "canonicalId": "ATTRIBUTE_SHARD_GECKO;1"
+  },
+  {
+   "name": "GEMZIE",
+   "displayName": "Gemzie",
+   "canonicalId": "ATTRIBUTE_SHARD_GEMZIE;1"
+  },
+  {
+   "name": "GHOST",
+   "displayName": "Ghost",
+   "canonicalId": "ATTRIBUTE_SHARD_GHOST;1"
+  },
+  {
+   "name": "GHOST_CRAB",
+   "displayName": "Ghost Crab",
+   "canonicalId": "ATTRIBUTE_SHARD_GHOST_CRAB;1"
+  },
+  {
+   "name": "GIANT_ISOPOD",
+   "displayName": "Giant Isopod",
+   "canonicalId": "ATTRIBUTE_SHARD_GIANT_ISOPOD;1"
+  },
+  {
+   "name": "GIANT_WATER_BUG",
+   "displayName": "Giant Water Bug",
+   "canonicalId": "ATTRIBUTE_SHARD_GIANT_WATER_BUG;1"
+  },
+  {
+   "name": "GIMMIEGOLD",
+   "displayName": "Gimmiegold",
+   "canonicalId": "ATTRIBUTE_SHARD_GIMMIEGOLD;1"
+  },
+  {
+   "name": "GLACITE_WALKER",
+   "displayName": "Glacite Walker",
+   "canonicalId": "ATTRIBUTE_SHARD_GLACITE_WALKER;1"
+  },
+  {
+   "name": "GOLDEN_GHOUL",
+   "displayName": "Golden Ghoul",
+   "canonicalId": "ATTRIBUTE_SHARD_GOLDEN_GHOUL;1"
+  },
+  {
+   "name": "GOLDFIN",
+   "displayName": "Goldfin",
+   "canonicalId": "ATTRIBUTE_SHARD_GOLDFIN;1"
+  },
+  {
+   "name": "GOLDOLOT",
+   "displayName": "Goldolot",
+   "canonicalId": "ATTRIBUTE_SHARD_GOLDOLOT;1"
+  },
+  {
+   "name": "GRIZZLY_BEAR",
+   "displayName": "Grizzly Bear",
+   "canonicalId": "ATTRIBUTE_SHARD_GRIZZLY_BEAR;1"
+  },
+  {
+   "name": "GROUNDHOG",
+   "displayName": "Groundhog",
+   "canonicalId": "ATTRIBUTE_SHARD_GROUNDHOG;1"
+  },
+  {
+   "name": "GROVE",
+   "displayName": "Grove",
+   "canonicalId": "ATTRIBUTE_SHARD_GROVE;1"
+  },
+  {
+   "name": "HAGGARD",
+   "displayName": "Haggard",
+   "canonicalId": "ATTRIBUTE_SHARD_HAGGARD;1"
+  },
+  {
+   "name": "HARPY",
+   "displayName": "Harpy",
+   "canonicalId": "ATTRIBUTE_SHARD_HARPY;1"
+  },
+  {
+   "name": "HAWK",
+   "displayName": "Hawk",
+   "canonicalId": "ATTRIBUTE_SHARD_HAWK;1"
+  },
+  {
+   "name": "HELLWISP",
+   "displayName": "Hellwisp",
+   "canonicalId": "ATTRIBUTE_SHARD_HELLWISP;1"
+  },
+  {
+   "name": "HERON",
+   "displayName": "Heron",
+   "canonicalId": "ATTRIBUTE_SHARD_HERON;1"
+  },
+  {
+   "name": "HEWVER",
+   "displayName": "Hewver",
+   "canonicalId": "ATTRIBUTE_SHARD_HEWVER;1"
+  },
+  {
+   "name": "HIDEONBOX",
+   "displayName": "Hideonbox",
+   "canonicalId": "ATTRIBUTE_SHARD_HIDEONBOX;1"
+  },
+  {
+   "name": "HIDEONCAVE",
+   "displayName": "Hideoncave",
+   "canonicalId": "ATTRIBUTE_SHARD_HIDEONCAVE;1"
+  },
+  {
+   "name": "HIDEONDRA",
+   "displayName": "Hideondra",
+   "canonicalId": "ATTRIBUTE_SHARD_HIDEONDRA;1"
+  },
+  {
+   "name": "HIDEONFLOOR",
+   "displayName": "Hideonfloor",
+   "canonicalId": "ATTRIBUTE_SHARD_HIDEONFLOOR;1"
+  },
+  {
+   "name": "HIDEONGEON",
+   "displayName": "Hideongeon",
+   "canonicalId": "ATTRIBUTE_SHARD_HIDEONGEON;1"
+  },
+  {
+   "name": "HIDEONGIFT",
+   "displayName": "Hideongift",
+   "canonicalId": "ATTRIBUTE_SHARD_HIDEONGIFT;1"
+  },
+  {
+   "name": "HIDEONLEAF",
+   "displayName": "Hideonleaf",
+   "canonicalId": "ATTRIBUTE_SHARD_HIDEONLEAF;1"
+  },
+  {
+   "name": "HIDEONRING",
+   "displayName": "Hideonring",
+   "canonicalId": "ATTRIBUTE_SHARD_HIDEONRING;1"
+  },
+  {
+   "name": "HIDEONSACK",
+   "displayName": "Hideonsack",
+   "canonicalId": "ATTRIBUTE_SHARD_HIDEONSACK;1"
+  },
+  {
+   "name": "HIDEONSUN",
+   "displayName": "Hideonsun",
+   "canonicalId": "ATTRIBUTE_SHARD_HIDEONSUN;1"
+  },
+  {
+   "name": "HIDEONWALL",
+   "displayName": "Hideonwall",
+   "canonicalId": "ATTRIBUTE_SHARD_HIDEONWALL;1"
+  },
+  {
+   "name": "HIDEYHO",
+   "displayName": "Hideyho",
+   "canonicalId": "ATTRIBUTE_SHARD_HIDEYHO;1"
+  },
+  {
+   "name": "HIVETHIEF",
+   "displayName": "Hivethief",
+   "canonicalId": "ATTRIBUTE_SHARD_HIVETHIEF;1"
+  },
+  {
+   "name": "HONEY_BADGER",
+   "displayName": "Honey Badger",
+   "canonicalId": "ATTRIBUTE_SHARD_HONEY_BADGER;1"
+  },
+  {
+   "name": "HONEYBUG",
+   "displayName": "Honeybug",
+   "canonicalId": "ATTRIBUTE_SHARD_HONEYBUG;1"
+  },
+  {
+   "name": "HONEYBUZZ",
+   "displayName": "Honeybuzz",
+   "canonicalId": "ATTRIBUTE_SHARD_HONEYBUZZ;1"
+  },
+  {
+   "name": "HONEYHOG",
+   "displayName": "Honeyhog",
+   "canonicalId": "ATTRIBUTE_SHARD_HONEYHOG;1"
+  },
+  {
+   "name": "HONEYMITE",
+   "displayName": "Honeymite",
+   "canonicalId": "ATTRIBUTE_SHARD_HONEYMITE;1"
+  },
+  {
+   "name": "HOWLING_SPIRIT",
+   "displayName": "Howling Spirit",
+   "canonicalId": "ATTRIBUTE_SHARD_HOWLING_SPIRIT;1"
+  },
+  {
+   "name": "HUMMINGBIRD",
+   "displayName": "Hummingbird",
+   "canonicalId": "ATTRIBUTE_SHARD_HUMMINGBIRD;1"
+  },
+  {
+   "name": "IGUANA",
+   "displayName": "Iguana",
+   "canonicalId": "ATTRIBUTE_SHARD_IGUANA;1"
+  },
+  {
+   "name": "INFERNO_KOI",
+   "displayName": "Inferno Koi",
+   "canonicalId": "ATTRIBUTE_SHARD_INFERNO_KOI;1"
+  },
+  {
+   "name": "INVISIBUG",
+   "displayName": "Invisibug",
+   "canonicalId": "ATTRIBUTE_SHARD_INVISIBUG;1"
+  },
+  {
+   "name": "JORMUNG",
+   "displayName": "Jormung",
+   "canonicalId": "ATTRIBUTE_SHARD_JORMUNG;1"
+  },
+  {
+   "name": "JOYDIVE",
+   "displayName": "Joydive",
+   "canonicalId": "ATTRIBUTE_SHARD_JOYDIVE;1"
+  },
+  {
+   "name": "JUNE_BUG",
+   "displayName": "June Bug",
+   "canonicalId": "ATTRIBUTE_SHARD_JUNE_BUG;1"
+  },
+  {
+   "name": "KADA_KNIGHT",
+   "displayName": "Kada Knight",
+   "canonicalId": "ATTRIBUTE_SHARD_KADA_KNIGHT;1"
+  },
+  {
+   "name": "KEELED_SLUG",
+   "displayName": "Keeled Slug",
+   "canonicalId": "ATTRIBUTE_SHARD_KEELED_SLUG;1"
+  },
+  {
+   "name": "KING_COBRA",
+   "displayName": "King Cobra",
+   "canonicalId": "ATTRIBUTE_SHARD_KING_COBRA;1"
+  },
+  {
+   "name": "KING_MINOS",
+   "displayName": "King Minos",
+   "canonicalId": "ATTRIBUTE_SHARD_KING_MINOS;1"
+  },
+  {
+   "name": "KIWI",
+   "displayName": "Kiwi",
+   "canonicalId": "ATTRIBUTE_SHARD_KIWI;1"
+  },
+  {
+   "name": "KOMODO_DRAGON",
+   "displayName": "Komodo Dragon",
+   "canonicalId": "ATTRIBUTE_SHARD_KOMODO_DRAGON;1"
+  },
+  {
+   "name": "KRAKEN",
+   "displayName": "Kraken",
+   "canonicalId": "ATTRIBUTE_SHARD_KRAKEN;1"
+  },
+  {
+   "name": "LADYBUG",
+   "displayName": "Ladybug",
+   "canonicalId": "ATTRIBUTE_SHARD_LADYBUG;1"
+  },
+  {
+   "name": "LAPIS_CREEPER",
+   "displayName": "Lapis Creeper",
+   "canonicalId": "ATTRIBUTE_SHARD_LAPIS_CREEPER;1"
+  },
+  {
+   "name": "LAPIS_SKELETON",
+   "displayName": "Lapis Skeleton",
+   "canonicalId": "ATTRIBUTE_SHARD_LAPIS_SKELETON;1"
+  },
+  {
+   "name": "LAPIS_ZOMBIE",
+   "displayName": "Lapis Zombie",
+   "canonicalId": "ATTRIBUTE_SHARD_LAPIS_ZOMBIE;1"
+  },
+  {
+   "name": "LAVA_FLAME",
+   "displayName": "Lava Flame",
+   "canonicalId": "ATTRIBUTE_SHARD_LAVA_FLAME;1"
+  },
+  {
+   "name": "LAVA_LEECH",
+   "displayName": "Lava Leech",
+   "canonicalId": "ATTRIBUTE_SHARD_LAVA_LEECH;1"
+  },
+  {
+   "name": "LEATHERBACK",
+   "displayName": "Leatherback",
+   "canonicalId": "ATTRIBUTE_SHARD_LEATHERBACK;1"
+  },
+  {
+   "name": "LEVIATHAN",
+   "displayName": "Leviathan",
+   "canonicalId": "ATTRIBUTE_SHARD_LEVIATHAN;1"
+  },
+  {
+   "name": "LITTERBUG",
+   "displayName": "Litterbug",
+   "canonicalId": "ATTRIBUTE_SHARD_LITTERBUG;1"
+  },
+  {
+   "name": "LITTLEFOOT",
+   "displayName": "Littlefoot",
+   "canonicalId": "ATTRIBUTE_SHARD_LITTLEFOOT;1"
+  },
+  {
+   "name": "LIZARD_KING",
+   "displayName": "Lizard King",
+   "canonicalId": "ATTRIBUTE_SHARD_LIZARD_KING;1"
+  },
+  {
+   "name": "LOCUST",
+   "displayName": "Locust",
+   "canonicalId": "ATTRIBUTE_SHARD_LOCUST;1"
+  },
+  {
+   "name": "LORD_JAWBUS",
+   "displayName": "Lord Jawbus",
+   "canonicalId": "ATTRIBUTE_SHARD_LORD_JAWBUS;1"
+  },
+  {
+   "name": "LOTUM",
+   "displayName": "Lotum",
+   "canonicalId": "ATTRIBUTE_SHARD_LOTUM;1"
+  },
+  {
+   "name": "LOTUS_FISH",
+   "displayName": "Lotus Fish",
+   "canonicalId": "ATTRIBUTE_SHARD_LOTUS_FISH;1"
+  },
+  {
+   "name": "LUMISQUID",
+   "displayName": "Lumisquid",
+   "canonicalId": "ATTRIBUTE_SHARD_LUMISQUID;1"
+  },
+  {
+   "name": "LUNAR_MOTH",
+   "displayName": "Lunar Moth",
+   "canonicalId": "ATTRIBUTE_SHARD_LUNAR_MOTH;1"
+  },
+  {
+   "name": "MACAW",
+   "displayName": "Macaw",
+   "canonicalId": "ATTRIBUTE_SHARD_MACAW;1"
+  },
+  {
+   "name": "MAGGOT",
+   "displayName": "Maggot",
+   "canonicalId": "ATTRIBUTE_SHARD_MAGGOT;1"
+  },
+  {
+   "name": "MAGMA_SLUG",
+   "displayName": "Magma Slug",
+   "canonicalId": "ATTRIBUTE_SHARD_MAGMA_SLUG;1"
+  },
+  {
+   "name": "MANTIS_SHRIMP",
+   "displayName": "Mantis Shrimp",
+   "canonicalId": "ATTRIBUTE_SHARD_MANTIS_SHRIMP;1"
+  },
+  {
+   "name": "MATCHO",
+   "displayName": "Matcho",
+   "canonicalId": "ATTRIBUTE_SHARD_MATCHO;1"
+  },
+  {
+   "name": "MEGALITH",
+   "displayName": "Megalith",
+   "canonicalId": "ATTRIBUTE_SHARD_MEGALITH;1"
+  },
+  {
+   "name": "MIMIC",
+   "displayName": "Mimic",
+   "canonicalId": "ATTRIBUTE_SHARD_MIMIC;1"
+  },
+  {
+   "name": "MINER_ZOMBIE",
+   "displayName": "Miner Zombie",
+   "canonicalId": "ATTRIBUTE_SHARD_MINER_ZOMBIE;1"
+  },
+  {
+   "name": "MINOS_HUNTER",
+   "displayName": "Minos Hunter",
+   "canonicalId": "ATTRIBUTE_SHARD_MINOS_HUNTER;1"
+  },
+  {
+   "name": "MINOTAUR",
+   "displayName": "Minotaur",
+   "canonicalId": "ATTRIBUTE_SHARD_MINOTAUR;1"
+  },
+  {
+   "name": "MIST",
+   "displayName": "Mist",
+   "canonicalId": "ATTRIBUTE_SHARD_MIST;1"
+  },
+  {
+   "name": "MITE",
+   "displayName": "Mite",
+   "canonicalId": "ATTRIBUTE_SHARD_MITE;1"
+  },
+  {
+   "name": "MOCHIBEAR",
+   "displayName": "Mochibear",
+   "canonicalId": "ATTRIBUTE_SHARD_MOCHIBEAR;1"
+  },
+  {
+   "name": "MOLTENFISH",
+   "displayName": "Moltenfish",
+   "canonicalId": "ATTRIBUTE_SHARD_MOLTENFISH;1"
+  },
+  {
+   "name": "MOLTHORN",
+   "displayName": "Molthorn",
+   "canonicalId": "ATTRIBUTE_SHARD_MOLTHORN;1"
+  },
+  {
+   "name": "MORAY_EEL",
+   "displayName": "Moray Eel",
+   "canonicalId": "ATTRIBUTE_SHARD_MORAY_EEL;1"
+  },
+  {
+   "name": "MOSQUITO",
+   "displayName": "Mosquito",
+   "canonicalId": "ATTRIBUTE_SHARD_MOSQUITO;1"
+  },
+  {
+   "name": "MOSSYBIT",
+   "displayName": "Mossybit",
+   "canonicalId": "ATTRIBUTE_SHARD_MOSSYBIT;1"
+  },
+  {
+   "name": "MOTH",
+   "displayName": "Moth",
+   "canonicalId": "ATTRIBUTE_SHARD_MOTH;1"
+  },
+  {
+   "name": "MOUNTAIN_GOAT",
+   "displayName": "Mountain Goat",
+   "canonicalId": "ATTRIBUTE_SHARD_MOUNTAIN_GOAT;1"
+  },
+  {
+   "name": "MUDWORM",
+   "displayName": "Mudworm",
+   "canonicalId": "ATTRIBUTE_SHARD_MUDWORM;1"
+  },
+  {
+   "name": "MURDERWING",
+   "displayName": "Murderwing",
+   "canonicalId": "ATTRIBUTE_SHARD_MURDERWING;1"
+  },
+  {
+   "name": "MURKBAT",
+   "displayName": "Murkbat",
+   "canonicalId": "ATTRIBUTE_SHARD_MURKBAT;1"
+  },
+  {
+   "name": "NAGA",
+   "displayName": "Naga",
+   "canonicalId": "ATTRIBUTE_SHARD_NAGA;1"
+  },
+  {
+   "name": "NESSIE",
+   "displayName": "Nessie",
+   "canonicalId": "ATTRIBUTE_SHARD_NESSIE;1"
+  },
+  {
+   "name": "NEWT",
+   "displayName": "Newt",
+   "canonicalId": "ATTRIBUTE_SHARD_NEWT;1"
+  },
+  {
+   "name": "NIGHT_SQUID",
+   "displayName": "Night Squid",
+   "canonicalId": "ATTRIBUTE_SHARD_NIGHT_SQUID;1"
+  },
+  {
+   "name": "NILBOG",
+   "displayName": "Nilbog",
+   "canonicalId": "ATTRIBUTE_SHARD_NILBOG;1"
+  },
+  {
+   "name": "NOZZLENOSE",
+   "displayName": "Nozzlenose",
+   "canonicalId": "ATTRIBUTE_SHARD_NOZZLENOSE;1"
+  },
+  {
+   "name": "OBSIDIAN_DEFENDER",
+   "displayName": "Obsidian Defender",
+   "canonicalId": "ATTRIBUTE_SHARD_OBSIDIAN_DEFENDER;1"
+  },
+  {
+   "name": "OSEDAX",
+   "displayName": "Osedax",
+   "canonicalId": "ATTRIBUTE_SHARD_OSEDAX;1"
+  },
+  {
+   "name": "PANDARAI",
+   "displayName": "Pandarai",
+   "canonicalId": "ATTRIBUTE_SHARD_PANDARAI;1"
+  },
+  {
+   "name": "PANGOLIN",
+   "displayName": "Pangolin",
+   "canonicalId": "ATTRIBUTE_SHARD_PANGOLIN;1"
+  },
+  {
+   "name": "PARAGON",
+   "displayName": "Paragon",
+   "canonicalId": "ATTRIBUTE_SHARD_PARAGON;1"
+  },
+  {
+   "name": "PARAKEET",
+   "displayName": "Parakeet",
+   "canonicalId": "ATTRIBUTE_SHARD_PARAKEET;1"
+  },
+  {
+   "name": "PARCHED",
+   "displayName": "Parched",
+   "canonicalId": "ATTRIBUTE_SHARD_PARCHED;1"
+  },
+  {
+   "name": "PEST",
+   "displayName": "Pest",
+   "canonicalId": "ATTRIBUTE_SHARD_PEST;1"
+  },
+  {
+   "name": "PHANFLARE",
+   "displayName": "Phanflare",
+   "canonicalId": "ATTRIBUTE_SHARD_PHANFLARE;1"
+  },
+  {
+   "name": "PHANPYRE",
+   "displayName": "Phanpyre",
+   "canonicalId": "ATTRIBUTE_SHARD_PHANPYRE;1"
+  },
+  {
+   "name": "PIRANHA",
+   "displayName": "Piranha",
+   "canonicalId": "ATTRIBUTE_SHARD_PIRANHA;1"
+  },
+  {
+   "name": "POLARIS",
+   "displayName": "Polaris",
+   "canonicalId": "ATTRIBUTE_SHARD_POLARIS;1"
+  },
+  {
+   "name": "POLLENDART",
+   "displayName": "Pollendart",
+   "canonicalId": "ATTRIBUTE_SHARD_POLLENDART;1"
+  },
+  {
+   "name": "POWER_DRAGON",
+   "displayName": "Power Dragon",
+   "canonicalId": "ATTRIBUTE_SHARD_POWER_DRAGON;1"
+  },
+  {
+   "name": "PRAYING_MANTIS",
+   "displayName": "Praying Mantis",
+   "canonicalId": "ATTRIBUTE_SHARD_PRAYING_MANTIS;1"
+  },
+  {
+   "name": "PRIMORDIAL",
+   "displayName": "Primordial",
+   "canonicalId": "ATTRIBUTE_SHARD_PRIMORDIAL;1"
+  },
+  {
+   "name": "PRINCE",
+   "displayName": "Prince",
+   "canonicalId": "ATTRIBUTE_SHARD_PRINCE;1"
+  },
+  {
+   "name": "PUCK",
+   "displayName": "Puck",
+   "canonicalId": "ATTRIBUTE_SHARD_PUCK;1"
+  },
+  {
+   "name": "PYTHON",
+   "displayName": "Python",
+   "canonicalId": "ATTRIBUTE_SHARD_PYTHON;1"
+  },
+  {
+   "name": "QUAKE",
+   "displayName": "Quake",
+   "canonicalId": "ATTRIBUTE_SHARD_QUAKE;1"
+  },
+  {
+   "name": "QUARTZFANG",
+   "displayName": "Quartzfang",
+   "canonicalId": "ATTRIBUTE_SHARD_QUARTZFANG;1"
+  },
+  {
+   "name": "QUEEN_ANT",
+   "displayName": "Queen Ant",
+   "canonicalId": "ATTRIBUTE_SHARD_QUEEN_ANT;1"
+  },
+  {
+   "name": "QUEEN_BEE",
+   "displayName": "Queen Bee",
+   "canonicalId": "ATTRIBUTE_SHARD_QUEEN_BEE;1"
+  },
+  {
+   "name": "QUEEN_SNAKE",
+   "displayName": "Queen Snake",
+   "canonicalId": "ATTRIBUTE_SHARD_QUEEN_SNAKE;1"
+  },
+  {
+   "name": "RABBIT_CAT",
+   "displayName": "Rabbit Cat",
+   "canonicalId": "ATTRIBUTE_SHARD_RABBIT_CAT;1"
+  },
+  {
+   "name": "RABBIT_GODFATHER",
+   "displayName": "Rabbit Godfather",
+   "canonicalId": "ATTRIBUTE_SHARD_RABBIT_GODFATHER;1"
+  },
+  {
+   "name": "RABBIT_GODMOTHER",
+   "displayName": "Rabbit Godmother",
+   "canonicalId": "ATTRIBUTE_SHARD_RABBIT_GODMOTHER;1"
+  },
+  {
+   "name": "RABBIT_MAFIOSO",
+   "displayName": "Rabbit Mafioso",
+   "canonicalId": "ATTRIBUTE_SHARD_RABBIT_MAFIOSO;1"
+  },
+  {
+   "name": "RABBIT_NEIGHBOR",
+   "displayName": "Rabbit Neighbor",
+   "canonicalId": "ATTRIBUTE_SHARD_RABBIT_NEIGHBOR;1"
+  },
+  {
+   "name": "RAIN_SLIME",
+   "displayName": "Rain Slime",
+   "canonicalId": "ATTRIBUTE_SHARD_RAIN_SLIME;1"
+  },
+  {
+   "name": "RANA",
+   "displayName": "Rana",
+   "canonicalId": "ATTRIBUTE_SHARD_RANA;1"
+  },
+  {
+   "name": "RAT",
+   "displayName": "Rat",
+   "canonicalId": "ATTRIBUTE_SHARD_RAT;1"
+  },
+  {
+   "name": "RED_PANDA",
+   "displayName": "Red Panda",
+   "canonicalId": "ATTRIBUTE_SHARD_RED_PANDA;1"
+  },
+  {
+   "name": "REVENANT",
+   "displayName": "Revenant",
+   "canonicalId": "ATTRIBUTE_SHARD_REVENANT;1"
+  },
+  {
+   "name": "ROCKMITE",
+   "displayName": "Rockmite",
+   "canonicalId": "ATTRIBUTE_SHARD_ROCKMITE;1"
+  },
+  {
+   "name": "SALAMANDER",
+   "displayName": "Salamander",
+   "canonicalId": "ATTRIBUTE_SHARD_SALAMANDER;1"
+  },
+  {
+   "name": "SALMON",
+   "displayName": "Salmon",
+   "canonicalId": "ATTRIBUTE_SHARD_SALMON;1"
+  },
+  {
+   "name": "SCARF",
+   "displayName": "Scarf",
+   "canonicalId": "ATTRIBUTE_SHARD_SCARF;1"
+  },
+  {
+   "name": "SCATHA",
+   "displayName": "Scatha",
+   "canonicalId": "ATTRIBUTE_SHARD_SCATHA;1"
+  },
+  {
+   "name": "SCRAPPY",
+   "displayName": "Scrappy",
+   "canonicalId": "ATTRIBUTE_SHARD_SCRAPPY;1"
+  },
+  {
+   "name": "SEA_ARCHER",
+   "displayName": "Sea Archer",
+   "canonicalId": "ATTRIBUTE_SHARD_SEA_ARCHER;1"
+  },
+  {
+   "name": "SEA_EMPEROR",
+   "displayName": "Sea Emperor",
+   "canonicalId": "ATTRIBUTE_SHARD_SEA_EMPEROR;1"
+  },
+  {
+   "name": "SEA_SERPENT",
+   "displayName": "Sea Serpent",
+   "canonicalId": "ATTRIBUTE_SHARD_SEA_SERPENT;1"
+  },
+  {
+   "name": "SEA_SHINE",
+   "displayName": "Sea Shine",
+   "canonicalId": "ATTRIBUTE_SHARD_SEA_SHINE;1"
+  },
+  {
+   "name": "SEA_WITCH",
+   "displayName": "Sea Witch",
+   "canonicalId": "ATTRIBUTE_SHARD_SEA_WITCH;1"
+  },
+  {
+   "name": "SEAGULL",
+   "displayName": "Seagull",
+   "canonicalId": "ATTRIBUTE_SHARD_SEAGULL;1"
+  },
+  {
+   "name": "SEER",
+   "displayName": "Seer",
+   "canonicalId": "ATTRIBUTE_SHARD_SEER;1"
+  },
+  {
+   "name": "SEPIALOT",
+   "displayName": "Sepialot",
+   "canonicalId": "ATTRIBUTE_SHARD_SEPIALOT;1"
+  },
+  {
+   "name": "SHELLWISE",
+   "displayName": "Shellwise",
+   "canonicalId": "ATTRIBUTE_SHARD_SHELLWISE;1"
+  },
+  {
+   "name": "SHINYFISH",
+   "displayName": "Shinyfish",
+   "canonicalId": "ATTRIBUTE_SHARD_SHINYFISH;1"
+  },
+  {
+   "name": "SHRIEKY_TIKI",
+   "displayName": "Shrieky Tiki",
+   "canonicalId": "ATTRIBUTE_SHARD_SHRIEKY_TIKI;1"
+  },
+  {
+   "name": "SHUDDERSQUID",
+   "displayName": "Shuddersquid",
+   "canonicalId": "ATTRIBUTE_SHARD_SHUDDERSQUID;1"
+  },
+  {
+   "name": "SHYWORM",
+   "displayName": "Shyworm",
+   "canonicalId": "ATTRIBUTE_SHARD_SHYWORM;1"
+  },
+  {
+   "name": "SILENTDEPTH",
+   "displayName": "Silentdepth",
+   "canonicalId": "ATTRIBUTE_SHARD_SILENTDEPTH;1"
+  },
+  {
+   "name": "SILKBREEZE",
+   "displayName": "Silkbreeze",
+   "canonicalId": "ATTRIBUTE_SHARD_SILKBREEZE;1"
+  },
+  {
+   "name": "SKELETOR",
+   "displayName": "Skeletor",
+   "canonicalId": "ATTRIBUTE_SHARD_SKELETOR;1"
+  },
+  {
+   "name": "SNEAKY_TIKI",
+   "displayName": "Sneaky Tiki",
+   "canonicalId": "ATTRIBUTE_SHARD_SNEAKY_TIKI;1"
+  },
+  {
+   "name": "SNOOZLE",
+   "displayName": "Snoozle",
+   "canonicalId": "ATTRIBUTE_SHARD_SNOOZLE;1"
+  },
+  {
+   "name": "SNOWFIN",
+   "displayName": "Snowfin",
+   "canonicalId": "ATTRIBUTE_SHARD_SNOWFIN;1"
+  },
+  {
+   "name": "SOLAR",
+   "displayName": "Solar",
+   "canonicalId": "ATTRIBUTE_SHARD_SOLAR;1"
+  },
+  {
+   "name": "SOLSNATCHER",
+   "displayName": "Solsnatcher",
+   "canonicalId": "ATTRIBUTE_SHARD_SOLSNATCHER;1"
+  },
+  {
+   "name": "SOUL_OF_THE_ALPHA",
+   "displayName": "Soul of the Alpha",
+   "canonicalId": "ATTRIBUTE_SHARD_SOUL_OF_THE_ALPHA;1"
+  },
+  {
+   "name": "SPARROW",
+   "displayName": "Sparrow",
+   "canonicalId": "ATTRIBUTE_SHARD_SPARROW;1"
+  },
+  {
+   "name": "SPECIAL_ZEALOT",
+   "displayName": "Special Zealot",
+   "canonicalId": "ATTRIBUTE_SHARD_SPECIAL_ZEALOT;1"
+  },
+  {
+   "name": "SPHINX",
+   "displayName": "Sphinx",
+   "canonicalId": "ATTRIBUTE_SHARD_SPHINX;1"
+  },
+  {
+   "name": "SPIKE",
+   "displayName": "Spike",
+   "canonicalId": "ATTRIBUTE_SHARD_SPIKE;1"
+  },
+  {
+   "name": "SPRAWL",
+   "displayName": "Sprawl",
+   "canonicalId": "ATTRIBUTE_SHARD_SPRAWL;1"
+  },
+  {
+   "name": "STAG_BEETLE",
+   "displayName": "Stag Beetle",
+   "canonicalId": "ATTRIBUTE_SHARD_STAG_BEETLE;1"
+  },
+  {
+   "name": "STALAGMIGHT",
+   "displayName": "Stalagmight",
+   "canonicalId": "ATTRIBUTE_SHARD_STALAGMIGHT;1"
+  },
+  {
+   "name": "STAR_SENTRY",
+   "displayName": "Star Sentry",
+   "canonicalId": "ATTRIBUTE_SHARD_STAR_SENTRY;1"
+  },
+  {
+   "name": "STARBORN",
+   "displayName": "Starborn",
+   "canonicalId": "ATTRIBUTE_SHARD_STARBORN;1"
+  },
+  {
+   "name": "STINGRAY",
+   "displayName": "Stingray",
+   "canonicalId": "ATTRIBUTE_SHARD_STINGRAY;1"
+  },
+  {
+   "name": "STONEWORM",
+   "displayName": "Stoneworm",
+   "canonicalId": "ATTRIBUTE_SHARD_STONEWORM;1"
+  },
+  {
+   "name": "STRIDER_SURFER",
+   "displayName": "Strider Surfer",
+   "canonicalId": "ATTRIBUTE_SHARD_STRIDER_SURFER;1"
+  },
+  {
+   "name": "STRONGARM",
+   "displayName": "Strongarm",
+   "canonicalId": "ATTRIBUTE_SHARD_STRONGARM;1"
+  },
+  {
+   "name": "SUN_FISH",
+   "displayName": "Sun Fish",
+   "canonicalId": "ATTRIBUTE_SHARD_SUN_FISH;1"
+  },
+  {
+   "name": "SYCOPHANT",
+   "displayName": "Sycophant",
+   "canonicalId": "ATTRIBUTE_SHARD_SYCOPHANT;1"
+  },
+  {
+   "name": "SYLVAN",
+   "displayName": "Sylvan",
+   "canonicalId": "ATTRIBUTE_SHARD_SYLVAN;1"
+  },
+  {
+   "name": "TADGANG",
+   "displayName": "Tadgang",
+   "canonicalId": "ATTRIBUTE_SHARD_TADGANG;1"
+  },
+  {
+   "name": "TANK_ZOMBIE",
+   "displayName": "Tank Zombie",
+   "canonicalId": "ATTRIBUTE_SHARD_TANK_ZOMBIE;1"
+  },
+  {
+   "name": "TAURUS",
+   "displayName": "Taurus",
+   "canonicalId": "ATTRIBUTE_SHARD_TAURUS;1"
+  },
+  {
+   "name": "TEMPEST",
+   "displayName": "Tempest",
+   "canonicalId": "ATTRIBUTE_SHARD_TEMPEST;1"
+  },
+  {
+   "name": "TENEBRIS",
+   "displayName": "Tenebris",
+   "canonicalId": "ATTRIBUTE_SHARD_TENEBRIS;1"
+  },
+  {
+   "name": "TEPID",
+   "displayName": "Tepid",
+   "canonicalId": "ATTRIBUTE_SHARD_TEPID;1"
+  },
+  {
+   "name": "TERMITE",
+   "displayName": "Termite",
+   "canonicalId": "ATTRIBUTE_SHARD_TERMITE;1"
+  },
+  {
+   "name": "TERRA",
+   "displayName": "Terra",
+   "canonicalId": "ATTRIBUTE_SHARD_TERRA;1"
+  },
+  {
+   "name": "TEWTIL",
+   "displayName": "Tewtil",
+   "canonicalId": "ATTRIBUTE_SHARD_TEWTIL;1"
+  },
+  {
+   "name": "THORN",
+   "displayName": "Thorn",
+   "canonicalId": "ATTRIBUTE_SHARD_THORN;1"
+  },
+  {
+   "name": "THUNDER",
+   "displayName": "Thunder",
+   "canonicalId": "ATTRIBUTE_SHARD_THUNDER;1"
+  },
+  {
+   "name": "THYST",
+   "displayName": "Thyst",
+   "canonicalId": "ATTRIBUTE_SHARD_THYST;1"
+  },
+  {
+   "name": "TIAMAT",
+   "displayName": "Tiamat",
+   "canonicalId": "ATTRIBUTE_SHARD_TIAMAT;1"
+  },
+  {
+   "name": "TIDE",
+   "displayName": "Tide",
+   "canonicalId": "ATTRIBUTE_SHARD_TIDE;1"
+  },
+  {
+   "name": "TIMESTALK_CLONE",
+   "displayName": "Timestalk Clone",
+   "canonicalId": "ATTRIBUTE_SHARD_TIMESTALK_CLONE;1"
+  },
+  {
+   "name": "TIMIL",
+   "displayName": "Timil",
+   "canonicalId": "ATTRIBUTE_SHARD_TIMIL;1"
+  },
+  {
+   "name": "TITANOBOA",
+   "displayName": "Titanoboa",
+   "canonicalId": "ATTRIBUTE_SHARD_TITANOBOA;1"
+  },
+  {
+   "name": "TOAD",
+   "displayName": "Toad",
+   "canonicalId": "ATTRIBUTE_SHARD_TOAD;1"
+  },
+  {
+   "name": "TORRID",
+   "displayName": "Torrid",
+   "canonicalId": "ATTRIBUTE_SHARD_TORRID;1"
+  },
+  {
+   "name": "TORTOISE",
+   "displayName": "Tortoise",
+   "canonicalId": "ATTRIBUTE_SHARD_TORTOISE;1"
+  },
+  {
+   "name": "TOUCAN",
+   "displayName": "Toucan",
+   "canonicalId": "ATTRIBUTE_SHARD_TOUCAN;1"
+  },
+  {
+   "name": "TREASURE_HOARDER",
+   "displayName": "Treasure Hoarder",
+   "canonicalId": "ATTRIBUTE_SHARD_TREASURE_HOARDER;1"
+  },
+  {
+   "name": "TREEFROG",
+   "displayName": "Treefrog",
+   "canonicalId": "ATTRIBUTE_SHARD_TREEFROG;1"
+  },
+  {
+   "name": "TROGLOBYTE",
+   "displayName": "Troglobyte",
+   "canonicalId": "ATTRIBUTE_SHARD_TROGLOBYTE;1"
+  },
+  {
+   "name": "TROODON",
+   "displayName": "Troodon",
+   "canonicalId": "ATTRIBUTE_SHARD_TROODON;1"
+  },
+  {
+   "name": "VERDANT",
+   "displayName": "Verdant",
+   "canonicalId": "ATTRIBUTE_SHARD_VERDANT;1"
+  },
+  {
+   "name": "VIPER",
+   "displayName": "Viper",
+   "canonicalId": "ATTRIBUTE_SHARD_VIPER;1"
+  },
+  {
+   "name": "VORACIOUS_SPIDER",
+   "displayName": "Voracious Spider",
+   "canonicalId": "ATTRIBUTE_SHARD_VORACIOUS_SPIDER;1"
+  },
+  {
+   "name": "VULTURE",
+   "displayName": "Vulture",
+   "canonicalId": "ATTRIBUTE_SHARD_VULTURE;1"
+  },
+  {
+   "name": "WARTYBUG",
+   "displayName": "Wartybug",
+   "canonicalId": "ATTRIBUTE_SHARD_WARTYBUG;1"
+  },
+  {
+   "name": "WATER_HYDRA",
+   "displayName": "Water Hydra",
+   "canonicalId": "ATTRIBUTE_SHARD_WATER_HYDRA;1"
+  },
+  {
+   "name": "WATER_SNAKE",
+   "displayName": "Water Snake",
+   "canonicalId": "ATTRIBUTE_SHARD_WATER_SNAKE;1"
+  },
+  {
+   "name": "WETWING",
+   "displayName": "Wetwing",
+   "canonicalId": "ATTRIBUTE_SHARD_WETWING;1"
+  },
+  {
+   "name": "WIKI_TIKI",
+   "displayName": "Wiki Tiki",
+   "canonicalId": "ATTRIBUTE_SHARD_WIKI_TIKI;1"
+  },
+  {
+   "name": "WILD_HOG",
+   "displayName": "Wild Hog",
+   "canonicalId": "ATTRIBUTE_SHARD_WILD_HOG;1"
+  },
+  {
+   "name": "WITHER",
+   "displayName": "Wither",
+   "canonicalId": "ATTRIBUTE_SHARD_WITHER;1"
+  },
+  {
+   "name": "WITHER_SPECTER",
+   "displayName": "Wither Specter",
+   "canonicalId": "ATTRIBUTE_SHARD_WITHER_SPECTER;1"
+  },
+  {
+   "name": "WOLVERINE",
+   "displayName": "Wolverine",
+   "canonicalId": "ATTRIBUTE_SHARD_WOLVERINE;1"
+  },
+  {
+   "name": "WOODCHUCKER",
+   "displayName": "Woodchucker",
+   "canonicalId": "ATTRIBUTE_SHARD_WOODCHUCKER;1"
+  },
+  {
+   "name": "WOODLOUSE",
+   "displayName": "Woodlouse",
+   "canonicalId": "ATTRIBUTE_SHARD_WOODLOUSE;1"
+  },
+  {
+   "name": "WOODPECKER",
+   "displayName": "Woodpecker",
+   "canonicalId": "ATTRIBUTE_SHARD_WOODPECKER;1"
+  },
+  {
+   "name": "WUMPA",
+   "displayName": "Wumpa",
+   "canonicalId": "ATTRIBUTE_SHARD_WUMPA;1"
+  },
+  {
+   "name": "WYVERN",
+   "displayName": "Wyvern",
+   "canonicalId": "ATTRIBUTE_SHARD_WYVERN;1"
+  },
+  {
+   "name": "XYZ",
+   "displayName": "XYZ",
+   "canonicalId": "ATTRIBUTE_SHARD_XYZ;1"
+  },
+  {
+   "name": "YOG",
+   "displayName": "Yog",
+   "canonicalId": "ATTRIBUTE_SHARD_YOG;1"
+  },
+  {
+   "name": "ZEALOT",
+   "displayName": "Zealot",
+   "canonicalId": "ATTRIBUTE_SHARD_ZEALOT;1"
+  },
+  {
+   "name": "ZOMBIE_SOLDIER",
+   "displayName": "Zombie Soldier",
+   "canonicalId": "ATTRIBUTE_SHARD_ZOMBIE_SOLDIER;1"
+  },
+  {
+   "name": "ZOMBUDDY",
+   "displayName": "Zombuddy",
+   "canonicalId": "ATTRIBUTE_SHARD_ZOMBUDDY;1"
+  }
+ ]
+}

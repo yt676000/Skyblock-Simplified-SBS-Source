@@ -1,0 +1,31 @@
+Skyblock Simplified (SBS)
+License: GPL-3.0-or-later WITH an additional permission for linking against
+Minecraft (see the LICENSE file at the root of this jar).
+
+Copyright (c) 2026 SkyBlock Simplified GbR
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. It is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+As an additional permission under section 7 of the GNU General Public License
+version 3, you may link this program with the proprietary Minecraft client,
+Mojang-provided libraries, and Minecraft mods, and distribute the resulting
+work. This additional permission applies only to this program and not to any
+covered work derived from it by third parties who choose to remove it.
+
+The SkyBlock Simplified backend service that this mod communicates with is
+separate proprietary software and is not covered by the above licence.
+
+Third-party components:
+
+This mod uses MCEF (Minecraft Chromium Embedded Framework), licensed under the LGPL-2.1.
+Bundled as the "mcef-modern" Fabric mod; MCEF itself embeds the Chromium Embedded
+Framework (CEF) and java-cef, which are licensed under the BSD 3-Clause license.
+
+Minecraft itself is proprietary and is not redistributed with this mod.
+
+A full dependency listing is in THIRD-PARTY.md in the project source repository.
