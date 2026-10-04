@@ -225,6 +225,7 @@ public final class HotmTreeReader {
             List<String> lore = lore(stack);
             // Dev capture: the whole lore, matched or not - it is what the parser's tests are made of.
             // Deduplicated by content, so scrolling back and forth logs each distinct slot once.
+            // DEV-ONLY: slot log only
             if (DevMode.ACTIVE && loggedSlots.size() < MAX_LOGGED_SLOTS
                     && loggedSlots.add(rawName + '|' + lore)) {
                 SkyblockSimplifiedSBS.LOGGER.info("[SBS][Hotm] slot {} name=\"{}\" lore={}",

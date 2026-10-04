@@ -132,10 +132,14 @@ final class RouteMarkers {
         double metres = route.path().size() >= 2 && route.reachedGoal() ? route.length() : straightLine;
         String text = name + " · " + Math.round(metres) + "m";
         return switch (route.state()) {
-            case NO_ROUTE -> text + " §c(no route known)";
+            case NO_ROUTE -> text + (route.deepExhausted()
+                    ? " §c(no walkable route - may need a hidden entrance or a jump the planner can't do)"
+                    : " §c(no route known)");
             case PARTIAL -> text + " §c(partial)";
             case SEARCHING -> text + " §7…";
-            default -> text;
+            case DEEP_SEARCH -> text + " §7Searching the whole island... "
+                    + Math.round(route.deepProgress() * 100) + "%";
+            default -> route.unverified() ? text + " §e(unverified)" : text;
         };
     }
 }

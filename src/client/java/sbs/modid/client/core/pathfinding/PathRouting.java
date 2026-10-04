@@ -58,13 +58,23 @@ public final class PathRouting {
 
     /** Whether the developer waypoint pathfinding is on. */
     public static boolean devRouting() {
+        // DEV-ONLY: personal dev waypoints/routes; player sources have their own terms
         return DevMode.ACTIVE && cfg().pathfinding.renderPaths;
     }
 
     /** Whether anything should be routed at all. */
     public static boolean routing() {
         return questRouting() || devRouting() || mapRouting() || objectiveRouting() || fairySoulRouting()
-                || secretRouting() || commissionRouting() || hideyhoRouting();
+                || secretRouting() || commissionRouting() || hideyhoRouting() || npcRouting();
+    }
+
+    /**
+     * Whether the Recipe Viewer's "path to this NPC" wants a route. The NPC marker exists only while
+     * the player asked for the path and stands on the NPC's island (NpcLocator), so its presence is
+     * the area term; the setting is checked as well so switching it off drops the route at once.
+     */
+    public static boolean npcRouting() {
+        return cfg().recipeViewer.npcPathfinding && WaypointStore.hasSource(Waypoint.SOURCE_NPC);
     }
 
     /**
@@ -99,6 +109,7 @@ public final class PathRouting {
      * still a waypoint here, which is what gives it the marker and the route.
      */
     public static boolean drawingWaypoints() {
+        // DEV-ONLY: personal dev waypoints/routes; player sources have their own terms
         return (DevMode.ACTIVE && cfg().pathfinding.renderWaypoints) || questRouting()
                 || objectiveMarking() || mapMarking() || commissionRouting() || publishedMarking();
     }
@@ -128,11 +139,19 @@ public final class PathRouting {
                 // The Crystal Hollows map's target: published exactly while the player has one
                 // picked, and only on the Hollows.
                 || WaypointStore.hasSource(Waypoint.SOURCE_CH_MAP)
+                // The Recipe Viewer's NPC marker: published only while the player asked for the path
+                // to that NPC and is on its island, cleared on arrival or when the setting goes off.
+                || WaypointStore.hasSource(Waypoint.SOURCE_NPC)
+                // Shared Crystal Hollows structures: only while sharing is on (setting, licence,
+                // consent) and the player is in the Hollows; leaving the lobby clears them.
+                || WaypointStore.hasSource(Waypoint.SOURCE_HOLLOWS)
                 // Diana's three sets: published only while the toolkit is on, in the Hub, with the
                 // ritual awake - and cleared the moment any of that stops being true.
                 || WaypointStore.hasSource(Waypoint.SOURCE_DIANA_BURROW)
                 || WaypointStore.hasSource(Waypoint.SOURCE_DIANA_GUESS)
-                || WaypointStore.hasSource(Waypoint.SOURCE_DIANA_CREATURE);
+                || WaypointStore.hasSource(Waypoint.SOURCE_DIANA_CREATURE)
+                // The appearance preview's samples: only while it is on and a settings screen is open.
+                || WaypointStore.hasSource(Waypoint.SOURCE_DIANA_PREVIEW);
     }
 
     /**
@@ -142,7 +161,8 @@ public final class PathRouting {
     static boolean publisherOwned(Waypoint waypoint) {
         return waypoint.isPreset() || waypoint.isGemzie() || waypoint.isPing()
                 || waypoint.isHideyho() || waypoint.isTempleCheese()
-                || waypoint.isHollowsTarget() || waypoint.isDiana();
+                || waypoint.isHollowsTarget() || waypoint.isDiana() || waypoint.isNpc()
+                || waypoint.isHollowsStructure();
     }
 
     /** Whether the NPC module wants its objective marker shown. */
@@ -188,8 +208,9 @@ public final class PathRouting {
     /**
      * The waypoints that should be visible.
      *
-     * <p>Outside dev mode only quest waypoints show: the personal ones are part of the dev module,
-     * and a player running a quest has not asked to see them.
+     * <p>Outside dev mode the personal waypoints stay hidden (they are part of the dev module); what
+     * shows is the allowlist below - quest, objective and map markers behind their settings, the
+     * publisher-owned sets ({@link #publisherOwned}) and commissions.
      */
     public static List<Waypoint> visibleWaypoints() {
         List<Waypoint> inDimension = WaypointStore.inCurrentDimension();
@@ -200,6 +221,7 @@ public final class PathRouting {
         Waypoint routedCommission = commissions && !cfg().miningHelpers.commissionRouteMarkAll
                 ? PathfindingManager.getInstance().target(RouteSource.COMMISSIONS) : null;
         boolean onlyRouted = commissions && !cfg().miningHelpers.commissionRouteMarkAll;
+        // DEV-ONLY: personal dev waypoints/routes; player sources have their own terms
         if (DevMode.ACTIVE && cfg().pathfinding.renderWaypoints) {
             // Fairy Souls and dungeon secrets are drawn by their own renderers, with styling this one
             // has no concept of; letting the dev list draw them too would double every marker.
@@ -245,6 +267,7 @@ public final class PathRouting {
             case MAP -> mapRouting();
             case QUEST -> questRouting();
             case OBJECTIVE -> objectiveRouting();
+            case NPC -> npcRouting();
             case SECRETS -> secretRouting();
             case HIDEYHO -> hideyhoRouting();
             case FAIRY_SOULS -> fairySoulRouting();
@@ -300,6 +323,7 @@ public final class PathRouting {
             case MAP -> firstOf(inDimension, Waypoint::isMap);
             case QUEST -> firstOf(inDimension, Waypoint::isQuest);
             case OBJECTIVE -> firstOf(inDimension, waypoint -> waypoint.isObjective() && waypoint.routable);
+            case NPC -> firstOf(inDimension, Waypoint::isNpc);
             case SECRETS -> filter(inDimension, Waypoint::isDungeonSecret);
             case HIDEYHO -> filter(inDimension, waypoint -> waypoint.isHideyho() && waypoint.routable);
             case FAIRY_SOULS -> filter(inDimension, Waypoint::isFairySoul);
@@ -307,7 +331,7 @@ public final class PathRouting {
             case DEV -> {
                 Waypoint nearest = WaypointStore.nearestTo(from, filter(inDimension, waypoint ->
                         !waypoint.isQuest() && !waypoint.isRouteCandidate() && !waypoint.isPing()
-                                && !waypoint.isMap() && !waypoint.isObjective()
+                                && !waypoint.isMap() && !waypoint.isObjective() && !waypoint.isNpc()
                                 && !waypoint.isHollowsStructure() && !waypoint.isTempleCheese()));
                 yield nearest == null ? List.of() : List.of(nearest);
             }

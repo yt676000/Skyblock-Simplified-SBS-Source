@@ -49,6 +49,7 @@ public final class PerfOverlay {
     }
 
     public static void render(GuiGraphicsExtractor g) {
+        // DEV-ONLY: perf overlay is dev UI
         if (!visible || !DevMode.ACTIVE || HudLayout.isHidden(HudElement.PERF_OVERLAY)) {
             return;
         }

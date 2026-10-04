@@ -122,6 +122,7 @@ public final class RoutesModule implements SbsModule {
             case MAP -> "Map Click";
             case QUEST -> "Quest Guide";
             case OBJECTIVE -> "Scoreboard Objective";
+            case NPC -> "Path To NPC";
             case SECRETS -> "Dungeon Secrets";
             case HIDEYHO -> "Hideyho";
             case FAIRY_SOULS -> "Fairy Souls";

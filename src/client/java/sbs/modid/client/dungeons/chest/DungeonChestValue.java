@@ -13,6 +13,7 @@ import net.minecraft.world.item.ItemStack;
 import sbs.modid.client.economy.prices.BazaarPriceCache;
 import sbs.modid.client.economy.prices.LbinCache;
 import sbs.modid.client.economy.recipe.logic.SkyBlockItemCatalog;
+import sbs.modid.client.helper.enchants.EnchantNames;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -122,13 +123,63 @@ public final class DungeonChestValue {
      * to fall out of date.
      */
     public static Chest of(ItemStack stack) {
-        List<String> lore = lore(stack);
+        return of(lore(stack), LIVE);
+    }
+
+    /**
+     * Prices one content line - its name and stack size - into a {@link Loot}. In game the only one
+     * is {@link #LIVE}; the seam exists so a recorded tooltip can be parsed in a test, where the live
+     * caches are empty and every chest would otherwise read as unpriced.
+     */
+    @FunctionalInterface
+    public interface Pricer {
+        Loot price(String name, int count);
+    }
+
+    /** The live AH crawl + Bazaar caches. */
+    public static final Pricer LIVE = DungeonChestValue::livePrice;
+
+    /**
+     * {@link #of(ItemStack)} on lore that is already plain text.
+     *
+     * @param lore colour-stripped tooltip lines
+     * @return the chest, or {@code null} when the lines are not a reward chest's
+     */
+    public static Chest of(List<String> lore, Pricer pricer) {
+        Listing listing = parse(lore);
+        if (listing == null) {
+            return null;
+        }
+        List<Loot> loot = new ArrayList<>();
+        for (Line line : listing.lines()) {
+            loot.add(pricer.price(line.name(), line.count()));
+        }
+        return new Chest(List.copyOf(loot), listing.cost());
+    }
+
+    /** One content line as the tooltip lists it: "Undead Essence x12" -> ("Undead Essence", 12). */
+    public record Line(String name, int count) {
+    }
+
+    /** A chest tooltip read but not priced: its content lines and its cost in coins. */
+    public record Listing(List<Line> lines, long cost) {
+    }
+
+    /**
+     * Reads a chest tooltip's "Contents" listing and "Cost", or returns {@code null} when the lore is
+     * not that shape. Separate from {@link #of} so the parse can be checked against recorded menus
+     * without the price caches.
+     *
+     * <p>A Wood chest's cost line is {@code FREE} rather than a coin amount (recorded 2026-10-04);
+     * no coin line means a cost of zero, which is what free is.
+     */
+    public static Listing parse(List<String> lore) {
         int contents = lore.indexOf(CONTENTS);
         if (contents < 0) {
             return null;
         }
         Long cost = null;
-        List<Loot> loot = new ArrayList<>();
+        List<Line> lines = new ArrayList<>();
         for (int i = contents + 1; i < lore.size(); i++) {
             String line = lore.get(i).trim();
             if (line.isEmpty()) {
@@ -138,12 +189,20 @@ public final class DungeonChestValue {
                 cost = coinsAfter(lore, i);
                 break;   // the listing ends where the cost begins
             }
-            loot.add(price(line));
+            lines.add(toLine(line));
         }
-        if (loot.isEmpty()) {
+        if (lines.isEmpty()) {
             return null;
         }
-        return new Chest(List.copyOf(loot), cost == null ? 0L : cost);
+        return new Listing(List.copyOf(lines), cost == null ? 0L : cost);
+    }
+
+    private static Line toLine(String text) {
+        Matcher counted = COUNT_SUFFIX.matcher(text);
+        if (counted.matches()) {
+            return new Line(counted.group(1).trim(), (int) Math.max(1, parseNumber(counted.group(2))));
+        }
+        return new Line(text, 1);
     }
 
     /** The first "<n> Coins" line after {@code index}. */
@@ -157,18 +216,9 @@ public final class DungeonChestValue {
         return null;
     }
 
-    /** Resolves one content line to a unit price, remembering which market answered. */
-    private static Loot price(String line) {
-        String name = line;
-        int count = 1;
-        Matcher counted = COUNT_SUFFIX.matcher(line);
-        if (counted.matches()) {
-            name = counted.group(1).trim();
-            count = (int) Math.max(1, parseNumber(counted.group(2)));
-        }
-
-        String bazaarId = bazaarIdFor(name);
-        if (bazaarId != null) {
+    /** {@link #LIVE}: the Bazaar for the shapes it names, then the item catalogue. */
+    private static Loot livePrice(String name, int count) {
+        for (String bazaarId : bazaarIdCandidates(name)) {
             var bz = BazaarPriceCache.getInstance().get(bazaarId);
             if (bz != null && bz.sell() > 0) {
                 return new Loot(name, count, bz.sell(), "BZ");
@@ -198,19 +248,39 @@ public final class DungeonChestValue {
      * @return the id, or {@code null} when the name is not one of those shapes
      */
     public static String bazaarIdFor(String name) {
+        List<String> ids = bazaarIdCandidates(name);
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    /**
+     * Every Bazaar id a content line may be, most likely first.
+     *
+     * <p><b>Ultimate books drop their prefix.</b> A chest lists "Enchanted Book (Bank I)" for a book
+     * whose id is {@code ultimate_bank} (recorded F1 Gold/Emerald chests, 2026-10-04), so the
+     * literal {@code ENCHANTMENT_BANK_1} is not a product and the book went unpriced.
+     * {@link EnchantNames#resolveBase} maps the display name back once the Bazaar product list has
+     * loaded; until it has, the {@code ULTIMATE_} form is offered as a second candidate so the
+     * price lookup still finds it.
+     */
+    public static List<String> bazaarIdCandidates(String name) {
         Matcher essence = ESSENCE.matcher(name);
         if (essence.matches()) {
-            return "ESSENCE_" + essence.group(1).toUpperCase(Locale.ROOT);
+            return List.of("ESSENCE_" + essence.group(1).toUpperCase(Locale.ROOT));
         }
         Matcher book = ENCHANTED_BOOK.matcher(name);
         if (book.matches()) {
             int level = roman(book.group(2));
             if (level > 0) {
-                return "ENCHANTMENT_" + book.group(1).trim().toUpperCase(Locale.ROOT).replaceAll("\\s+", "_")
-                        + "_" + level;
+                String display = book.group(1).trim().toLowerCase(Locale.ROOT).replaceAll("\s+", "_");
+                String base = EnchantNames.resolveBase(display).toUpperCase(Locale.ROOT);
+                String id = "ENCHANTMENT_" + base + "_" + level;
+                if (base.startsWith("ULTIMATE_")) {
+                    return List.of(id);
+                }
+                return List.of(id, "ENCHANTMENT_ULTIMATE_" + base + "_" + level);
             }
         }
-        return null;
+        return List.of();
     }
 
     /** Enchantment levels are roman on the tooltip and arabic in the Bazaar id. */

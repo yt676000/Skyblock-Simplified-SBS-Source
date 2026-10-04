@@ -64,9 +64,8 @@ import java.util.Map;
  * ability is triggered. The player uses Echo; this writes down what arrived. While disarmed it costs
  * one static boolean read per packet.
  *
- * <p><b>Deliberately not gated behind {@link DevMode}</b>, for the reason {@link MenuProbe} is not:
- * the capture that matters has to be taken during a live Diana event by whoever is playing one, and
- * that is not necessarily a developer. It stays harmless because it only ever reads.
+ * <p><b>Developer mode only</b>, like every probe: the command is DEV_ONLY in CommandRegistry and
+ * arming checks {@link DevMode} again. A tester who has to capture something needs dev mode on.
  */
 public final class ParticleProbe {
 
@@ -108,6 +107,9 @@ public final class ParticleProbe {
 
     /** {@code /sbs particleprobe [arm|off|status]} - bare form reports what it is doing. */
     public void handleCommand(String argument) {
+        if (!DevMode.ACTIVE) { // DEV-ONLY: defence in depth behind the command gate
+            return;
+        }
         switch (argument == null ? "" : argument.trim().toLowerCase(Locale.ROOT)) {
             case "arm", "on", "watch" -> arm();
             case "off", "stop", "disarm" -> disarm();

@@ -59,6 +59,8 @@ public final class DungeonHighlight {
 
     private static final int COLOR_COMPLEX = 0xFFFFE000; // gold – room complex box
     private static final int COLOR_STARRED = 0xFFFFE000; // yellow – starred mob hitbox
+    /** Opacity (percent) of the known wither doors that are not the next one ("Show All Wither Doors"). */
+    private static final int FAINT_DOOR_OPACITY = 35;
     /** Height (blocks) of the drawn room-complex box above the floor. */
     private static final int BOX_HEIGHT = 6;
 
@@ -183,17 +185,19 @@ public final class DungeonHighlight {
             }
         }
 
-        // Feature: coal wither / blood doors, boxed in the locked colour (or the key colour on the
-        // current room's door while a wither key is held). The list is built on the client tick.
+        // Feature: the next wither / blood door, boxed in the locked colour or - once the party has
+        // the key - the key colour; other known doors faintly. The list is built on the client tick.
         if (ConfigManager.getInstance().get().dungeons.witherDoors) {
             var dungeons = ConfigManager.getInstance().get().dungeons;
+            boolean doorLine = tracers || dungeons.witherDoorPointer;
             for (WitherDoorTracker.DoorBox door : WitherDoorTracker.getInstance().doorBoxes()) {
-                int color = (door.green() ? dungeons.witherDoorKeyColor : dungeons.witherDoorColor).argb();
+                var colour = door.keyColour() ? dungeons.witherDoorKeyColor : dungeons.witherDoorColor;
+                int color = door.next() ? colour.argb() : colour.withOpacity(FAINT_DOOR_OPACITY);
                 BlockPos min = door.min();
                 BlockPos max = door.max();
                 drawBoxEdges(g, viewProjection, camPos, min.getX(), min.getY(), min.getZ(),
                         max.getX() + 1, max.getY() + 1, max.getZ() + 1, color);
-                if (tracers) {
+                if (doorLine && door.next()) {
                     sbs.modid.client.core.render.WorldRender.tracer(g, viewProjection, camPos,
                             new Vec3((min.getX() + max.getX() + 1) / 2.0,
                                     (min.getY() + max.getY() + 1) / 2.0,
@@ -216,6 +220,7 @@ public final class DungeonHighlight {
         }
 
         // Debug layer: only in developer mode.
+        // DEV-ONLY: debug marker layer
         if (DevMode.ACTIVE) {
             for (BlockPos test : testWaypoints) {
                 marker(g, font, viewProjection, camPos, center(test), COLOR_TEST, "TEST", true);

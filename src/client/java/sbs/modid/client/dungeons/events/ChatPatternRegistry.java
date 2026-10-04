@@ -84,6 +84,7 @@ public final class ChatPatternRegistry {
             return;
         }
         String text = FarmingText.strip(line);
+        // DEV-ONLY: raw-line log only
         if (sbs.modid.client.core.dev.DevMode.ACTIVE) {
             // The capture the reminder patterns are written from: both forms, so a pattern can be
             // checked against what actually arrives instead of against an assumed shape.

@@ -84,9 +84,8 @@ import java.util.Set;
  * <p><b>What it does not do.</b> Nothing is cancelled, drawn, highlighted or sent. No command leaves
  * the client. While disarmed it costs one static boolean read per packet.
  *
- * <p><b>Deliberately not gated behind {@link DevMode}</b>, for the reason {@link ParticleProbe} is
- * not: the capture that matters has to be taken during a live M7 by whoever is running one, and that
- * is not necessarily a developer. It stays harmless because it only ever reads.
+ * <p><b>Developer mode only</b>, like every probe: the command is DEV_ONLY in CommandRegistry and
+ * arming checks {@link DevMode} again. A tester who has to capture something needs dev mode on.
  */
 public final class M7DragonProbe {
 
@@ -186,6 +185,9 @@ public final class M7DragonProbe {
 
     /** {@code /sbs m7probe [arm|off|status]} - the bare form reports what it is doing. */
     public void handleCommand(String argument) {
+        if (!DevMode.ACTIVE) { // DEV-ONLY: defence in depth behind the command gate
+            return;
+        }
         switch (argument == null ? "" : argument.trim().toLowerCase(Locale.ROOT)) {
             case "arm", "on", "watch" -> arm();
             case "off", "stop", "disarm" -> disarm();

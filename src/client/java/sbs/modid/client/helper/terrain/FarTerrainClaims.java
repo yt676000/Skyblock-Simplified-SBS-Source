@@ -111,20 +111,48 @@ public final class FarTerrainClaims {
         return new Data();
     }
 
-    /** Writes pending changes. Called on the IO worker alongside the terrain save. */
-    public synchronized void save() {
-        if (!dirty || data == null) {
-            return;
+    /**
+     * Writes pending changes. Called on the IO worker alongside the terrain save, and only there, so
+     * two saves never overlap.
+     *
+     * <p>Only the copy is taken under the lock; serializing and writing happen outside it. The client
+     * thread calls {@link #claim} for every captured chunk, and holding the lock across the write made
+     * each chunk packet that arrived during a save wait for the disk.
+     */
+    public void save() {
+        Data snapshot;
+        synchronized (this) {
+            if (!dirty || data == null) {
+                return;
+            }
+            dirty = false;
+            snapshot = copy(data);
         }
-        dirty = false;
         try {
             Files.createDirectories(file.getParent());
-            Files.writeString(file, GSON.toJson(data), StandardCharsets.UTF_8);
+            Files.writeString(file, GSON.toJson(snapshot), StandardCharsets.UTF_8);
         } catch (Exception e) {
-            dirty = true;
+            synchronized (this) {
+                dirty = true;
+            }
             SkyblockSimplifiedSBS.LOGGER.warn(
                     "[SBS][Terrain] could not write the island claims for {} ({})", map, e.toString());
         }
+    }
+
+    /**
+     * A copy of {@code source} that later claims cannot change. The position arrays are never written
+     * after they are added, so they are shared rather than copied.
+     */
+    private static Data copy(Data source) {
+        Data out = new Data();
+        for (Map.Entry<String, Set<Long>> entry : source.islands.entrySet()) {
+            out.islands.put(entry.getKey(), new HashSet<>(entry.getValue()));
+        }
+        for (Map.Entry<String, List<int[]>> entry : source.overlaps.entrySet()) {
+            out.overlaps.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        }
+        return out;
     }
 
     /** The island-to-claimed-keys map of a legacy claims file, for the Main Map split migration. */

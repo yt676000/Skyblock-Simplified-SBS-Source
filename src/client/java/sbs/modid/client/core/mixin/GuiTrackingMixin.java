@@ -150,6 +150,11 @@ public class GuiTrackingMixin {
         sbs.modid.client.dungeons.run.logic.WitherDoorTracker.getInstance().tick(minecraft);
         // Dungeon run state (floor/phase/class/secrets/rooms): single source for every dungeon feature.
         sbs.modid.client.dungeons.run.logic.DungeonStateManager.getInstance().tick(minecraft);
+        // Secret counters (tab + action bar) -> item/bat/essence pickups. After the state manager
+        // (its tab count) and before Secret Routes, whose routing must see the pickup this tick.
+        sbs.modid.client.dungeons.run.logic.CollectedSecrets.getInstance().tick(minecraft);
+        // Reward chests in the room: links each preview menu to the chest clicked; reads the gate above.
+        sbs.modid.client.dungeons.chest.RewardChestGlow.getInstance().tick(minecraft);
         // Trap Highlighter: fills the tripwire/dispenser index against a per-tick budget on entering a
         // run, then does nothing at all - the chunk and block hooks keep it current from there.
         // Deliberately after the state manager, which is the gate it reads.

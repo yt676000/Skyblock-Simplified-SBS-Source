@@ -416,8 +416,17 @@ public final class PathRenderer {
             if (!waypoint.throughWalls && occluded(camPos, centre(pos).add(0, 0.5, 0))) {
                 continue;   // the caller asked for this one to hide behind terrain
             }
-            drawMarker(g, viewProjection, camPos, pos, rgb, active, breath, alphaScale);
-            drawBeam(g, viewProjection, camPos, pos, rgb, active, alphaScale);
+            // A null box from a hand-edited file is the default outline, never a marker with no box.
+            MarkerBox box = waypoint.box == null ? MarkerBox.OUTLINE : waypoint.box;
+            if (box.filled()) {
+                fillMarker(g, viewProjection, camPos, pos, rgb, alphaScale);
+            }
+            if (box.outline()) {
+                drawMarker(g, viewProjection, camPos, pos, rgb, active, breath, alphaScale);
+            }
+            if (waypoint.beam) {
+                drawBeam(g, viewProjection, camPos, pos, rgb, active, alphaScale);
+            }
 
             // A route's destination marker already carries this waypoint's name and distance;
             // a second label on the same spot would just be the same words twice.
@@ -450,6 +459,18 @@ public final class PathRenderer {
                 SciFiPathStyle.argb(rgb, scaled(40, alphaScale)), active ? 4 : 3);
         box(g, viewProjection, camPos, pos, grow,
                 SciFiPathStyle.argb(rgb, scaled(coreAlpha, alphaScale)), active ? 2 : 1);
+    }
+
+    /**
+     * The filled box: the block's projected silhouette at a low alpha. {@code fillBox} fills the
+     * screen-space bounding rectangle, so this reads as a glow over the block rather than a cube -
+     * the shape the HUD pipeline can draw, and why the outline stays available beside it.
+     */
+    private static void fillMarker(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+                                   BlockPos pos, int rgb, double alphaScale) {
+        WorldRender.fillBox(g, viewProjection, camPos,
+                pos.getX(), pos.getY(), pos.getZ(), pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1,
+                SciFiPathStyle.argb(rgb, scaled(70, alphaScale)));
     }
 
     /** Draws a cube around a block, inflated by {@code grow} on every side. */
@@ -507,6 +528,17 @@ public final class PathRenderer {
             // Be honest when the route only gets close rather than all the way there.
             label += " §c(partial)";
         }
+        // The label size scales both lines about the projected anchor, so a larger label grows
+        // upward and outward from the same point instead of drifting off the beam. Normal is 1.0
+        // and skips the matrix push, which keeps every other waypoint's label exactly as it was.
+        float labelScale = waypoint.labelSize == null ? 1.0f : waypoint.labelSize.scale();
+        boolean scaledLabel = labelScale != 1.0f;
+        if (scaledLabel) {
+            g.pose().pushMatrix();
+            g.pose().translate(screen[0], screen[1]);
+            g.pose().scale(labelScale);
+            g.pose().translate(-screen[0], -screen[1]);
+        }
         g.centeredText(font, Component.literal(label), screen[0], screen[1],
                 SciFiPathStyle.argb(rgb, scaled(255, alphaScale)));
 
@@ -520,6 +552,9 @@ public final class PathRenderer {
             int subRgb = own == null ? rgb : own;
             g.centeredText(font, Component.literal(sub), screen[0], screen[1] + font.lineHeight,
                     SciFiPathStyle.argb(subRgb, scaled(255, alphaScale)));
+        }
+        if (scaledLabel) {
+            g.pose().popMatrix();
         }
     }
 

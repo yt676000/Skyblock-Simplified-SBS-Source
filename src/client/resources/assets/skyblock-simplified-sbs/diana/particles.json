@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "dataVersion": 2,
+  "dataVersion": 3,
   "speedTolerance": 0.0005,
   "offsetTolerance": 0.02,
   "arrowColorTolerance": 0.5,
@@ -67,10 +67,15 @@
       "note": "one arrow particle; offsets are a colour payload and must stay unmatched"
     }
   ],
-  "arrowBands": [],
+  "arrowBands": [
+    {"offsets": [0, 128, 0], "min": 0, "max": 117, "label": "green - study figure, never seen on this client"},
+    {"offsets": [255, 255, 0], "min": 112, "max": 282, "label": "yellow - confirmed 2026-10-04, five arrows at 123-274 blocks"},
+    {"offsets": [255, 0, 0], "min": 281, "max": 600, "label": "red - study figure; seen once, its target not dug"}
+  ],
   "chains": [
     {"tier": "ANCESTRAL", "erudite": false, "length": 4},
-    {"tier": "ANCESTRAL", "erudite": true, "length": 6}
+    {"tier": "ANCESTRAL", "erudite": true, "length": 6},
+    {"tier": "DEIFIC", "erudite": true, "length": 10}
   ],
   "hubBounds": {
     "minX": -283.0,
@@ -112,12 +117,10 @@
     "minecraft:acacia_leaves",
     "minecraft:dark_oak_leaves"
   ],
-  "spadeCurve": {
-    "pitchShift": 0.75,
-    "controlScale": 24.0,
-    "controlOffset": 25.0,
-    "parameterScale": 3.0,
-    "landingDrop": 0.5,
-    "certainty": "ESTIMATED"
+  "echo": {
+    "scale": 2.7114,
+    "offset": 0.91,
+    "sound": "minecraft:block.note_block.harp",
+    "certainty": "CONFIRMED"
   }
 }

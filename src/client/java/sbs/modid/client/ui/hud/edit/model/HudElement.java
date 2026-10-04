@@ -317,6 +317,12 @@ public enum HudElement {
         @Override public Bounds defaultBounds(int gw, int gh) { return new Bounds(gw - 170f, gh / 2f + 140, 150, 18); }
     },
 
+    // Precision Mining line (Mining): "Precision: on target" while a target marker is shown. Off by
+    // default. Just under the crosshair, since that is where the player is looking. Self-measuring.
+    PRECISION_MINING("precision_mining", "Precision Mining") {
+        @Override public Bounds defaultBounds(int gw, int gh) { return new Bounds(gw / 2f - 50, gh / 2f + 14, 100, 18); }
+    },
+
     // Powder card (Mining): the Mithril / Gemstone / Glacite totals, session gain and rates. Sits
     // under the HotM tier, which is where these rows used to be drawn. Self-measuring.
     MINING_POWDER("mining_powder", "Powders") {
@@ -619,6 +625,12 @@ public enum HudElement {
         @Override public Bounds defaultBounds(int gw, int gh) { return new Bounds(4, 150, 170, 50); }
     },
 
+    // Divan Tools card (Skills > Metal Detector, off by default): the four scavenged tools and the
+    // Jade Crystal. Self-measuring; left-hand list band under Mining Events, Crystal Hollows only.
+    DIVAN_CHECKLIST("divan_checklist", "Divan Tools") {
+        @Override public Bounds defaultBounds(int gw, int gh) { return new Bounds(4, 205, 170, 70); }
+    },
+
     // Crystal Hollows minimap (Skills > Mining, off by default). Self-measuring square; the nominal
     // size here is the default side length. Top right, under the status effects.
     CH_MINIMAP("ch_minimap", "Crystal Hollows Minimap") {
@@ -698,7 +710,8 @@ public enum HudElement {
             case COMPOSTER, FARMING_TRACKER, VISITOR_SHOPPING, VISITOR_TIMER, PEST_PROFIT -> "garden_helpers";
             case CROP_MILESTONE, FARMING_FORTUNE, HOE_LEVEL, JACOB_CONTEST, FARM_DROPS, FARMING_SPEED ->
                     sbs.modid.client.core.module.ModuleManager.FARMING_ID;
-            case MINING_COMMISSIONS, MINING_HOTM, HOTM_REMINDER, MINING_POWDER, MINING_TOOL, ABILITY_READY ->
+            case MINING_COMMISSIONS, MINING_HOTM, HOTM_REMINDER, MINING_POWDER, MINING_TOOL, ABILITY_READY,
+                 PRECISION_MINING ->
                     "mining_helpers";
             case GARDEN_LEVEL, PEST_TIMER, PEST_ALERT, PEST_COOLDOWN -> "garden";
             case PEST_STATUS -> "pest_status";
@@ -729,6 +742,7 @@ public enum HudElement {
             case LOBBY_DAY -> "reminders";
             case NUCLEUS_RUN -> "nucleus_run";
             case MINING_EVENTS -> "mining_events";
+            case DIVAN_CHECKLIST -> "metal_detector";
             case BUILD_TOOLS, BUILD_HELP -> "build_tools";
             case DIANA_TRACKER, DIANA_CREATURES -> "diana";
             default -> sbs.modid.client.core.module.ModuleManager.HYPIXEL_GUI_ID;

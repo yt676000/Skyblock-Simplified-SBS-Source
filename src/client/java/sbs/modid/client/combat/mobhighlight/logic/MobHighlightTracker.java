@@ -15,10 +15,10 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.decoration.ArmorStand;
-import net.minecraft.world.entity.player.Player;
 import sbs.modid.client.combat.mobhighlight.render.MobHighlightRenderer;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.core.player.RealPlayers;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -295,12 +295,13 @@ public final class MobHighlightTracker {
     /**
      * The living mob a nametag armor stand belongs to: nearest living entity just below it. The
      * search box is generous (1 block out, 4 blocks down) because custom Hypixel mobs are often tall
-     * and their nametag floats well above the body - a tight box missed them.
+     * and their nametag floats well above the body - a tight box missed them. Real players are
+     * skipped; Hypixel's player-model mobs are fake players and stay candidates.
      */
     public static LivingEntity mobBelow(ClientLevel level, ArmorStand stand) {
         List<LivingEntity> mobs = level.getEntitiesOfClass(LivingEntity.class,
                 stand.getBoundingBox().inflate(1.0, 0, 1.0).expandTowards(0, -4, 0),
-                m -> m != stand && !(m instanceof ArmorStand) && !(m instanceof Player) && m.isAlive());
+                m -> m != stand && !(m instanceof ArmorStand) && !RealPlayers.isRealPlayerEntity(m) && m.isAlive());
         LivingEntity best = null;
         double bestDistance = Double.MAX_VALUE;
         for (LivingEntity mob : mobs) {

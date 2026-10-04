@@ -41,8 +41,17 @@ public final class SettingRow {
     private final boolean isLabel;
     /** The hover description; a row without one simply shows no tooltip. */
     private String description;
-    /** Greyed out and unclickable – see {@link #disabled()}. */
-    private boolean disabled;
+    /**
+     * Greyed out and unclickable while this holds – see {@link #disabled()} and
+     * {@link #disabledWhile}. Asked again every frame, never frozen into the widget.
+     */
+    private BooleanSupplier disabledWhen = () -> false;
+
+    /**
+     * Set by {@link #disabledWhile}. Only such a row has its widget re-synced each frame: a fixed row
+     * leaves {@code active} to the widget, which may have switched itself off for reasons of its own.
+     */
+    private boolean liveAvailability;
 
     /** Needs an SBS licence token – see {@link #licenced(String)}. Still fully usable. */
     private boolean licenced;
@@ -106,25 +115,55 @@ public final class SettingRow {
      * indistinguishable from a switch we forgot to tell you about.
      */
     public SettingRow disabled() {
-        this.disabled = true;
+        this.disabledWhen = () -> true;
         return this;
     }
 
     /**
-     * {@link #disabled()} when {@code condition} holds, for a row whose availability is decided at
-     * build time - the operating system, a missing capability, a feature switched off above it.
+     * {@link #disabled()} when {@code condition} holds, for a row whose availability is fixed for the
+     * whole session - the operating system, a missing capability.
      *
-     * <p>Exists so a conditional row stays one readable chain inside the page's {@code List.of(...)}
-     * rather than being lifted out into a local and re-assigned, which is where "and pair it with a
-     * label saying why" stops happening.
+     * <p><b>Not</b> for a row that depends on another setting. A page is not rebuilt when a toggle on
+     * it flips, and the Favourites page shows rows from several modules at once, so a value read here
+     * goes stale the moment the player changes it: the IRC Tab row stayed dead after IRC Chat was
+     * switched on. Use {@link #disabledWhile} for those.
      */
     public SettingRow disabledIf(boolean condition) {
         return condition ? disabled() : this;
     }
 
-    /** Whether {@link #disabled()} was applied. */
+    /**
+     * Greyed out while {@code condition} holds, asked again every frame - for a row that depends on
+     * another setting ("needs IRC Chat on"), which the player can change without the page being
+     * rebuilt.
+     */
+    public SettingRow disabledWhile(BooleanSupplier condition) {
+        this.disabledWhen = condition;
+        this.liveAvailability = true;
+        return this;
+    }
+
+    /** Whether the row is greyed out right now. */
     public boolean isDisabled() {
-        return disabled;
+        return disabledWhen.getAsBoolean();
+    }
+
+    /**
+     * Puts {@code widget}, built by this row, in step with {@link #isDisabled()}. The row list calls
+     * this every frame, which is what makes {@link #disabledWhile} live.
+     */
+    public void syncAvailability(AbstractWidget widget) {
+        if (liveAvailability) {
+            widget.active = !isDisabled();
+        }
+    }
+
+    /**
+     * One line in latest.log for a flipped setting: {@code [SBS][Settings] <row> -> <value>}. For
+     * rows whose "it does not switch off" reports have to be answerable from the log alone.
+     */
+    public static void logChange(String row, Object value) {
+        sbs.modid.SkyblockSimplifiedSBS.LOGGER.info("[SBS][Settings] {} -> {}", row, value);
     }
 
     /**
@@ -267,7 +306,7 @@ public final class SettingRow {
 
     public AbstractWidget create(int x, int y, int width, int height) {
         AbstractWidget widget = factory.create(x, y, width, height);
-        if (disabled) {
+        if (isDisabled()) {
             widget.active = false;
         }
         return widget;

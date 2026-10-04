@@ -124,9 +124,14 @@ public final class ArmorSetsOverlay implements sbs.modid.client.core.config.Prof
         return ArmorSetsPage.isArmorSets(title);
     }
 
+    /** Whether the overlay covers a menu with this title while SBS Wardrobe View is {@code enabled}. */
+    public static boolean covers(String title, boolean enabled) {
+        return enabled && isArmorSetsMenu(title);
+    }
+
     /** True while the overlay covers the menu and takes its input. */
     public boolean isActive(AbstractContainerScreen<?> screen) {
-        return enabled() && !editMode && screen instanceof ContainerScreen && isArmorSetsMenu(title(screen));
+        return !editMode && screen instanceof ContainerScreen && covers(title(screen), enabled());
     }
 
     /** Ends "Show Hypixel menu" once no Armor Sets page is open (a server refresh keeps it on). */
@@ -418,14 +423,9 @@ public final class ArmorSetsOverlay implements sbs.modid.client.core.config.Prof
                 y + (SBSTheme.SEARCH_HEIGHT - font.lineHeight) / 2, SBSTheme.TEXT);
     }
 
+    /** The real tooltip, SBS lines included - see {@link sbs.modid.client.core.item.ItemTooltip}. */
     private static List<Component> stackTooltip(ItemStack stack) {
-        List<Component> tip = new ArrayList<>();
-        tip.add(stack.getHoverName());
-        var lore = stack.get(DataComponents.LORE);
-        if (lore != null) {
-            tip.addAll(lore.lines());
-        }
-        return tip;
+        return sbs.modid.client.core.item.ItemTooltip.of(stack);
     }
 
     static String age(long ms) {

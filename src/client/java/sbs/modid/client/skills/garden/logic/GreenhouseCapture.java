@@ -106,6 +106,7 @@ public final class GreenhouseCapture {
     }
 
     private static boolean enabled() {
+        // DEV-ONLY: adds the capture; its own setting works without dev mode
         return DevMode.ACTIVE || ConfigManager.getInstance().get().gardenHelpers.greenhouseCapture;
     }
 

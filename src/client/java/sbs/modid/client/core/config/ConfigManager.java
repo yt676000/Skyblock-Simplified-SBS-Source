@@ -128,6 +128,7 @@ public final class ConfigManager {
                         migrateScoreboardLayout(loaded);
                         migrateChromaSpeed(loaded);
                         migrateHighlightNames(loaded);
+                        migrateDianaHud(loaded);
                         // Last, and after the migrations: it may only turn something on once the
                         // field it is turning on has finished being upgraded.
                         adoptShippedDefaults(loaded);
@@ -143,8 +144,10 @@ public final class ConfigManager {
         }
         SBSConfig fresh = new SBSConfig();
         migrateHudLayout(fresh);
-        // Born with the shipped defaults, so record that rather than re-applying them next launch.
-        adoptShippedDefaults(fresh);
+        // Born with the shipped defaults - the field initialisers ARE them - so only record the
+        // round. Running the rounds here would overwrite newer initialisers with older round
+        // values (round 2 forces Keep Mouse Position on, which a fresh install now ships off).
+        fresh.defaultsAdopted = SHIPPED_DEFAULTS;
         writeToDisk(fresh);
         return fresh;
     }
@@ -197,9 +200,9 @@ public final class ConfigManager {
             // and handing them a curated panel is the point. A layout that exists is left alone.
             if (scoreboard.elementOrder == null || scoreboard.elementOrder.isEmpty()) {
                 scoreboard.elementOrder =
-                        sbs.modid.client.helper.scoreboard.ScoreboardLayout.defaultOrder();
+                        sbs.modid.client.helper.scoreboard.ScoreboardLayout.round1Order();
                 scoreboard.hiddenElements =
-                        sbs.modid.client.helper.scoreboard.ScoreboardLayout.defaultHidden();
+                        sbs.modid.client.helper.scoreboard.ScoreboardLayout.round1Hidden();
             }
         }
         if (config.tabList != null) {
@@ -208,6 +211,17 @@ public final class ConfigManager {
         SkyblockSimplifiedSBS.LOGGER.info(
                 "[SBS] Adopted shipped defaults v{}: Custom Scoreboard + SBS Tab-List on",
                 SHIPPED_DEFAULTS);
+    }
+
+    /**
+     * Turns the four Diana card switches into the arranged line layout, once. An unarranged config
+     * takes exactly the lines its switches drew, so nothing on screen moves; the switches are then
+     * nulled. See {@code DianaHudLayout.migrate}.
+     */
+    private void migrateDianaHud(SBSConfig config) {
+        if (config.diana != null) {
+            sbs.modid.client.combat.diana.logic.DianaHudLayout.migrate(config.diana);
+        }
     }
 
     /**

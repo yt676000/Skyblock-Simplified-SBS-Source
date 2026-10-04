@@ -392,6 +392,9 @@ public final class FairySoulTracker {
      * skin. This is the open question from 2026-09-26 (block or armor stand?).
      */
     public void probe() {
+        if (!sbs.modid.client.core.dev.DevMode.ACTIVE) { // DEV-ONLY: defence in depth behind the command gate
+            return;
+        }
         Minecraft minecraft = Minecraft.getInstance();
         Player player = minecraft.player;
         if (player == null || minecraft.level == null) {

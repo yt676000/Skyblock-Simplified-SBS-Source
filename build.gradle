@@ -188,6 +188,47 @@ tasks.register('uiControlCheck') {
 
 tasks.named('check') { dependsOn 'uiControlCheck' }
 
+// Developer mode may only ADD debug output; it is never the reason a player feature works. Every use
+// outside core/dev/ says why it is dev-only, on the line or the line above: "// DEV-ONLY: reason".
+// Comments, javadoc and imports are not uses.
+tasks.register('devModeCheck') {
+	group = 'verification'
+	description = 'Fails on a DevMode use outside core/dev without a "// DEV-ONLY: reason" marker.'
+	def root = file('src/client/java/sbs/modid/client')
+	inputs.dir root
+	outputs.upToDateWhen { false }
+	doLast {
+		def offenders = []
+		root.eachFileRecurse { f ->
+			if (!f.name.endsWith('.java')) {
+				return
+			}
+			def rel = root.toPath().relativize(f.toPath()).toString().replace('\\', '/')
+			if (rel.startsWith('core/dev/')) {
+				return
+			}
+			def lines = f.readLines('UTF-8')
+			lines.eachWithIndex { line, i ->
+				def t = line.trim()
+				if (!t.contains('DevMode') || t.startsWith('*') || t.startsWith('/*') || t.startsWith('//')
+						|| t.startsWith('import ')) {
+					return
+				}
+				def marked = line.contains('// DEV-ONLY:') || (i > 0 && lines[i - 1].contains('// DEV-ONLY:'))
+				if (!marked) {
+					offenders << "  ${rel}:${i + 1}: ${t}"
+				}
+			}
+		}
+		if (!offenders.isEmpty()) {
+			throw new GradleException("DevMode used without a '// DEV-ONLY: reason' marker:\n"
+					+ offenders.join('\n')
+					+ "\nDeveloper mode may only add debug output - a player feature must work with it off.")
+		}
+	}
+}
+tasks.named('check') { dependsOn 'devModeCheck' }
+
 // Deliberately conservative: it enforces the things that actually cause noise
 // diffs (line endings, trailing whitespace, import order) and does NOT reformat
 // existing code. A full reformat would rewrite all ~290 files at once and bury

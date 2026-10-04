@@ -116,7 +116,7 @@ public final class ForagingSweepModule implements SbsModule {
                         .describe("How long a chop stays live before the setting above applies. "
                                 + "Has no effect while the setting above is Keep showing, which "
                                 + "never greys out. Default: 10s.")
-                        .disabledIf(cfg().staleMode == SweepStaleMode.KEEP),
+                        .disabledWhile(() -> cfg().staleMode == SweepStaleMode.KEEP),
 
                 SettingRow.toggle("Only While Chopping", () -> cfg().requireRecentChop,
                                 () -> { cfg().requireRecentChop = !cfg().requireRecentChop; save(); })
@@ -129,7 +129,7 @@ public final class ForagingSweepModule implements SbsModule {
                                 () -> cfg().recentChopSeconds,
                                 value -> { cfg().recentChopSeconds = value; save(); }, "s")
                         .describe("How long a felled log keeps the card on screen. Default: 20s.")
-                        .disabledIf(!cfg().requireRecentChop),
+                        .disabledWhile(() -> !cfg().requireRecentChop),
 
                 SettingRow.toggle("Only With An Axe In Hand", () -> cfg().requireAxeInHand,
                                 () -> { cfg().requireAxeInHand = !cfg().requireAxeInHand; save(); })

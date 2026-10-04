@@ -47,6 +47,9 @@ public abstract class AttackTrackMixin {
         sbs.modid.client.skills.garden.pests.PestProfitTracker.getInstance().onEntityInteract(target);
         // Layout Recorder (dev): the right-clicked NPC / entity becomes the root of the click path.
         sbs.modid.client.core.dev.ScreenOpeners.getInstance().onEntityInteract(target);
+        // Reward chests: they are opened through an armor stand, so this - not BlockInteractMixin -
+        // is where the client learns which chest a preview belongs to.
+        sbs.modid.client.dungeons.chest.RewardChestGlow.getInstance().onEntityInteract(target);
     }
 
     @Inject(method = "startDestroyBlock", at = @At("HEAD"))

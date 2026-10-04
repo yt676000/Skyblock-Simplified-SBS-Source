@@ -175,6 +175,33 @@ public final class CommandRegistry {
         return null;
     }
 
+    /**
+     * Whether a typed command is {@link Visibility#DEV_ONLY}: {@code root} is the word after the
+     * slash ("sbs", "sbsdev"), {@code firstWord} the word after that ("probe"), or {@code ""}.
+     * The one lookup the dispatch gates every developer command on.
+     */
+    public static boolean isDevOnly(String root, String firstWord) {
+        String r = root == null ? "" : root.toLowerCase(Locale.ROOT).replaceFirst("^/", "");
+        if (r.equals("skyblocksimplified")) {
+            r = "sbs";
+        }
+        String w = firstWord == null ? "" : firstWord.trim();
+        for (Command c : ALL) {
+            if (c.visibility() != Visibility.DEV_ONLY || !c.root().equalsIgnoreCase(r)) {
+                continue;
+            }
+            if (c.name().isEmpty()) {
+                return true;
+            }
+            for (String n : c.names()) {
+                if (n.equalsIgnoreCase(w)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     // ------------------------------------------------------------------ the list
 
     private static List<Command> build() {
@@ -227,8 +254,6 @@ public final class CommandRegistry {
                 "Lists your running honey tree timers; \"held\" checks the item in your hand.", SKILLS);
         sbs(l, "commission", List.of("commissions"), "[blocks|reload]", "blocks|reload",
                 "Shows what each mining commission is looking for.", SKILLS);
-        sbs(l, "sweep", List.of(), "capture on|off|status", null,
-                "Records the foraging chop lines to a file, for fixing the Sweep parser.", DEVELOPER);
 
         // --- Combat
         sbs(l, "trackcarry", List.of("carry"), "<boss> <player>", "<text>",
@@ -238,10 +263,6 @@ public final class CommandRegistry {
                 "mark|area|list|del|clear|reload|export|import", "Manages your Kuudra pearl setups.", COMBAT);
         sbs(l, "diana", List.of(), "[status|clear|debug]", "status|clear|debug",
                 "Says what the Diana helper currently believes about burrows and guesses, and why.", COMBAT);
-        sbs(l, "devlog", List.of(), "diana [status|mark <text>|rearm|export]", "diana",
-                "Records everything around the Diana ritual to a file, so the Diana helper can be fixed "
-                        + "from what really happens. Run it again to stop.", COMBAT,
-                "/sbs devlog diana mark dug the second burrow");
 
         // --- Dungeons
         sbs(l, "terminals", List.of("terminal"), "", "", "Opens the terminal practice screen.", DUNGEONS);
@@ -253,7 +274,11 @@ public final class CommandRegistry {
         // --- Party & Chat
         sbs(l, "party", List.of(), "[message]", "<text>",
                 "With a message, sends it to your party; bare, opens the Party Finder.", PARTY);
-        root(l, "pf", "", "", "Opens the Party Finder (same as /sbs party).", PARTY);
+        // Gated like the dispatch gates it (SBSCommands.FEATURE_ROOTS): off, /pf is not ours at all.
+        l.add(new Command("pf", "", List.of(), "", "",
+                "Opens the Party Finder (same as /sbs party). Off, /pf is left to other mods.", PARTY,
+                "Party Finder (SBS Party Finder)", () -> sbs.modid.client.core.config.ConfigManager.getInstance()
+                        .get().partyFinder.enabled, Visibility.PUBLIC, ""));
         sbs(l, "irc", List.of(), "<message>", "<text>", "Sends a message into the SBS IRC chat.", PARTY);
         root(l, "sendcoords", "[party|guild|coop|all] [note]", null,
                 "Posts your coordinates into a chat channel, with an optional note.", PARTY,
@@ -274,10 +299,17 @@ public final class CommandRegistry {
         shortcut(l, "pa", "[player]", "Accepts a party invite - without a name, the last one you got.");
 
         // --- Inventory & Items
-        root(l, "pv", "[player]", "<word>", "Opens the Player Viewer - your own profile without a name.", ITEMS,
-                List.of(), "/pv PlayerName");
+        l.add(new Command("pv", "", List.of(), "[player]", "<word>",
+                "Opens the Profile Viewer - your own profile without a name. Off, /pv is left to other mods.",
+                ITEMS, "Profile Viewer (Player Viewer)", () -> sbs.modid.client.core.config.ConfigManager
+                        .getInstance().get().playerViewer.profileViewer, Visibility.PUBLIC, "/pv PlayerName"));
+        sbs(l, "pv", List.of(), "[player]", "<word>",
+                "Opens the Profile Viewer, like /pv - and still answers while /pv is given back to other mods.",
+                ITEMS, "/sbs pv PlayerName");
         sbs(l, "skycrypt", List.of(), "[player]", "<word>", "Opens SkyCrypt in the in-game browser.", ITEMS);
         sbs(l, "museum", List.of(), "", "", "Lists what your museum is still missing, cheapest XP first.", ITEMS);
+        sbs(l, "seymour", List.of(), "", "",
+                "Lists every Seymour piece you own with how special its colour is.", ITEMS);
         sbs(l, "accessories", List.of("missing"), "", "",
                 "Lists the accessories this profile is missing.", ITEMS);
         sbs(l, "protect", List.of(), "[list|clear]", "list|clear", "Opens the Item Protection list.", ITEMS);
@@ -328,8 +360,14 @@ public final class CommandRegistry {
         dev(l, "sbs", "particleprobe", List.of(), "[arm|off|status]", "Writes every particle packet to a file.");
         dev(l, "sbs", "soundprobe", List.of(), "[arm|off|status]", "Writes every nearby sound to a file.");
         dev(l, "sbs", "m7probe", List.of(), "[arm|off|status]", "Captures the M7 dragon phase for a whole fight.");
+        dev(l, "sbs", "npccheck", List.of(), "",
+                "Lists the catalogued NPCs standing near you against the NPC table, with the distance.");
         dev(l, "sbs", "soulprobe", List.of(), "", "Logs every head near you, to identify a Fairy Soul.");
         dev(l, "sbs", "entityprobe", List.of(), "[arm|off|status]", "Snapshots nearby entities and nametag changes.");
+        dev(l, "sbs", "devlog", List.of(), "diana [status|mark <text>|rearm|export]",
+                "Records everything around the Diana ritual to a file. Run it again to stop.");
+        dev(l, "sbs", "sweep", List.of(), "capture on|off|status",
+                "Records the foraging chop lines to a file, for fixing the Sweep parser.");
         dev(l, "sbsdev", "", List.of(), "[origin [x z]]", "Toggles developer mode; sets the dungeon grid origin.");
         dev(l, "sbstest", "", List.of(), "[clear]", "Developer highlight test.");
 

@@ -998,7 +998,13 @@ public final class ModuleSettings {
                                     + "reach it or run /sbs waypoint clear."),
                     SettingRow.label("0 = keep until you reach it or run /sbs waypoint clear"),
                     SettingRow.toggle("IRC Chat", () -> cfg().chatOptions.ircEnabled,
-                            () -> { cfg().chatOptions.ircEnabled = !cfg().chatOptions.ircEnabled; save(); })
+                            () -> {
+                                cfg().chatOptions.ircEnabled = !cfg().chatOptions.ircEnabled;
+                                save();
+                                // The IRC chat tab follows this switch. Without the refresh, a chat
+                                // left on that tab stays filtered to IRC after IRC Chat goes off.
+                                sbs.modid.client.social.chat.logic.ChatTabs.getInstance().refresh();
+                            })
                             .describe("The SBS-wide chat channel: /sbs irc <message> talks to "
                                     + "every SBS user across all servers. Needs your licence "
                                     + "token.")
@@ -1945,7 +1951,8 @@ public final class ModuleSettings {
                             () -> { cfg().partyFinder.enabled = !cfg().partyFinder.enabled; save(); })
                             .describe("The SBS party finder: browse and create party listings "
                                     + "with other SBS users, with a party chat of its own. Open "
-                                    + "it with /sbs party.")
+                                    + "it with /sbs party or /pf. Turning it off also frees /pf "
+                                    + "for other mods.")
                             .licenced(),
                     SettingRow.toggle("Show Party Chat in Game", () -> cfg().partyFinder.chatInGame,
                             () -> { cfg().partyFinder.chatInGame = !cfg().partyFinder.chatInGame; save(); })
@@ -1962,13 +1969,15 @@ public final class ModuleSettings {
                             () -> { cfg().playerViewer.profileViewer = !cfg().playerViewer.profileViewer; save(); })
                             .describe("The SBS profile viewer: /pv <player> shows anyone's "
                                     + "skills, slayers, dungeons, pets, networth and more in one "
-                                    + "screen."),
+                                    + "screen. Turning it off also frees /pv for other mods and the "
+                                    + "server; /sbs pv still works as the SBS name for it."),
                     SettingRow.label("/pv <player>  •  profile viewer (skills, slayers, dungeons, pets)"),
                     SettingRow.toggle("Shift + Click Chat Name", () -> cfg().playerViewer.chatNameClick,
                             () -> { cfg().playerViewer.chatNameClick = !cfg().playerViewer.chatNameClick; save(); })
                             .describe("Shift + clicking a player's name in chat opens their "
                                     + "profile viewer, instead of pasting the name into your chat "
-                                    + "box."),
+                                    + "box. Needs the Profile Viewer on.")
+                            .disabledWhile(() -> !cfg().playerViewer.profileViewer),
                     SettingRow.label("Opens that player's profile instead of inserting the name"),
                     SettingRow.toggle("SkyCrypt Browser", () -> cfg().playerViewer.enabled,
                             () -> { cfg().playerViewer.enabled = !cfg().playerViewer.enabled; save(); })
@@ -2009,6 +2018,22 @@ public final class ModuleSettings {
                                     + "never stops on it. Has no effect while Ignore Enforced "
                                     + "Texture Packs is on."),
                     SettingRow.label("Skips the required-pack prompt when you join a server"),
+                    SettingRow.toggle("Keep Hypixel Pack Loaded", () -> cfg().texturePack.keepHypixelPackLoaded,
+                            () -> {
+                                cfg().texturePack.keepHypixelPackLoaded = !cfg().texturePack.keepHypixelPackLoaded;
+                                save();
+                            })
+                            .describe("Faster switching between the lobby and SkyBlock: Hypixel's "
+                                    + "SkyBlock pack stays loaded all session instead of loading "
+                                    + "and unloading (the loading screen) on every switch. Items "
+                                    + "look exactly as with the normal server pack. The pack is "
+                                    + "then also active in the lobby and other game modes. Uses "
+                                    + "the copy Minecraft cached on an earlier join; with none "
+                                    + "cached yet, the first join loads it as usual and the next "
+                                    + "start keeps it. Turning it on or off takes effect with the "
+                                    + "next pack load. Has no "
+                                    + "effect while Ignore Enforced Texture Packs is on."),
+                    SettingRow.label("No reload on lobby <-> SkyBlock switches"),
                     SettingRow.button("Hypixel+: Open Download Page",
                             () -> sbs.modid.client.helper.texture.command.TexturePackActions
                                     .openDownloadPage(sbs.modid.client.helper.texture.logic.UserPack.HYPIXEL_PLUS))
@@ -2057,6 +2082,15 @@ public final class ModuleSettings {
                                     + "front of you. A price and nothing more - what a reroll is "
                                     + "worth would need the floor's drop tables, which this mod "
                                     + "does not have. On by default."),
+                    SettingRow.toggle("Reward Chests In The Room", () -> cfg().dungeons.rewardChestGlow,
+                            () -> { cfg().dungeons.rewardChestGlow = !cfg().dungeons.rewardChestGlow; save(); })
+                            .describe("After a run, outlines the reward chests themselves: green "
+                                    + "for the best, yellow for another that makes money, red for "
+                                    + "a loss, with the profit written above. What a chest holds "
+                                    + "is only known once you have clicked it, so each one fills "
+                                    + "in after you look into it; a grey ? marks one you have not "
+                                    + "opened yet. A bought chest drops out. Uses the same prices "
+                                    + "as the calculator above. On by default."),
 
                     SettingRow.label("§8—— Croesus ——"),
                     SettingRow.toggle("Croesus Run List", () -> cfg().dungeons.croesusRunHighlight,
@@ -2348,15 +2382,26 @@ public final class ModuleSettings {
                                     + "know when you are inside it."),
                     SettingRow.toggle("Box Wither Doors", () -> cfg().dungeons.witherDoors,
                             () -> { cfg().dungeons.witherDoors = !cfg().dungeons.witherDoors; save(); })
-                            .describe("Boxes the wither and blood doors of the dungeon. The box "
-                                    + "turns to the key color when you hold a matching key."),
+                            .describe("Boxes the next wither or blood door to open, wherever it is in "
+                                    + "the dungeon - the same door the map already shows. The box "
+                                    + "turns to the key color once anyone in the party has the key."),
                     SettingRow.enumOptions("Wither Door Color", () -> cfg().dungeons.witherDoorColor,
                             value -> { cfg().dungeons.witherDoorColor = value; save(); }, v -> v.displayName())
-                            .describe("Box color of a door you have no key for. Click to cycle."),
+                            .describe("Box color of the next door while the party has no key for it. "
+                                    + "Click to cycle."),
                     SettingRow.enumOptions("With Key Color", () -> cfg().dungeons.witherDoorKeyColor,
                             value -> { cfg().dungeons.witherDoorKeyColor = value; save(); }, v -> v.displayName())
-                            .describe("Box color once you hold the key for it. Click to cycle."),
-                    SettingRow.label("Green on your room's door when you hold a wither key"),
+                            .describe("Box color once the party has the key for the next door. "
+                                    + "Click to cycle."),
+                    SettingRow.label("Switches to this color when anyone in the party picks the key up"),
+                    SettingRow.toggle("Show All Wither Doors", () -> cfg().dungeons.witherDoorsShowAll,
+                            () -> { cfg().dungeons.witherDoorsShowAll = !cfg().dungeons.witherDoorsShowAll; save(); })
+                            .describe("Also draws every other known closed wither and blood door, "
+                                    + "faintly. Off: only the next door is boxed."),
+                    SettingRow.toggle("Line To Next Door", () -> cfg().dungeons.witherDoorPointer,
+                            () -> { cfg().dungeons.witherDoorPointer = !cfg().dungeons.witherDoorPointer; save(); })
+                            .describe("A line from your crosshair to the next wither or blood door. "
+                                    + "Show Pointer Lines draws it too."),
                     SettingRow.keybind("Add Route Waypoint (Standing)", () -> cfg().dungeons.routeStandingKey,
                             key -> { cfg().dungeons.routeStandingKey = key; save(); })
                             .describe("Secret Routes recording: press to add the block you stand "
@@ -2710,6 +2755,13 @@ public final class ModuleSettings {
                             .describe("The search also looks inside item descriptions, so 'sharp' "
                                     + "finds every item with Sharpness - not just items named "
                                     + "sharp."),
+                    SettingRow.toggle("Show Storage Value", () -> cfg().storageSearch.showStorageValue,
+                            () -> { cfg().storageSearch.showStorageValue = !cfg().storageSearch.showStorageValue; save(); })
+                            .describe("In the Full UI, shows what each Ender Chest page and "
+                                    + "Backpack is worth next to its name, and the total of all "
+                                    + "pages next to the search bar. Uses the prices the mod "
+                                    + "already has loaded. A '+' after a value means some item in "
+                                    + "it has no known price, so the real value is higher."),
                     SettingRow.label("§8Full UI keeps one workspace over Storage, Ender Chest and Backpacks"),
                     SettingRow.label("Storages are indexed as you open them"),
                     storageToggle(sbs.modid.client.helper.storage.StorageSource.Kind.INVENTORY)
@@ -2730,19 +2782,31 @@ public final class ModuleSettings {
                             .describe("Whether your personal vault is part of the index."),
                     SettingRow.label(storageSourceSummary()),
                     SettingRow.toggle("SBS Loadouts", () -> cfg().skyblockMenu.sbsWardrobe,
-                            () -> { cfg().skyblockMenu.sbsWardrobe = !cfg().skyblockMenu.sbsWardrobe; save(); })
-                            .describe("Replaces the wardrobe with a card grid: each slot shows "
-                                    + "your full player model with that armor, plus equipment and "
-                                    + "pet - pick by look instead of by slot number."),
-                    SettingRow.label("Card grid over the wardrobe: your player model, equipment and pet"),
+                            () -> {
+                                cfg().skyblockMenu.sbsWardrobe = !cfg().skyblockMenu.sbsWardrobe;
+                                SettingRow.logChange("SBS Loadouts", cfg().skyblockMenu.sbsWardrobe);
+                                save();
+                            })
+                            .describe("Covers Hypixel's \"(1/3) Loadouts\" menu with a card grid: "
+                                    + "each loadout shows your full player model with its armor, "
+                                    + "plus equipment and pet - pick by look instead of by slot "
+                                    + "number. Only the Loadouts menu: the Armor Sets menu is SBS "
+                                    + "Wardrobe View's. Default: off."),
+                    SettingRow.label("Card grid over \"(1/3) Loadouts\": your player model, equipment and pet"),
                     SettingRow.toggle("SBS Wardrobe View", () -> cfg().skyblockMenu.sbsWardrobeView,
-                            () -> { cfg().skyblockMenu.sbsWardrobeView = !cfg().skyblockMenu.sbsWardrobeView; save(); })
-                            .describe("Covers Hypixel's Armor Sets menu (the chestplate slot in "
-                                    + "Loadouts) with one grid of every set from all its pages, "
-                                    + "each on an armour stand. Click a set to equip it; a set on "
-                                    + "another page takes one click to turn the menu there and one "
-                                    + "to equip. Pages not opened this session show from the "
-                                    + "cache. Default: on."),
+                            () -> {
+                                cfg().skyblockMenu.sbsWardrobeView = !cfg().skyblockMenu.sbsWardrobeView;
+                                SettingRow.logChange("SBS Wardrobe View", cfg().skyblockMenu.sbsWardrobeView);
+                                save();
+                            })
+                            .describe("Covers Hypixel's \"(1/3) Armor Sets\" menu - the wardrobe, "
+                                    + "behind the chestplate slot in Loadouts - with one grid of "
+                                    + "every set from all its pages, each on an armour stand. Click "
+                                    + "a set to equip it; a set on another page takes one click to "
+                                    + "turn the menu there and one to equip. Pages not opened this "
+                                    + "session show from the cache. Only the Armor Sets menu: the "
+                                    + "Loadouts menu is SBS Loadouts'. Default: on."),
+                    SettingRow.label("Grid over \"(1/3) Armor Sets\": every set from every page"),
                     SettingRow.toggle("Equipped Loadout Widget",
                             () -> cfg().skyblockMenu.loadoutWidget.shows(),
                             () -> { cfg().skyblockMenu.loadoutWidget = cfg().skyblockMenu.loadoutWidget.next(); save(); })
@@ -2913,7 +2977,9 @@ public final class ModuleSettings {
                     SettingRow.keybind("Save Item Secret Key", () -> cfg().dev.saveItemSecretKey,
                             key -> { cfg().dev.saveItemSecretKey = key; save(); })
                             .describe("A key for saving an item secret in-game."),
+                    // DEV-ONLY: the Developer Mode toggle itself
                     SettingRow.toggle("Developer Mode", () -> sbs.modid.client.core.dev.DevMode.ACTIVE,
+                            // DEV-ONLY: the Developer Mode toggle itself
                             sbs.modid.client.core.dev.DevMode::toggle)
                             .describe("Enables the development helpers: debug logs, the room "
                                     + "scanner, gates like the Catacombs check are bypassed. Not "
@@ -3054,6 +3120,48 @@ public final class ModuleSettings {
                             value -> { cfg().pathfinding.maxNodes = value; save(); }, "")
                             .describe("How much work one route search may do. Higher finds "
                                     + "longer routes but costs more time when no route exists."),
+                    SettingRow.toggle("Fast Open-Terrain Routes", () -> cfg().pathfinding.fastOpenTerrain,
+                            () -> {
+                                cfg().pathfinding.fastOpenTerrain = !cfg().pathfinding.fastOpenTerrain;
+                                save();
+                                sbs.modid.client.core.pathfinding.PathfindingManager.getInstance().invalidate();
+                            })
+                            .describe("Long walking routes cross open ground in straight pieces "
+                                    + "and only search block by block where it is covered, a "
+                                    + "cave, a house, steep or water - much faster across a big "
+                                    + "island. Used straight away for far routes under open sky, "
+                                    + "and when the normal search takes too long."),
+                    SettingRow.intField("Switch After (base)", 0, 2000,
+                            () -> cfg().pathfinding.switchBaseMs,
+                            value -> { cfg().pathfinding.switchBaseMs = value; save(); }, "ms")
+                            .describe("Advanced. How long the normal search may run before the "
+                                    + "fast open-terrain planner takes over, in milliseconds - "
+                                    + "plus the per-block time below for every block of distance "
+                                    + "(always between 250 ms and 2 s). It also switches early "
+                                    + "when the search is clearly too slow."),
+                    SettingRow.intField("Switch After (per block)", 0, 20,
+                            () -> cfg().pathfinding.switchPerBlockMs,
+                            value -> { cfg().pathfinding.switchPerBlockMs = value; save(); }, "ms")
+                            .describe("Advanced. Extra milliseconds the normal search gets per "
+                                    + "block of distance to the target, so far routes get longer "
+                                    + "before the switch."),
+                    SettingRow.toggle("Deep Search When No Route", () -> cfg().pathfinding.deepSearch,
+                            () -> {
+                                cfg().pathfinding.deepSearch = !cfg().pathfinding.deepSearch;
+                                save();
+                                sbs.modid.client.core.pathfinding.PathfindingManager.getInstance().invalidate();
+                            })
+                            .describe("When no route is found, keeps searching the whole loaded "
+                                    + "island in the background - for hidden targets like fairy "
+                                    + "souls behind hidden entrances, in caves or on parkour. "
+                                    + "Uses a small slice of each tick so the game stays smooth; "
+                                    + "the marker shows its progress. A found route is remembered, "
+                                    + "so each hidden target is only solved once."),
+                    SettingRow.intField("Deep Search Max Time", 10, 300,
+                            () -> cfg().pathfinding.deepSearchMaxSeconds,
+                            value -> { cfg().pathfinding.deepSearchMaxSeconds = value; save(); }, "s")
+                            .describe("How long one deep search may run before it gives up, in "
+                                    + "seconds."),
                     SettingRow.button("Clear Waypoints",
                             sbs.modid.client.core.pathfinding.WaypointStore::clear)
                             .describe("Deletes all pathfinding test waypoints."),
@@ -3093,7 +3201,7 @@ public final class ModuleSettings {
                             .describe("Shows the remembered remainders beside the Bazaar menu, "
                                     + "opposite Manage Orders. Click a row to re-order what is left "
                                     + "of it; the X forgets it. Off still records them. Default on.")
-                            .disabledIf(!cfg().bazaar.orderHistory),
+                            .disabledWhile(() -> !cfg().bazaar.orderHistory),
                     SettingRow.label(cfg().bazaar.orderHistory
                             ? "§8Click a row → its item opens and the leftover amount is filled in."
                             : "§8The three rows below need Order History switched on."),
@@ -3103,14 +3211,14 @@ public final class ModuleSettings {
                                     + "bar. The bar shows how much of the order filled before you "
                                     + "cancelled, and the exact figures are in the tooltip either "
                                     + "way. Default off.")
-                            .disabledIf(!cfg().bazaar.orderHistory),
+                            .disabledWhile(() -> !cfg().bazaar.orderHistory),
                     SettingRow.rangeSlider("Order History Expiry", 0, 336,
                             () -> cfg().bazaar.orderHistoryExpiryHours,
                             value -> { cfg().bazaar.orderHistoryExpiryHours = value; save(); }, "h")
                             .describe("How long a remembered remainder stays on offer. An old note "
                                     + "about a price that has moved invites re-ordering at a figure "
                                     + "that is no longer competitive. 0 never expires. Default 48h.")
-                            .disabledIf(!cfg().bazaar.orderHistory),
+                            .disabledWhile(() -> !cfg().bazaar.orderHistory),
                     SettingRow.button("Clear Order History",
                             () -> sbs.modid.client.economy.bazaar.logic.BazaarOrderHistory.getInstance()
                                     .clear())

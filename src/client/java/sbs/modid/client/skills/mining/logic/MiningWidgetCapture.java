@@ -81,6 +81,7 @@ public final class MiningWidgetCapture {
      * a normal player never touches this path.
      */
     public void onClientTick() {
+        // DEV-ONLY: capture file read by nothing else
         if (!DevMode.ACTIVE || exhausted || Minecraft.getInstance().player == null) {
             return;
         }

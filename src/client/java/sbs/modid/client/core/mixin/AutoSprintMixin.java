@@ -294,6 +294,23 @@ public abstract class AutoSprintMixin {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.tick("tick.ColdTracker")) {
             sbs.modid.client.skills.mining.logic.ColdTracker.getInstance().onClientTick();
         }
+        // Effective Ore Blocks: zone gate, queued block changes and the line-of-sight test, every
+        // tick - a late visibility answer is what would let a tint show through a wall.
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.tick("tick.EffectiveBlocks")) {
+            sbs.modid.client.skills.mining.logic.EffectiveBlockScanner.getInstance().onClientTick();
+        }
+        // ...and its sweep of the cube around the player, one slice a tick. BACKGROUND: a deferred
+        // slice only means a newly exposed block appears a little later.
+        if (sbs.modid.client.core.perf.Perf.allowTick("tick.EffectiveBlocksSweep",
+                sbs.modid.client.core.perf.TierScheduler.Tier.BACKGROUND)) {
+            try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.tick("tick.EffectiveBlocksSweep")) {
+                sbs.modid.client.skills.mining.logic.EffectiveBlockScanner.getInstance().onSweepTick();
+            }
+        }
+        // Precision Mining: which block is being broken, for the target marker and its probe.
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.tick("tick.PrecisionMining")) {
+            sbs.modid.client.skills.mining.precision.logic.PrecisionMiningTracker.getInstance().onClientTick();
+        }
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.tick("tick.AbilityReadyAlert")) {
             sbs.modid.client.combat.cooldowns.AbilityReadyAlert.getInstance().onClientTick();
         }
@@ -334,6 +351,10 @@ public abstract class AutoSprintMixin {
         // Nucleus Run: online time on the Hollows, idle reward blocks, cost windows, the card preview.
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.tick("tick.NucleusRunTracker")) {
             sbs.modid.client.skills.mining.nucleus.logic.NucleusRunTracker.getInstance().onClientTick();
+        }
+        // Divan Tools: lobby key and the Jade Crystal from the Nucleus tracker (every 10 ticks, Hollows only).
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.tick("tick.DivanTracker")) {
+            sbs.modid.client.skills.mining.metaldetector.logic.DivanTracker.getInstance().onClientTick();
         }
         // Jungle Temple cheese waypoint: guardian within 8 blocks, lobby id, run state (every 5 ticks).
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.tick("tick.TempleCheese")) {
@@ -500,6 +521,8 @@ public abstract class AutoSprintMixin {
             // happened - the tracker's own guard only catches a total that went DOWN.
             sbs.modid.client.skills.mining.logic.MiningTracker.getInstance().onWorldChange();
             sbs.modid.client.skills.mining.logic.ColdTracker.getInstance().onWorldChange();
+            // Precision Mining: the mined block and its target are coordinates in the old instance.
+            sbs.modid.client.skills.mining.precision.logic.PrecisionMiningTracker.getInstance().onWorldChange();
             // Fallen Star: a star belongs to the lobby it crashed in.
             sbs.modid.client.skills.mining.fallenstar.logic.FallenStarTracker.getInstance().onWorldChange();
             // Crystal Hollows lobby: the lobby being left is what the next join is checked against.

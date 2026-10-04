@@ -10,9 +10,11 @@ package sbs.modid.client.core.alert;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.audio.SbsAudio;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.core.perf.Perf;
 import sbs.modid.client.social.chat.logic.SBSChat;
 
 import java.util.EnumMap;
@@ -109,12 +111,32 @@ public final class Alerts {
         return true;
     }
 
+    /**
+     * A tick of alert upkeep longer than this is logged. The upkeep is a few field reads; anything
+     * near this means something on the game thread waited on audio or speech again.
+     */
+    private static final long SLOW_TICK_NS = 5_000_000L;
+
+    /** Spaces the slow-tick warning so a regression is visible without flooding the log. */
+    private static final long SLOW_LOG_INTERVAL_MS = 10_000L;
+    private static long lastSlowLogAt;
+
     /** Per-tick upkeep for the channels that have any: deferred speech, idle audio device. */
     public static void tick() {
-        SBSConfig.AlertSettings cfg = cfg();
-        NarratorVoice.tick(cfg.narratorVolume, cfg.narratorLanguage);
-        SbsAudio.tick();
-        AlertTitle.tick();
+        long start = System.nanoTime();
+        try (Perf.Section perf = Perf.tick("tick.Alerts")) {
+            SBSConfig.AlertSettings cfg = cfg();
+            NarratorVoice.tick(cfg.narratorVolume, cfg.narratorLanguage);
+            SbsAudio.tick();
+            AlertTitle.tick();
+        }
+        long took = System.nanoTime() - start;
+        long now = System.currentTimeMillis();
+        if (took > SLOW_TICK_NS && now - lastSlowLogAt > SLOW_LOG_INTERVAL_MS) {
+            lastSlowLogAt = now;
+            SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Perf] Alerts.tick took {} ms",
+                    String.format(java.util.Locale.ROOT, "%.1f", took / 1_000_000.0));
+        }
     }
 
     /** Drops anything still pending, so nothing spills across a warp. */

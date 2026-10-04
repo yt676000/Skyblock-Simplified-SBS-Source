@@ -46,6 +46,7 @@ public final class CommandHelp {
             return;
         }
         CommandRegistry.Command command = CommandRegistry.find(arg);
+        // DEV-ONLY: lists DEV_ONLY commands only while dev mode is on
         if (command == null || (command.visibility() == CommandRegistry.Visibility.DEV_ONLY && !DevMode.ACTIVE)) {
             SBSChat.send(Component.literal(" No command called \"" + arg + "\". /sbs help lists them all.")
                     .withColor(TEXT));
@@ -56,6 +57,7 @@ public final class CommandHelp {
 
     private static void list() {
         Map<String, List<CommandRegistry.Command>> byCategory = new LinkedHashMap<>();
+        // DEV-ONLY: lists DEV_ONLY commands only while dev mode is on
         for (CommandRegistry.Command c : CommandRegistry.visible(DevMode.ACTIVE)) {
             byCategory.computeIfAbsent(c.category(), k -> new ArrayList<>()).add(c);
         }

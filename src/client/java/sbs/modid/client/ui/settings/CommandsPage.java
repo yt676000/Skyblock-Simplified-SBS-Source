@@ -51,6 +51,7 @@ public final class CommandsPage {
 
         Map<String, List<CommandRegistry.Command>> byCategory = new LinkedHashMap<>();
         List<CommandRegistry.Command> developer = new ArrayList<>();
+        // DEV-ONLY: lists DEV_ONLY commands only while dev mode is on
         for (CommandRegistry.Command c : CommandRegistry.visible(DevMode.ACTIVE)) {
             if (c.visibility() == CommandRegistry.Visibility.DEV_ONLY) {
                 developer.add(c);

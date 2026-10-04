@@ -318,6 +318,7 @@ public final class PlayerNotesScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
+        rowList.syncAvailability();
         super.extractRenderState(g, mouseX, mouseY, partialTick);
         // After super, not as a registered renderable: a rebuild appends its rows after anything
         // registered at init, so only this is reliably drawn over them.

@@ -18,7 +18,9 @@ import javax.sound.sampled.DataLine;
 import javax.sound.sampled.FloatControl;
 import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The mod's own audio output, independent of Minecraft's sound engine.
@@ -39,6 +41,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * switch or an unplugged headset painful. Every failure path (no device, exclusive mode, device
  * removed mid-session) falls back to Minecraft's own sound and says so in the log exactly once per
  * cause, so a silent alert is never silent about why.
+ *
+ * <p><b>Threading.</b> The device is opened, written, drained and closed on one dedicated audio
+ * thread inside {@link AudioPlayer}; the game thread never waits on any of it. See that class for
+ * why.
  */
 public final class SbsAudio {
 
@@ -58,21 +64,13 @@ public final class SbsAudio {
     /** Fade in/out applied to every tone, so it starts and ends without a click. */
     private static final double FADE_SECONDS = 0.008;
 
-    /** The open line, or {@code null} while idle. Guarded by {@link #LOCK}. */
-    private static SourceDataLine line;
-    private static long lastUsedAt;
-
-    /** One writer at a time; the playback thread and the idle reaper both touch the line. */
-    private static final Object LOCK = new Object();
-
-    /** True once this session has given up on the independent output entirely. */
-    private static volatile boolean unavailable;
-
-    /** So the "falling back to the game's sound" explanation is logged once, not once per alert. */
-    private static final AtomicBoolean loggedFallback = new AtomicBoolean();
-
-    /** A ping is played off-thread; this flag keeps a burst from stacking playback threads. */
-    private static final AtomicBoolean playing = new AtomicBoolean();
+    /**
+     * The engine. It has its own single thread rather than using {@code SbsExecutors}: the line must
+     * be owned by exactly one thread and pings must play in order, and a blocking {@code drain()}
+     * would otherwise hold a shared worker for the length of every tone.
+     */
+    private static final AudioPlayer PLAYER = new AudioPlayer(
+            SbsAudio::openJavaSoundLine, System::currentTimeMillis, audioThread(), IDLE_RELEASE_MS);
 
     private SbsAudio() {
     }
@@ -106,77 +104,52 @@ public final class SbsAudio {
         if (volumePercent <= 0) {
             return false;
         }
-        if (unavailable) {
+        if (!PLAYER.play(() -> render(tone), volumePercent, SbsAudio::vanillaFallback)) {
             return vanillaFallback();
         }
-        if (!playing.compareAndSet(false, true)) {
-            return true;   // a ping is already sounding; a second one on top of it is just noise
-        }
-        Thread thread = new Thread(() -> {
-            try {
-                if (!playTone(tone, volumePercent)) {
-                    vanillaFallback();
-                }
-            } finally {
-                playing.set(false);
-            }
-        }, "SBS-Audio");
-        thread.setDaemon(true);
-        thread.start();
         return true;
     }
 
-    /** Writes one tone to the line, reopening the device if it is idle or was lost. */
-    private static boolean playTone(Tone tone, int volumePercent) {
-        byte[] samples = render(tone);
-        synchronized (LOCK) {
-            SourceDataLine open = openLine();
-            if (open == null) {
-                return false;
-            }
-            try {
-                applyGain(open, volumePercent);
-                open.write(samples, 0, samples.length);
-                open.drain();
-                lastUsedAt = System.currentTimeMillis();
-                return true;
-            } catch (IllegalArgumentException | IllegalStateException e) {
-                // The device went away mid-write (unplugged, Bluetooth switched, driver reset).
-                // Drop the handle so the next ping opens whatever is the default device by then.
-                closeLine();
-                warnOnce("the audio device was lost mid-playback", e);
-                return false;
-            }
-        }
+    /** One daemon thread, started on the first ping and stopped again after a minute idle. */
+    private static ThreadPoolExecutor audioThread() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 1, 60, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(), runnable -> {
+                    Thread thread = new Thread(runnable, "SBS-Audio");
+                    thread.setDaemon(true);
+                    return thread;
+                });
+        executor.allowCoreThreadTimeOut(true);
+        return executor;
     }
 
-    /** The open line, opening one if needed. {@code null} when no device will take it. */
-    private static SourceDataLine openLine() {
-        if (line != null) {
-            return line;
-        }
+    /** Opens the default output through {@code javax.sound.sampled}. Runs on the audio thread. */
+    private static AudioPlayer.Line openJavaSoundLine()
+            throws LineUnavailableException, AudioPlayer.Unsupported {
         DataLine.Info info = new DataLine.Info(SourceDataLine.class, FORMAT);
-        if (!AudioSystem.isLineSupported(info)) {
-            unavailable = true;
-            warnOnce("no audio device accepts the alert format", null);
-            return null;
-        }
         try {
+            if (!AudioSystem.isLineSupported(info)) {
+                throw new AudioPlayer.Unsupported("no audio device accepts the alert format", null);
+            }
             SourceDataLine opened = (SourceDataLine) AudioSystem.getLine(info);
             opened.open(FORMAT);
             opened.start();
-            line = opened;
-            return opened;
-        } catch (LineUnavailableException e) {
-            // Another application holds the device in exclusive mode, or there is none. Not fatal
-            // and not permanent - the next ping tries again, since exclusive mode is usually a
-            // passing state.
-            warnOnce("the audio device is unavailable (another application may hold it)", e);
-            return null;
+            return new AudioPlayer.Line() {
+                @Override
+                public void play(byte[] pcm, int volumePercent) {
+                    applyGain(opened, volumePercent);
+                    opened.write(pcm, 0, pcm.length);
+                    opened.drain();
+                }
+
+                @Override
+                public void close() {
+                    opened.stop();
+                    opened.close();
+                }
+            };
         } catch (SecurityException | IllegalArgumentException e) {
-            unavailable = true;
-            warnOnce("the independent audio output cannot be used on this system", e);
-            return null;
+            throw new AudioPlayer.Unsupported(
+                    "the independent audio output cannot be used on this system", e);
         }
     }
 
@@ -199,30 +172,12 @@ public final class SbsAudio {
         gain.setValue(Math.max(gain.getMinimum(), Math.min(gain.getMaximum(), decibels)));
     }
 
-    /** Releases the device when it has been idle a while. Called from the client tick. */
+    /**
+     * Releases the device when it has been idle a while. Called from the client tick; never blocks -
+     * the release itself is posted to the audio thread.
+     */
     public static void tick() {
-        if (line == null) {
-            return;
-        }
-        synchronized (LOCK) {
-            if (line != null && System.currentTimeMillis() - lastUsedAt > IDLE_RELEASE_MS) {
-                closeLine();
-            }
-        }
-    }
-
-    /** Drops the line. Caller holds {@link #LOCK}. */
-    private static void closeLine() {
-        if (line == null) {
-            return;
-        }
-        try {
-            line.stop();
-            line.close();
-        } catch (RuntimeException ignored) {
-            // Closing a device that is already gone throws; there is nothing left to clean up.
-        }
-        line = null;
+        PLAYER.tick();
     }
 
     /** The tone as raw PCM: each note faded in and out so the chime has no clicks. */
@@ -263,7 +218,7 @@ public final class SbsAudio {
                 minecraft.player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.2f);
             }
         });
-        if (loggedFallback.compareAndSet(false, true)) {
+        if (PLAYER.markFallbackLogged()) {
             SkyblockSimplifiedSBS.LOGGER.info(
                     "[SBS][Audio] alert pings are using the game's sound engine, so Minecraft's "
                             + "volume sliders apply to them.");
@@ -273,16 +228,9 @@ public final class SbsAudio {
 
     /** Whether the independent output is believed to work - drives the settings label. */
     public static String statusText() {
-        if (unavailable) {
+        if (PLAYER.unavailable()) {
             return "unavailable - using the game's sound instead";
         }
-        return line != null ? "ready (device open)" : "ready";
-    }
-
-    private static void warnOnce(String reason, Throwable cause) {
-        if (loggedFallback.compareAndSet(false, true)) {
-            SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Audio] {} - alert pings fall back to the "
-                    + "game's sound engine.", reason, cause);
-        }
+        return PLAYER.lineOpen() ? "ready (device open)" : "ready";
     }
 }

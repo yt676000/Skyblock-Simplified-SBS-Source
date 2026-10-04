@@ -93,6 +93,9 @@ public final class EntityProbe {
 
     /** {@code /sbs entityprobe [arm|off|status]}; the bare form takes a snapshot. */
     public void handleCommand(String argument) {
+        if (!DevMode.ACTIVE) { // DEV-ONLY: defence in depth behind the command gate
+            return;
+        }
         switch (argument == null ? "" : argument.trim().toLowerCase(Locale.ROOT)) {
             case "arm", "on", "watch" -> arm();
             case "off", "stop", "disarm" -> disarm();

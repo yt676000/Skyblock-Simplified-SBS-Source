@@ -12,6 +12,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.QuadInstance;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Transformation;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
@@ -20,6 +21,7 @@ import net.minecraft.client.model.geom.EntityModelSet;
 import net.minecraft.client.model.object.skull.SkullModelBase;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.Sheets;
+import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.block.BlockStateModelSet;
 import net.minecraft.client.renderer.block.FluidModel;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
@@ -48,12 +50,16 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.Vec3;
 import sbs.modid.SkyblockSimplifiedSBS;
+import sbs.modid.client.core.build.logic.BlockStates;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Hologram blocks drawn as their real, translucent models in the world, so you see <i>which</i>
@@ -76,14 +82,21 @@ public final class GhostModels {
     /** Block-state models, resolved once per state. Cleared whenever the baked model set is swapped. */
     private static final Map<BlockState, List<BlockStateModelPart>> PART_CACHE = new HashMap<>();
 
-    /** Tint colours (grass, leaves, sugar cane, ...) per state, alongside {@link #PART_CACHE}. */
-    private static final Map<BlockState, int[]> TINT_CACHE = new HashMap<>();
+    /** Tint sources (grass, leaves, sugar cane, ...) per state, alongside {@link #PART_CACHE}. */
+    private static final Map<BlockState, Tints> TINT_CACHE = new HashMap<>();
+
+    /**
+     * Per-ghost tint arrays for biome-tinted states, reused pass after pass so a field of sugar-cane
+     * ghosts does not allocate an array per ghost per frame. A slot is overwritten by the next pass
+     * only after the previous one was drawn, and with the same colour anyway.
+     */
+    private static int[][] tintPool = new int[64][];
 
     /** Fixed model seed, so a state with random variants always ghosts as the same variant. */
     private static final long MODEL_SEED = 42L;
 
     /** Lowest usable model opacity in percent; below it the pipeline's alpha cutout eats the ghost. */
-    public static final int MIN_OPACITY = 20;
+    public static final int MIN_OPACITY = GhostTint.MIN_OPACITY;
 
     /** {@code Direction.values()} clones its array on every call; the quad loop runs per ghost. */
     private static final Direction[] DIRECTIONS = Direction.values();
@@ -106,9 +119,32 @@ public final class GhostModels {
     /** One line the first time ghost geometry is actually submitted, with what it holds. */
     private static boolean loggedSubmit;
 
+    /**
+     * Probe lines already written: one per distinct fluid state and per head render type, so a single
+     * paste logs what each was drawn with. Keys are canonical game objects, never built strings, so
+     * the check allocates nothing per frame. {@link #armProbe} clears it.
+     */
+    private static final Set<Object> LOGGED_PROBES = new HashSet<>();
+
+    /**
+     * Cells (packed {@link BlockPos#asLong}) the last level pass actually submitted geometry for. The
+     * HUD pass reads it to decide where the flat fill can be dropped: a ghost the model pass did not
+     * draw keeps its fill, whatever its block is. Cleared at the start of every pass; reused, not
+     * reallocated, because it is filled every frame.
+     */
+    private static final LongOpenHashSet DRAWN = new LongOpenHashSet();
+
     /** One ghost resolved to drawable geometry, in camera-relative space. */
     private record Piece(float x, float y, float z, float scale, int light,
                          List<BlockStateModelPart> parts, int[] tints) {
+    }
+
+    /**
+     * A state's tint sources, resolved once: {@code plain} holds each source's {@code color(state)},
+     * and bit {@code i} of {@code biomeMask} is set when source {@code i} answers differently in the
+     * world (grass, foliage, sugar cane, water) and so is asked at the ghost's cell every frame.
+     */
+    private record Tints(int[] plain, List<BlockTintSource> sources, int biomeMask) {
     }
 
     /** One fluid box: camera-relative corner, height in blocks, tinted colour with alpha, still sprite. */
@@ -138,6 +174,7 @@ public final class GhostModels {
         // which is what hookAlive() reports to the HUD fallback - independent of whether we draw.
         lastHookNanos = System.nanoTime();
         hookFired = true;
+        DRAWN.clear();
         if (!loggedHook) {
             loggedHook = true;
             SkyblockSimplifiedSBS.LOGGER.info("[SBS][Blueprint] level render hook is live");
@@ -148,18 +185,27 @@ public final class GhostModels {
             return;
         }
         GhostCollector.Frame frame = GhostCollector.collect();
-        if (frame.isEmpty() || !frame.style().models()) {
+        if (frame.isEmpty()) {
             return;
         }
         GhostStyle style = frame.style();
+        if (!style.models()) {
+            if (LOGGED_PROBES.add("models-off")) {
+                SkyblockSimplifiedSBS.LOGGER.info(
+                        "[SBS][Blueprint] ghost models are off for {} - outlines and flat fill only",
+                        frame.hologram().owner().name());
+            }
+            return;
+        }
 
         refreshCaches(minecraft);
         // Floored at MIN_OPACITY: the translucent block pipeline discards anything under alpha 0.1,
         // so a lower setting would not fade the ghost, it would delete it.
-        int alpha = Math.max(MIN_OPACITY, Math.min(100, style.modelOpacity())) * 255 / 100;
+        int alpha = GhostTint.modelAlpha(style.modelOpacity());
         Vec3 camera = context.levelState().cameraRenderState.pos;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         List<Piece> pieces = new ArrayList<>();
+        int pooled = 0;
         List<FluidPiece> fluids = new ArrayList<>();
         int heads = 0;
         for (GhostCollector.Ghost ghost : frame.ghosts()) {
@@ -176,13 +222,16 @@ public final class GhostModels {
             float ry = (float) (ghost.y() - camera.y);
             float rz = (float) (ghost.z() - camera.z);
             if (state.getBlock() instanceof LiquidBlock) {
-                addFluid(fluids, minecraft, state, rx, ry, rz, scale, light, alpha,
-                        GhostMatch.fluidHeight(state.getValue(LiquidBlock.LEVEL)));
+                if (addFluid(fluids, minecraft, level, pos, state, rx, ry, rz, scale, light, alpha,
+                        GhostMatch.fluidHeight(state.getValue(LiquidBlock.LEVEL)), false)) {
+                    DRAWN.add(pos.asLong());
+                }
                 continue;
             }
             if (state.getBlock() instanceof AbstractSkullBlock skull) {
                 if (submitHead(context, minecraft, skull, state, ghost.entity(), rx, ry, rz, scale, light, alpha)) {
                     heads++;
+                    DRAWN.add(pos.asLong());
                 }
                 continue;
             }
@@ -194,11 +243,19 @@ public final class GhostModels {
                 continue;
             }
             Vec3 offset = state.getOffset(pos);
+            Tints tints = tints(state);
+            int[] colors = tints.plain();
+            if (tints.biomeMask() != 0) {
+                colors = pooledTints(pooled++, colors.length);
+                tintInWorld(tints, state, level, pos, colors);
+            }
             pieces.add(new Piece(rx + (float) offset.x, ry + (float) offset.y, rz + (float) offset.z,
-                    scale, light, parts, tints(state)));
+                    scale, light, parts, colors));
+            DRAWN.add(pos.asLong());
             if (!state.getFluidState().isEmpty()) {
                 // Waterlogged: the block's own model, plus a faint wash of the water it holds.
-                addFluid(fluids, minecraft, state, rx, ry, rz, scale, light, alpha / 2, 1.0f);
+                addFluid(fluids, minecraft, level, pos, state, rx, ry, rz, scale, light,
+                        GhostTint.washAlpha(alpha), 1.0f, true);
             }
         }
         if (pieces.isEmpty() && fluids.isEmpty()) {
@@ -208,9 +265,12 @@ public final class GhostModels {
         int baseColor = ARGB.white(alpha);
         if (!loggedSubmit) {
             loggedSubmit = true;
+            // At MAX_RENDER only the nearest ghosts are kept, so a fluid or head farther out is not in
+            // this frame at all - "capped" says the counts are not the whole build in radius.
             SkyblockSimplifiedSBS.LOGGER.info(
-                    "[SBS][Blueprint] submitting {} ghost models, {} fluids, {} heads (of {} ghosts), alpha {}",
-                    pieces.size(), fluids.size(), heads, frame.ghosts().size(), alpha);
+                    "[SBS][Blueprint] submitting {} ghost models, {} fluids, {} heads (of {} ghosts{}), alpha {}",
+                    pieces.size(), fluids.size(), heads, frame.ghosts().size(),
+                    frame.ghosts().size() >= GhostCollector.MAX_RENDER ? ", capped" : "", alpha);
         }
         context.submitNodeCollector().submitCustomGeometry(context.poseStack(),
                 Sheets.translucentBlockItemSheet(),
@@ -221,29 +281,54 @@ public final class GhostModels {
     }
 
     /**
-     * Whether this pass can draw {@code state} at all: block models, liquids and heads. Anything
-     * else - chests, signs, banners, beds, shulker boxes, every other block-entity-rendered block -
-     * has no model to ghost, so the HUD pass keeps its flat fill for it rather than leave an empty
-     * outline.
+     * Whether the last level pass drew geometry for the cell at {@code (x, y, z)} - a block model, a
+     * fluid box or a head. The HUD pass drops its flat fill only for these: anything the model pass
+     * skipped (chests, signs, banners, a head without a model, models switched off) keeps the fill
+     * rather than being left as an empty outline. False while the hook is not firing, since the set
+     * is then stale.
      */
-    public static boolean drawable(BlockState state) {
-        return state.getRenderShape() == RenderShape.MODEL
-                || state.getBlock() instanceof LiquidBlock
-                || state.getBlock() instanceof AbstractSkullBlock;
+    public static boolean drewModel(int x, int y, int z) {
+        return hookAlive() && DRAWN.contains(BlockPos.asLong(x, y, z));
     }
 
-    /** Queues a translucent fluid box: its still texture, tinted (water blue; lava is orange already). */
-    private static void addFluid(List<FluidPiece> fluids, Minecraft minecraft, BlockState state,
-                                 float x, float y, float z, float scale, int light, int alpha, float height) {
+    /**
+     * Re-arms the one-shot diagnostics: the submit summary and one line per distinct fluid state and
+     * head type, written the next time each is drawn.
+     */
+    public static void armProbe() {
+        loggedSubmit = false;
+        LOGGED_PROBES.clear();
+    }
+
+    /**
+     * Queues a translucent fluid box: its still texture, tinted with the biome's water colour at the
+     * cell (lava has no tint source and is orange already).
+     *
+     * <p>The tint is read with {@code colorInWorld}: the water source's plain {@code color(state)}
+     * answers -1 (white), and water's still texture is grey, so that drew a grey box.
+     *
+     * @return whether a box was queued
+     */
+    private static boolean addFluid(List<FluidPiece> fluids, Minecraft minecraft, ClientLevel level, BlockPos pos,
+                                    BlockState state, float x, float y, float z, float scale, int light,
+                                    int alpha, float height, boolean wash) {
         FluidState fluid = state.getFluidState();
         if (fluid.isEmpty()) {
-            return;
+            return false;
         }
         FluidModel model = minecraft.getModelManager().getFluidStateModelSet().get(fluid);
         BlockTintSource tint = model.tintSource();
-        int rgb = tint == null ? 0xFFFFFF : tint.color(fluid.createLegacyBlock());
-        fluids.add(new FluidPiece(x, y, z, scale, height, light, ARGB.color(alpha, rgb),
-                model.stillMaterial().sprite()));
+        int tintArgb = tint == null ? -1 : tint.colorInWorld(fluid.createLegacyBlock(), level, pos);
+        int color = GhostTint.fluidColor(tint != null, tintArgb, alpha);
+        TextureAtlasSprite sprite = model.stillMaterial().sprite();
+        fluids.add(new FluidPiece(x, y, z, scale, height, light, color, sprite));
+        // Keyed on canonical instances: the block state for a liquid, its fluid state for a wash.
+        if (LOGGED_PROBES.add(wash ? fluid : state)) {
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Blueprint] fluid {}{} rgb={} alpha={} sprite={} height={}",
+                    BlockStates.serialize(state), wash ? " (waterlogged wash)" : "",
+                    String.format("%06X", color & 0xFFFFFF), color >>> 24, sprite.contents().name(), height);
+        }
+        return true;
     }
 
     /**
@@ -256,11 +341,15 @@ public final class GhostModels {
                                       float scale, int light, int alpha) {
         SkullBlock.Type type = skull.getType();
         SkullModelBase model = skullModel(minecraft, type);
+        ResolvableProfile profile = type == SkullBlock.Types.PLAYER ? profile(entity) : null;
         if (model == null) {
+            if (LOGGED_PROBES.add(type)) {
+                SkyblockSimplifiedSBS.LOGGER.info("[SBS][Blueprint] head {} profile={} renderType=none submitted=false",
+                        type.getSerializedName(), profile != null ? "yes" : "no");
+            }
             return false;
         }
         RenderType renderType;
-        ResolvableProfile profile = type == SkullBlock.Types.PLAYER ? profile(entity) : null;
         if (profile != null) {
             renderType = minecraft.playerSkinRenderCache().getOrDefault(profile).renderType();
         } else if (type == SkullBlock.Types.PLAYER) {
@@ -283,7 +372,20 @@ public final class GhostModels {
         context.submitNodeCollector().submitModel(model, new SkullModelBase.State(), poseStack, renderType,
                 light, OverlayTexture.NO_OVERLAY, ARGB.white(alpha), null, 0, null);
         poseStack.popPose();
+        // Render types are memoised per texture, so this logs once per distinct skin.
+        if (LOGGED_PROBES.add(renderType)) {
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Blueprint] head {} profile={} renderType={} submitted=true",
+                    type.getSerializedName(), profile != null ? "yes" : "no", renderTypeName(renderType));
+        }
         return true;
+    }
+
+    /** {@code entity_translucent} out of {@code RenderType[entity_translucent:...]}; the name is not exposed. */
+    private static String renderTypeName(RenderType renderType) {
+        String text = renderType.toString();
+        int open = text.indexOf('[');
+        int colon = text.indexOf(':', open + 1);
+        return open >= 0 && colon > open ? text.substring(open + 1, colon) : text;
     }
 
     private static SkullModelBase skullModel(Minecraft minecraft, SkullBlock.Type type) {
@@ -440,15 +542,68 @@ public final class GhostModels {
         });
     }
 
-    private static int[] tints(BlockState state) {
+    /** A state's tint sources with their plain colours, and which of them read the world. */
+    private static Tints tints(BlockState state) {
         return TINT_CACHE.computeIfAbsent(state, key -> {
             List<BlockTintSource> sources = Minecraft.getInstance().getBlockColors().getTintSources(key);
-            int[] colors = new int[sources.size()];
-            for (int i = 0; i < colors.length; i++) {
-                colors[i] = sources.get(i).color(key);
+            int[] plain = new int[sources.size()];
+            int biomeMask = 0;
+            for (int i = 0; i < plain.length; i++) {
+                plain[i] = sources.get(i).color(key);
+                if (i < Integer.SIZE && readsWorld(sources.get(i))) {
+                    biomeMask |= 1 << i;
+                }
             }
-            return colors;
+            return new Tints(plain, sources, biomeMask);
         });
+    }
+
+    /**
+     * Fills {@code out} with each source's tint at {@code pos}: world-reading sources through
+     * {@code colorInWorld} (the client level caches biome colours per chunk, so once warm this is an
+     * array read), the rest from their cached plain colour. In 26.2 the plain {@code color(state)} of
+     * sugar cane is -1 (white) and of grass and leaves a fixed default - never the biome's colour.
+     */
+    private static void tintInWorld(Tints tints, BlockState state, ClientLevel level, BlockPos pos, int[] out) {
+        int[] plain = tints.plain();
+        for (int i = 0; i < out.length; i++) {
+            boolean inWorld = i < Integer.SIZE && (tints.biomeMask() & 1 << i) != 0;
+            out[i] = inWorld
+                    ? GhostTint.blockColor(tints.sources().get(i).colorInWorld(state, level, pos), plain[i])
+                    : plain[i];
+        }
+    }
+
+    /** Pool slot {@code index} as an array of exactly {@code length}: the quad loop bounds on it. */
+    private static int[] pooledTints(int index, int length) {
+        if (index >= tintPool.length) {
+            tintPool = Arrays.copyOf(tintPool, tintPool.length * 2);
+        }
+        int[] slot = tintPool[index];
+        if (slot == null || slot.length != length) {
+            slot = new int[length];
+            tintPool[index] = slot;
+        }
+        return slot;
+    }
+
+    /**
+     * Whether a tint source overrides {@code colorInWorld}, i.e. its colour depends on where the block
+     * stands. Vanilla's biome sources are anonymous classes that override it; constant and state-only
+     * ones (redstone, stems) inherit the default, which returns {@code color(state)}. Asked once per
+     * state. Unreadable counts as world-reading: one tint-cache lookup too many beats a white ghost.
+     *
+     * <p>{@code relevantProperties()} does not answer this - it names the state properties a colour
+     * depends on, and the biome sources report none.
+     */
+    private static boolean readsWorld(BlockTintSource source) {
+        try {
+            return !source.getClass()
+                    .getMethod("colorInWorld", BlockState.class, BlockAndTintGetter.class, BlockPos.class)
+                    .getDeclaringClass().isInterface();
+        } catch (ReflectiveOperationException | RuntimeException unreadable) {
+            return true;
+        }
     }
 
     /** Drops the cached quads when the models were re-baked (resource reload, resource pack swap). */

@@ -33,7 +33,8 @@ package sbs.modid.client.core.util;
  *
  * <p>The {@code -} follows from the same idea. It joins the number only where a hyphen could not be:
  * {@code -3} and {@code (-1,234)} are signed values, while {@code Level-3} and {@code 2024-01-15}
- * have a letter or digit in front of the dash and keep it as punctuation.
+ * have a letter or digit in front of the dash and keep it as punctuation. Digits on either side of
+ * such a dash are left verbatim altogether: {@code 2024-01-15} is a date, never {@code 2,024-01-15}.
  *
  * <p>Trailing separators are punctuation, not part of the figure - {@code 1,000.} at the end of a
  * sentence gives up its full stop before the caller ever sees it.
@@ -145,13 +146,24 @@ public final class NumberScan {
             String token = text.substring(i, end);
             char preceding = i == 0 ? 0 : text.charAt(i - 1);
             char following = end < text.length() ? text.charAt(end) : 0;
-            sink.number(i, end, Character.isLetter(following)
+            sink.number(i, end, Character.isLetter(following) || hyphenJoined(text, i, end)
                     ? null : rewriter.rewrite(token, preceding, following));
             literalFrom = end;
             previous = text.charAt(end - 1);
             i = end;
         }
         sink.literal(literalFrom, text.length());
+    }
+
+    /**
+     * Whether the figure at {@code [start, end)} is one part of a hyphen-joined run of digits -
+     * {@code 2026-10-04}, a folder stamp, a server id. Such a run is a name, not a value: grouping
+     * its parts printed a session folder as {@code 2,026-10-04}.
+     */
+    static boolean hyphenJoined(String text, int start, int end) {
+        boolean after = end + 1 < text.length() && text.charAt(end) == '-' && isDigit(text.charAt(end + 1));
+        boolean before = start >= 2 && text.charAt(start - 1) == '-' && isDigit(text.charAt(start - 2));
+        return after || before;
     }
 
     /** Whether {@code text} has any digit at all - the cheap way out of an untouched line. */

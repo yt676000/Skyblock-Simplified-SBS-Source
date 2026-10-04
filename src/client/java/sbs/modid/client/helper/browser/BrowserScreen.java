@@ -36,11 +36,11 @@ import java.util.List;
  */
 public final class BrowserScreen extends Screen {
 
-    private static final int TOOLBAR_H = 18;
+    private static final int TOOLBAR_H = BrowserLayout.TOOLBAR_H;
     private static final int BTN = 16;
     private static final int HANDLE = 10;
-    private static final int MIN_W = 200;
-    private static final int MIN_H = 120;
+    private static final int MIN_W = BrowserLayout.MIN_W;
+    private static final int MIN_H = BrowserLayout.MIN_H;
 
     private static final int KEY_ESCAPE = 256;
     private static final int KEY_ENTER = 257;
@@ -50,7 +50,7 @@ public final class BrowserScreen extends Screen {
     private final PriceBrowser browser = WebBrowserManager.getInstance().browser();
     private final long openedAt = System.currentTimeMillis();
 
-    /** Live window rectangle (= the page); mirrors the config, saved on release. */
+    /** Live window rectangle (toolbar + page, see {@link BrowserLayout}); mirrors the config, saved on release. */
     private int rx;
     private int ry;
     private int rw;
@@ -79,10 +79,11 @@ public final class BrowserScreen extends Screen {
     @Override
     protected void init() {
         SBSConfig.BrowserSettings c = cfg();
-        rw = clamp(c.w, MIN_W, this.width);
-        rh = clamp(c.h, MIN_H, this.height);
-        rx = clamp(c.x, 0, this.width - rw);
-        ry = clamp(c.y, 0, this.height - rh);
+        int[] window = BrowserLayout.window(c.x, c.y, c.w, c.h, this.width, this.height);
+        rx = window[0];
+        ry = window[1];
+        rw = window[2];
+        rh = window[3];
         urlText = c.url;
         addRenderableOnly(new PanelRenderable());
     }
@@ -245,8 +246,11 @@ public final class BrowserScreen extends Screen {
 
             g.fill(0, 0, BrowserScreen.this.width, BrowserScreen.this.height, SBSTheme.BG_TINT);
 
-            // The page fills the whole window; the toolbar is painted over its top strip.
-            browser.render(g, rx, ry, rw, rh, mouseX, mouseY);
+            // The page has its own rect below the toolbar. PriceBrowser sizes Chromium from it and
+            // translates every click, scroll and hover from the rect it was last rendered into, so
+            // this one call keeps drawing, viewport and input in step.
+            int[] page = BrowserLayout.content(rx, ry, rw, rh);
+            browser.render(g, page[0], page[1], page[2], page[3], mouseX, mouseY);
 
             SciFiRender.roundedRect(g, rx, ry, rw, TOOLBAR_H, 0, 0xE00A1420);
             g.fill(rx, ry + TOOLBAR_H, rx + rw, ry + TOOLBAR_H + 1, SBSTheme.ACCENT_SOFT);

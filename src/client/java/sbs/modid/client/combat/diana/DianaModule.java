@@ -8,6 +8,8 @@
 
 package sbs.modid.client.combat.diana;
 
+import sbs.modid.client.combat.diana.logic.DianaHudLayout;
+import sbs.modid.client.combat.diana.model.DianaHudLine.LegacySwitch;
 import sbs.modid.client.combat.diana.model.MythCreature;
 import sbs.modid.client.core.api.GuiStateManager;
 import sbs.modid.client.core.alert.AlertChannelRows;
@@ -187,28 +189,33 @@ public final class DianaModule implements SbsModule {
         rows.addAll(AlertChannelRows.forAlert("diana_prompt", "the spade prompts",
                 () -> cfg().promptChannels, mask -> { cfg().promptChannels = mask; save(); }));
 
-        rows.add(SettingRow.toggle("Running Chains Card", () -> cfg().chainsHud,
-                        () -> { cfg().chainsHud = !cfg().chainsHud; save(); })
+        rows.add(SettingRow.toggle("Running Chains Card", () -> cardSwitch(LegacySwitch.CHAINS_CARD),
+                        () -> flipCardSwitch(LegacySwitch.CHAINS_CARD))
                 .describe("How many chains are running and how long the oldest has left. Counted "
-                        + "from chat, so a client that joined mid-event counts low."));
+                        + "from chat, so a client that joined mid-event counts low. Puts the "
+                        + "Chains and Oldest lines on the cards or takes them off - arrange them "
+                        + "under Diana: Appearance."));
 
         // --- Creatures ---
         rows.add(SettingRow.label("§bMythological creatures"));
 
         rows.add(SettingRow.label("§8These four names are in none of our data - see Debug."));
 
-        rows.add(SettingRow.toggle("Creature Health Card", () -> cfg().creatureHealthHud,
-                        () -> { cfg().creatureHealthHud = !cfg().creatureHealthHud; save(); })
-                .describe("Health of the rare creatures in sight, read off their nametags."));
+        rows.add(SettingRow.toggle("Creature Health Card", () -> cardSwitch(LegacySwitch.CREATURE_CARD),
+                        () -> flipCardSwitch(LegacySwitch.CREATURE_CARD))
+                .describe("Health of the rare creatures in sight, read off their nametags. The "
+                        + "Creature Health line; arrange it under Diana: Appearance."));
 
         rows.add(SettingRow.rangeSlider("Low Health Alert", 0, 100, () -> cfg().lowHealthMillions,
                         v -> { cfg().lowHealthMillions = v; save(); }, "M")
                 .describe("Alerts once when a rare creature drops below this much health. 0 is "
                         + "off."));
 
-        rows.add(SettingRow.toggle("Missing Shuriken Warning", () -> cfg().shurikenWarning,
-                        () -> { cfg().shurikenWarning = !cfg().shurikenWarning; save(); })
-                .describe("Warns while a rare creature in sight has no shuriken applied."));
+        rows.add(SettingRow.toggle("Missing Shuriken Warning", () -> cardSwitch(LegacySwitch.SHURIKEN),
+                        () -> flipCardSwitch(LegacySwitch.SHURIKEN))
+                .describe("Warns on the creature card while a rare creature in sight has no "
+                        + "shuriken applied. The No Shuriken line; arrange it under Diana: "
+                        + "Appearance. Off by default."));
 
         rows.addAll(AlertChannelRows.forAlert("diana_creature", "rare creature alerts",
                 () -> cfg().creatureAlertChannels,
@@ -294,9 +301,11 @@ public final class DianaModule implements SbsModule {
                 .describe("Counts burrows, creatures and loot. Lifetime totals go to the shared "
                         + "tracker store with everything else."));
 
-        rows.add(SettingRow.toggle("Session Totals Card", () -> cfg().sessionHud,
-                        () -> { cfg().sessionHud = !cfg().sessionHud; save(); })
-                .describe("This session's counts on the Diana card, under the chains."));
+        rows.add(SettingRow.toggle("Session Totals Card", () -> cardSwitch(LegacySwitch.SESSION_CARD),
+                        () -> flipCardSwitch(LegacySwitch.SESSION_CARD))
+                .describe("This session's counts on the Diana card, under the chains: burrows, "
+                        + "creatures, treasures, mobs since an Inquisitor and the per-creature "
+                        + "counts. Arrange them under Diana: Appearance. Off by default."));
 
         // --- Chat ---
         rows.add(SettingRow.label("§bChat"));
@@ -339,6 +348,25 @@ public final class DianaModule implements SbsModule {
     }
 
     /**
+     * What one of the four old card switches shows now that the cards are arranged by line: on
+     * while any line it used to control is placed on either card.
+     *
+     * <p>The rows keep their labels and ids, so favourites and search still land on them. They are
+     * the quick "chains only" switches the page always had, written on top of the line layout.
+     */
+    static boolean cardSwitch(LegacySwitch which) {
+        return DianaHudLayout.switchOn(DianaHudLayout.current(cfg()), which);
+    }
+
+    /** Takes the switch's lines off both cards, or puts them back where they belong. */
+    static void flipCardSwitch(LegacySwitch which) {
+        DianaHudLayout.Layout layout = DianaHudLayout.current(cfg());
+        DianaHudLayout.write(cfg(), DianaHudLayout.withSwitch(layout, which,
+                !DianaHudLayout.switchOn(layout, which)));
+        save();
+    }
+
+    /**
      * Opens the shared colour picker on one of this module's four colours.
      *
      * <p>Four marker colours, one helper, because the picker takes a getter and a setter and the
@@ -346,7 +374,7 @@ public final class DianaModule implements SbsModule {
      * picker hands the marker back to the global waypoint preset, which is what an empty hex means
      * everywhere else in the mod.
      */
-    private static void openPicker(String label, java.util.function.Supplier<String> current,
+    static void openPicker(String label, java.util.function.Supplier<String> current,
                                    java.util.function.Consumer<String> setter) {
         net.minecraft.client.gui.screens.Screen previous =
                 GuiStateManager.getInstance().getCurrentScreen();

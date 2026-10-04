@@ -8,23 +8,30 @@
 
 package sbs.modid.client.skills.mining.metaldetector;
 
+import sbs.modid.client.core.alert.AlertChannelRows;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.module.ModuleGroup;
 import sbs.modid.client.core.module.SbsModule;
+import sbs.modid.client.ui.hud.edit.model.HudElement;
+import sbs.modid.client.ui.hud.edit.ui.HudEditorScreen;
 import sbs.modid.client.ui.settings.SettingRow;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Metal Detector module (Skills): works out where the buried treasure is in the Mines of Divan from
- * the distance the detector reports, and marks the spot.
+ * the distance the detector reports, and marks the spot. Also the Divan Tools checklist: the four
+ * scavenged tools the detector digs up, which Keeper each goes back to, and the Jade Crystal at the
+ * end - read from the Keepers' chat lines.
  *
- * <p>Read-only by design - a waypoint and an outline, no walking, no digging, no aiming. Self-
- * registered via {@code META-INF/services/sbs.modid.client.core.module.SbsModule}.
+ * <p>Read-only by design - a waypoint, an outline and a card, no walking, no digging, no aiming.
+ * Self-registered via {@code META-INF/services/sbs.modid.client.core.module.SbsModule}.
  *
- * <p>Ships <b>off</b>: the action-bar wording it reads is unverified, so it may not fire at all yet.
- * See {@code docs/features/metal-detector.md}.
+ * <p>Ships <b>off</b>: the action-bar wording the solver reads is unverified, so it may not fire at
+ * all yet, and the checklist has not been watched through a whole run. See
+ * {@code docs/features/metal-detector.md}.
  */
 public final class MetalDetectorModule implements SbsModule {
 
@@ -67,7 +74,7 @@ public final class MetalDetectorModule implements SbsModule {
 
     @Override
     public List<SettingRow> settings() {
-        return List.of(
+        List<SettingRow> rows = new ArrayList<>(List.of(
                 SettingRow.toggle("Metal Detector Solver", () -> cfg().enabled,
                         () -> { cfg().enabled = !cfg().enabled; save(); })
                         .describe("In the Mines of Divan, reads the distance the Metal Detector "
@@ -81,12 +88,28 @@ public final class MetalDetectorModule implements SbsModule {
                         () -> { cfg().waypoint = !cfg().waypoint; save(); })
                         .describe("Marks the solved spot as a waypoint, with the beam and distance "
                                 + "every other SBS waypoint has."),
-                SettingRow.label("Cleared automatically on a new treasure, lobby or zone"),
+                SettingRow.label("Cleared automatically on a find, a new lobby or leaving the zone"),
 
                 SettingRow.toggle("Treasure Box", () -> cfg().box,
                         () -> { cfg().box = !cfg().box; save(); })
                         .describe("Outlines the solved block in the world. When the readings were "
                                 + "all taken at one height the depth is an estimate, and the "
-                                + "outline says so rather than pretending to be exact."));
+                                + "outline says so rather than pretending to be exact."),
+
+                SettingRow.toggle("Divan Tools Checklist", () -> cfg().checklist,
+                        () -> { cfg().checklist = !cfg().checklist; save(); })
+                        .describe("A card in the Crystal Hollows with the four scavenged tools - "
+                                + "Golden Hammer, Emerald Hammer, Diamond Axe, Lapis Sword - each "
+                                + "missing, found or returned to its Keeper, then the Jade Crystal "
+                                + "once all four are back. Shown in the Mines of Divan, and "
+                                + "elsewhere on the island while a run is open. Default: off."),
+                SettingRow.label("Per lobby - a new lobby starts the list again")));
+        rows.addAll(AlertChannelRows.forAlert("divan_tool", "you dig up a scavenged tool",
+                () -> cfg().toolAlertChannels, mask -> { cfg().toolAlertChannels = mask; save(); }));
+        rows.add(SettingRow.button("Move / Resize Divan Tools Card", () -> net.minecraft.client.Minecraft
+                        .getInstance().setScreenAndShow(new HudEditorScreen(
+                                new HudElement[] {HudElement.DIVAN_CHECKLIST}, "Edit Divan Tools Card")))
+                .describe("Opens the editor where you drag the card anywhere on the screen."));
+        return rows;
     }
 }

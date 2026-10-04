@@ -120,6 +120,17 @@ final class PathfinderTask {
     private static final double TELEPORT_BLOCK_COST = 0.5;
 
     /**
+     * Extra cost of a teleport that starts or lands under a roof. Indoors a hop saves a few steps at
+     * best, aiming it among shelves and display cases is fiddly, and the walk is what a player does -
+     * so a teleport has to win by a clear margin there. Only ever added, so the heuristic's bound
+     * holds.
+     */
+    static final double INDOOR_TELEPORT_COST = 6.0;
+
+    /** Sampling step along an Instant Transmission's line, in blocks; below 1 so no cell is skipped. */
+    private static final double DASH_STEP = 0.1;
+
+    /**
      * What a jump pad costs before any distance: walking onto it, and the flight you cannot steer.
      * Higher than a teleport's setup, because a pad is a fixed detour rather than an aim.
      */
@@ -134,11 +145,16 @@ final class PathfinderTask {
      */
     private static final double SAME_GROUND_DISTANCE = 8.0;
 
-    /** Sampling step of the etherwarp ray, in blocks. Below 1 so it cannot skip past a thin wall. */
-    private static final double RAY_STEP = 0.25;
 
     /** {@link #landing} found nowhere to come to rest. */
     private static final int NO_LANDING = Integer.MIN_VALUE;
+
+    /**
+     * Extra cost of opening a breakable wall ({@link BreakableWalls}), in walk-equivalent blocks.
+     * High on purpose: a route through a wall is only worth drawing when no normal route exists at a
+     * similar cost - breaking takes an item and time, walking round takes neither.
+     */
+    static final double BREAK_COST = 40.0;
 
     /** The eight horizontal walking moves; the last four are the diagonals. */
     private static final int[][] WALK_MOVES = {
@@ -249,6 +265,22 @@ final class PathfinderTask {
     private Set<BlockPos> sneaks = Set.of();
     private boolean noRoute;
 
+    /** Which walls may be broken, and whether the player can; {@link BreakableWalls#NONE} for none. */
+    private final BreakableWalls walls;
+
+    /** Path nodes entered by breaking a wall - to be drawn as "break here" once that exists. */
+    private Set<BlockPos> breakNodes = Set.of();
+
+    /**
+     * Whether a neighbour was ever dropped for lying outside {@link #rangeLimit}. An exhausted search
+     * that never hit the limit searched everything reachable; one that did only searched its window,
+     * and a wider (deep) search may still find a way.
+     */
+    private boolean hitRange;
+
+    /** Set by {@link #finish}: the open set ran dry. */
+    private boolean exhausted;
+
     PathfinderTask(Level level, BlockPos start, BlockPos goal, int maxNodes,
                    PlayerMobility.Mobility mobility, int maxFall) {
         this(Terrain.of(level), start, List.of(goal), maxNodes, mobility, maxFall, List.of());
@@ -261,6 +293,20 @@ final class PathfinderTask {
 
     PathfinderTask(Terrain terrain, BlockPos start, List<BlockPos> goals, int maxNodes,
                    PlayerMobility.Mobility mobility, int maxFall, List<JumpPad> pads) {
+        this(terrain, start, goals, maxNodes, mobility, maxFall, pads, 0, BreakableWalls.NONE);
+    }
+
+    /**
+     * The full constructor.
+     *
+     * @param range a search window half-width in blocks, or 0 for the normal one ({@link #MIN_RANGE},
+     *              or enough to reach a goal) - the deep search passes the whole loaded area
+     * @param walls breakable-wall knowledge; {@link BreakableWalls#NONE} keeps the search unchanged
+     */
+    PathfinderTask(Terrain terrain, BlockPos start, List<BlockPos> goals, int maxNodes,
+                   PlayerMobility.Mobility mobility, int maxFall, List<JumpPad> pads, int range,
+                   BreakableWalls walls) {
+        this.walls = walls == null ? BreakableWalls.NONE : walls;
         this.terrain = terrain;
         this.start = start;
         this.pads = pads == null ? List.of() : List.copyOf(pads);
@@ -288,7 +334,7 @@ final class PathfinderTask {
             furthest = Math.max(furthest, Math.abs(target.getX() - start.getX()));
             furthest = Math.max(furthest, Math.abs(target.getZ() - start.getZ()));
         }
-        this.rangeLimit = Math.max(MIN_RANGE, furthest + RANGE_MARGIN);
+        this.rangeLimit = Math.max(Math.max(MIN_RANGE, furthest + RANGE_MARGIN), range);
 
         Node first = new Node(start.getX(), start.getY(), start.getZ());
         first.g = 0;
@@ -337,6 +383,36 @@ final class PathfinderTask {
      */
     boolean noRoute() {
         return noRoute;
+    }
+
+    /** How close (straight line) the search has got to the nearest goal so far. */
+    double bestDistance() {
+        return bestDistance;
+    }
+
+    /** Whether the search ended because every reachable node was expanded (vs. budget or stop). */
+    boolean exhausted() {
+        return exhausted;
+    }
+
+    /**
+     * Ends a running search now with the path to the closest node so far - the deep search's time
+     * limit. Not "exhausted": stopping proves nothing about reachability.
+     */
+    void stop() {
+        if (!finished) {
+            finish(false, false);
+        }
+    }
+
+    /** Whether the search ran into its window edge - see {@link #hitRange}. */
+    boolean hitRangeLimit() {
+        return hitRange;
+    }
+
+    /** Which of the {@link #path()} nodes are entered by breaking a wall. */
+    Set<BlockPos> breakNodes() {
+        return breakNodes;
     }
 
     /**
@@ -397,6 +473,7 @@ final class PathfinderTask {
      */
     private boolean finish(boolean reached, boolean exhausted) {
         finished = true;
+        this.exhausted = exhausted;
         reachedGoal = reached;
         if (!reached) {
             logNoRoute(exhausted);
@@ -409,6 +486,7 @@ final class PathfinderTask {
         List<BlockPos> path = new ArrayList<>();
         Set<BlockPos> hops = new HashSet<>();
         Set<BlockPos> landings = new HashSet<>();
+        Set<BlockPos> broken = new HashSet<>();
         for (Node node = best; node != null; node = node.parent) {
             BlockPos pos = new BlockPos(node.x, node.y, node.z);
             path.add(pos);
@@ -417,6 +495,9 @@ final class PathfinderTask {
             }
             if (node.pad) {
                 landings.add(pos);
+            }
+            if (node.breakWall) {
+                broken.add(pos);
             }
         }
         Collections.reverse(path);
@@ -432,6 +513,7 @@ final class PathfinderTask {
         sneaks = crouched.isEmpty() ? Set.of() : crouched;
         teleports = hops.isEmpty() ? Set.of() : hops;
         padLandings = landings.isEmpty() ? Set.of() : landings;
+        breakNodes = broken.isEmpty() ? Set.of() : broken;
         return true;
     }
 
@@ -547,6 +629,30 @@ final class PathfinderTask {
                 break; // only the first (highest) landing in this direction
             }
         }
+        if (walls != BreakableWalls.NONE && !crouched && walls.canBreak()) {
+            expandBreakable(node);
+        }
+    }
+
+    /**
+     * The BREAKABLE edge: a level, cardinal step into a body space that is blocked only by a wall the
+     * provider says can be opened here. Never diagonal (that would open a corner, not a wall) and
+     * never combined with a climb or drop - one wall, straight through. Costs {@link #BREAK_COST}
+     * on top of the step, so it only wins when walking round is far longer.
+     */
+    private void expandBreakable(Node node) {
+        for (int i = 0; i < 4; i++) {
+            int nx = node.x + WALK_MOVES[i][0];
+            int nz = node.z + WALK_MOVES[i][1];
+            if (bodyClear(nx, node.y, nz)) {
+                continue;   // nothing to break - the normal move covers it
+            }
+            boolean feet = isPassable(nx, node.y, nz) || walls.breakable(nx, node.y, nz);
+            boolean head = isPassable(nx, node.y + 1, nz) || walls.breakable(nx, node.y + 1, nz);
+            if (feet && head) {
+                relax(node, nx, node.y, nz, 1.0 + BREAK_COST, false, false, true);
+            }
+        }
     }
 
     /**
@@ -620,10 +726,22 @@ final class PathfinderTask {
      * <p>Only the <b>furthest</b> landing per direction is offered, not every cell along the way.
      * The nearer ones are what walking already covers, so emitting them would multiply the branching
      * factor by the dash length to say nothing new – the whole point of the ability is the far end.
+     *
+     * <p><b>The range is measured along the look line</b>, not per axis: a diagonal dash covers
+     * eight blocks of distance, not eight cells on each axis (which was 11.3 blocks level and 13.9
+     * angled up). The ability works block by block - it stops in front of the first block the body
+     * would enter, iron bars included, and lands centred in a block - so the line is walked cell by
+     * cell, every cell the body enters has to be clear, and a diagonal corner needs both of its
+     * axis-aligned neighbours open.
      */
     private void expandInstant(Node node) {
         int range = transmission.instantRange();
         for (int[] direction : INSTANT_MOVES) {
+            double length = Math.sqrt(direction[0] * direction[0] + direction[1] * direction[1]
+                    + direction[2] * direction[2]);
+            double ux = direction[0] / length;
+            double uy = direction[1] / length;
+            double uz = direction[2] / length;
             int x = node.x;
             int y = node.y;
             int z = node.z;
@@ -631,13 +749,21 @@ final class PathfinderTask {
             int landY = NO_LANDING;
             int landZ = 0;
 
-            for (int step = 1; step <= range; step++) {
-                if (!stepClear(x, y, z, direction[0], direction[1], direction[2])) {
+            int samples = (int) Math.ceil(range / DASH_STEP);
+            for (int i = 1; i <= samples; i++) {
+                double along = Math.min(range, i * DASH_STEP);
+                int nx = Mth.floor(node.x + 0.5 + ux * along);
+                int ny = Mth.floor(node.y + 0.5 + uy * along);
+                int nz = Mth.floor(node.z + 0.5 + uz * along);
+                if (nx == x && ny == y && nz == z) {
+                    continue;
+                }
+                if (!stepClear(x, y, z, Integer.signum(nx - x), Integer.signum(ny - y), Integer.signum(nz - z))) {
                     break;
                 }
-                x += direction[0];
-                y += direction[1];
-                z += direction[2];
+                x = nx;
+                y = ny;
+                z = nz;
                 if (!bodyClear(x, y, z)) {
                     break;   // the dash stops at the wall, exactly as the ability does
                 }
@@ -715,21 +841,51 @@ final class PathfinderTask {
         }
 
         double travel = Math.min(length, transmission.etherRange());
-        int samples = (int) Math.ceil(travel / RAY_STEP);
-        int lastX = node.x;
-        int lastY = node.y + 1;   // the cell the ray starts in, so it is not tested against itself
-        int lastZ = node.z;
-        for (int i = 1; i <= samples; i++) {
-            double along = Math.min(travel, i * RAY_STEP) / length;
-            int cx = Mth.floor(originX + dx * along);
-            int cy = Mth.floor(originY + dy * along);
-            int cz = Mth.floor(originZ + dz * along);
-            if (cx == lastX && cy == lastY && cz == lastZ) {
-                continue;   // still inside the block sampled last time
+        // Exact voxel traversal (every cell the line touches, in order) rather than samples: a
+        // fixed step can slip between two blocks that only meet at a corner, which is a gap no ray
+        // in the game passes.
+        double ux = dx / length;
+        double uy = dy / length;
+        double uz = dz / length;
+        int cx = Mth.floor(originX);
+        int cy = Mth.floor(originY);
+        int cz = Mth.floor(originZ);
+        int stepX = ux > 0 ? 1 : ux < 0 ? -1 : 0;
+        int stepY = uy > 0 ? 1 : uy < 0 ? -1 : 0;
+        int stepZ = uz > 0 ? 1 : uz < 0 ? -1 : 0;
+        double nextX = boundary(originX, cx, ux);
+        double nextY = boundary(originY, cy, uy);
+        double nextZ = boundary(originZ, cz, uz);
+        double deltaX = ux == 0 ? Double.POSITIVE_INFINITY : Math.abs(1 / ux);
+        double deltaY = uy == 0 ? Double.POSITIVE_INFINITY : Math.abs(1 / uy);
+        double deltaZ = uz == 0 ? Double.POSITIVE_INFINITY : Math.abs(1 / uz);
+        while (true) {
+            double t = Math.min(nextX, Math.min(nextY, nextZ));
+            if (t > travel) {
+                return;   // out of range without meeting anything
             }
-            lastX = cx;
-            lastY = cy;
-            lastZ = cz;
+            boolean tieX = t == nextX;
+            boolean tieY = t == nextY;
+            boolean tieZ = t == nextZ;
+            if ((tieX ? 1 : 0) + (tieY ? 1 : 0) + (tieZ ? 1 : 0) > 1) {
+                // Exactly through an edge or corner: a block on either side of it stops the ray.
+                if ((tieX && !isPassable(cx + stepX, cy, cz)) || (tieY && !isPassable(cx, cy + stepY, cz))
+                        || (tieZ && !isPassable(cx, cy, cz + stepZ))) {
+                    return;
+                }
+            }
+            if (t == nextX) {
+                cx += stepX;
+                nextX += deltaX;
+            }
+            if (t == nextY) {
+                cy += stepY;
+                nextY += deltaY;
+            }
+            if (t == nextZ) {
+                cz += stepZ;
+                nextZ += deltaZ;
+            }
             if (isPassable(cx, cy, cz)) {
                 continue;
             }
@@ -741,6 +897,17 @@ final class PathfinderTask {
             }
             return;
         }
+    }
+
+    /** Distance along a ray from {@code origin} (in {@code cell}) to the first cell boundary on one axis. */
+    private static double boundary(double origin, int cell, double direction) {
+        if (direction > 0) {
+            return (cell + 1 - origin) / direction;
+        }
+        if (direction < 0) {
+            return (origin - cell) / -direction;
+        }
+        return Double.POSITIVE_INFINITY;
     }
 
     /**
@@ -774,7 +941,11 @@ final class PathfinderTask {
         double dy = ny - from.y;
         double dz = nz - from.z;
         double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        relax(from, nx, ny, nz, TELEPORT_SETUP_COST + distance * TELEPORT_BLOCK_COST, true, false);
+        double cost = TELEPORT_SETUP_COST + distance * TELEPORT_BLOCK_COST;
+        if (!terrain.openSky(from.x, from.y + 1, from.z) || !terrain.openSky(nx, ny + 1, nz)) {
+            cost += INDOOR_TELEPORT_COST;   // under a roof at either end: walk unless it clearly pays
+        }
+        relax(from, nx, ny, nz, cost, true, false);
     }
 
     // ------------------------------------------------------------------
@@ -787,7 +958,13 @@ final class PathfinderTask {
     }
 
     private void relax(Node from, int nx, int ny, int nz, double cost, boolean teleport, boolean pad) {
+        relax(from, nx, ny, nz, cost, teleport, pad, false);
+    }
+
+    private void relax(Node from, int nx, int ny, int nz, double cost, boolean teleport, boolean pad,
+                       boolean breakWall) {
         if (Math.abs(nx - start.getX()) > rangeLimit || Math.abs(nz - start.getZ()) > rangeLimit) {
+            hitRange = true;
             return;
         }
         long key = BlockPos.asLong(nx, ny, nz);
@@ -806,6 +983,7 @@ final class PathfinderTask {
         // and a cheaper route arriving on foot has to clear a teleport flag left by an earlier one.
         neighbour.teleport = teleport;
         neighbour.pad = pad;
+        neighbour.breakWall = breakWall;
         open.add(new Entry(neighbour, g + neighbour.h));
     }
 
@@ -973,6 +1151,9 @@ final class PathfinderTask {
 
         /** Whether the move from {@link #parent} into this node is a jump pad's flight. */
         private boolean pad;
+
+        /** Whether the move from {@link #parent} into this node breaks a wall (BREAKABLE edge). */
+        private boolean breakWall;
 
         private Node(int x, int y, int z) {
             this.x = x;

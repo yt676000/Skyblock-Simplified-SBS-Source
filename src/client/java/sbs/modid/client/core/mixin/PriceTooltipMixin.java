@@ -109,6 +109,15 @@ public abstract class PriceTooltipMixin {
             cir.setReturnValue(current);
         }
 
+        // Seymour Colours: hex, best colour match and tags, sharing this handler for the same reason.
+        // Self-gating: nothing unless the item is a Seymour piece (or dyed leather, when enabled).
+        List<Component> withSeymour = sbs.modid.client.helper.seymour.render.SeymourTooltip.decorate(
+                current, (ItemStack) (Object) this);
+        if (withSeymour != current) {
+            current = withSeymour;
+            cir.setReturnValue(current);
+        }
+
         // Gemstone slot summary, sharing this handler for the same reason. Self-gating: nothing
         // unless the item has gemstone slots. Placed above Est. Value, which counts the same gems.
         List<Component> withGems = sbs.modid.client.economy.itemvalue.GemSlotTooltip.decorate(

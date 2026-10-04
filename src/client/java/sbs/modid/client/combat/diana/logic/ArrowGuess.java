@@ -229,18 +229,35 @@ public final class ArrowGuess {
         }
     }
 
-    /** The player dug a block: the next arrow will be drawn out of it. */
-    public void onBlockDug(BlockPos pos) {
+    /**
+     * The player clicked a block with a spade. Remembered for {@link #plausibleBurrow}'s rule that
+     * air counts as ground when the player just broke it, and as an interaction with a guess at that
+     * block. Deliberately <b>not</b> a restart: players click on while the arrow is drawn, and a
+     * restart per click threw the arrow's particles away (2026-10-04 capture: up to 18 clicks inside
+     * one arrow).
+     */
+    public void onBlockClicked(BlockPos pos) {
         if (pos == null) {
             return;
         }
-        lastDug = pos;
         recentlyDug.put(pos, System.currentTimeMillis());
         for (GuessChain chain : chains) {
             if (chain.pointsAt(pos)) {
                 chain.recordDig();
             }
         }
+    }
+
+    /**
+     * A dig was confirmed by its {@code (n/m)} chat line: the next arrow is drawn out of this burrow.
+     * Called by {@link BurrowChat}, not by the click.
+     */
+    public void onBlockDug(BlockPos pos) {
+        if (pos == null) {
+            return;
+        }
+        lastDug = pos;
+        recentlyDug.put(pos, System.currentTimeMillis());
         // A new burrow means a new arrow. The old cloud belongs to the previous one and fitting the
         // two together produces a line through both, which points at neither.
         cloud.clear();
@@ -642,7 +659,7 @@ public final class ArrowGuess {
             return "off";
         }
         if (DianaGuard.arrowGuessDown()) {
-            return "paused for this session after two slow hooks - /sbs devlog diana rearm";
+            return "paused for this session after two slow hooks - /sbs diana clear";
         }
         StringBuilder out = new StringBuilder(128);
         out.append(stage.explanation());

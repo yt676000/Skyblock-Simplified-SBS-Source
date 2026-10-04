@@ -60,6 +60,7 @@ public final class MiningHud {
         renderCommissions(g, settings);
         renderHotm(g, settings);
         renderReminder(g, settings);
+        renderPrecision(g, settings);
         renderPowder(g, settings);
         renderTool(g, settings);
     }
@@ -180,6 +181,36 @@ public final class MiningHud {
         HudLayout.measure(HudElement.HOTM_REMINDER, x, y, width, height);
         panel(g, x, y, width, height);
         g.text(font, Component.literal(line), x + PAD, y + PAD, SBSTheme.TEXT);
+        HudLayout.end(g);
+    }
+
+    // ------------------------------------------------------------------ precision mining
+
+    /**
+     * "Precision: on target" / "Precision: off target", only while the Precision Mining marker is
+     * drawn - the marker decides, this repeats it in words.
+     */
+    private static void renderPrecision(GuiGraphicsExtractor g, MiningHelpersSettings settings) {
+        if (!settings.precisionTarget || !settings.precisionHud || HudLayout.isHidden(HudElement.PRECISION_MINING)) {
+            return;
+        }
+        Boolean on = sbs.modid.client.skills.mining.precision.render.PrecisionMiningRender
+                .onTargetNow(System.currentTimeMillis());
+        if (on == null) {
+            return;
+        }
+        String line = on ? "Precision: on target" : "Precision: off target";
+        HudElement.Bounds bounds = HudElement.PRECISION_MINING.defaultBounds(g.guiWidth(), g.guiHeight());
+        HudLayout.begin(g, HudElement.PRECISION_MINING);
+        Font font = Minecraft.getInstance().font;
+        int x = (int) bounds.x();
+        int y = (int) bounds.y();
+        int width = PAD * 2 + font.width(line);
+        int height = PAD * 2 + font.lineHeight;
+        HudLayout.measure(HudElement.PRECISION_MINING, x, y, width, height);
+        panel(g, x, y, width, height);
+        g.text(font, Component.literal(line), x + PAD, y + PAD,
+                0xFF000000 | (on ? settings.precisionOnRgb() : settings.precisionOffRgb()));
         HudLayout.end(g);
     }
 

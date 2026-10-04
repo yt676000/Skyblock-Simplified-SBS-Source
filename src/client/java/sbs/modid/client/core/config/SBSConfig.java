@@ -459,6 +459,18 @@ public final class SBSConfig {
         /** Outline the solved block in the world. */
         @Shareable(Kind.BOOL)
         public boolean box = true;
+
+        /**
+         * The Divan Tools card: the four scavenged tools and the Jade Crystal, from the Keepers' and
+         * the detector's chat lines. Off until one Mines of Divan pass has been watched in game -
+         * see {@code docs/features/metal-detector.md}.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean checklist = false;
+
+        /** Where the "found a scavenged tool, return it to its Keeper" alert goes. */
+        public int toolAlertChannels = sbs.modid.client.core.alert.AlertChannel.CHAT.bit()
+                | sbs.modid.client.core.alert.AlertChannel.SOUND.bit();
     }
 
     public static final class ExperimentationSettings {
@@ -480,7 +492,7 @@ public final class SBSConfig {
          * read as the order changing mid-round, which is exactly the confusion it was meant to avoid.
          */
         @Shareable(Kind.BOOL)
-        public boolean ultrasequencerOrderGradient = false;
+        public boolean ultrasequencerOrderGradient = true;
 
         /** Superpairs: keep revealed icons shown after they flip back over. */
         @Shareable(Kind.BOOL)
@@ -616,6 +628,45 @@ public final class SBSConfig {
         public boolean treasureChestCounter = false;
 
         /**
+         * Precision Mining target: a marker on the HotM perk's particle target on the block being
+         * mined, red off it and green while the crosshair is on it. Display only. Off by default: the
+         * particle has not been captured yet - see {@code docs/features/precision-mining-target.md}.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean precisionTarget = false;
+        /** Marker colour while the crosshair is on the target; empty = the default green. */
+        @Shareable(Kind.HEX_COLOR)
+        public String precisionOnColorHex = "";
+        /** Marker colour while it is not; empty = the default red. */
+        @Shareable(Kind.HEX_COLOR)
+        public String precisionOffColorHex = "";
+        /** The marker's edge, in hundredths of a block. */
+        public int precisionMarkerSize = 16;
+        /**
+         * How close the crosshair's point on the block must be to the particle to count as on it, in
+         * hundredths of a block. The server's own tolerance is unknown; this is a guess.
+         */
+        public int precisionRadius = 15;
+        /** A small square around the crosshair in the on/off colour while a target is shown. */
+        @Shareable(Kind.BOOL)
+        public boolean precisionCrosshairRing = true;
+        /** The "Precision: on target" HUD line. */
+        @Shareable(Kind.BOOL)
+        public boolean precisionHud = false;
+
+        /** The on-target colour actually used, as RGB. */
+        public int precisionOnRgb() {
+            Integer custom = sbs.modid.client.core.render.OverlayColor.parseHex(precisionOnColorHex);
+            return custom != null ? custom : 0x55FF55;
+        }
+
+        /** The off-target colour actually used, as RGB. */
+        public int precisionOffRgb() {
+            Integer custom = sbs.modid.client.core.render.OverlayColor.parseHex(precisionOffColorHex);
+            return custom != null ? custom : 0xFF5555;
+        }
+
+        /**
          * The tool card: how much of a limited-use tool (Pickonimbus, Jungle Axe, ...) is left.
          * Not gated on the mining islands – the same tools are swung while foraging.
          */
@@ -682,6 +733,45 @@ public final class SBSConfig {
         public int coldWarnPercent = 75;
         /** The Cold at which you are removed from the area. WIKI value (100), not yet seen in game. */
         public int coldCap = 100;
+
+        /**
+         * Effective Ore Blocks: tint the visible Mithril, Umber and Tungsten blocks by yield per unit
+         * of mining effort. Off by default until the block ids and zones are confirmed in game - see
+         * {@code docs/features/effective-ore-blocks.md}.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean effectiveBlocks = false;
+        @Shareable(Kind.BOOL)
+        public boolean effectiveMithril = true;
+        @Shareable(Kind.BOOL)
+        public boolean effectiveUmber = true;
+        @Shareable(Kind.BOOL)
+        public boolean effectiveTungsten = true;
+        /** Count the 0.5x cobblestone slabs and stairs as Tungsten. */
+        @Shareable(Kind.BOOL)
+        public boolean effectiveHalfBlocks = false;
+        /** The player insta-mines gray wool and cyan terracotta, so those rank first. */
+        @Shareable(Kind.BOOL)
+        public boolean effectiveInstaMineSoft = false;
+        /** Scan radius in blocks around the player, 1-24. */
+        @Shareable(value = Kind.INT, min = 1, max = 24)
+        public int effectiveRadius = 12;
+        /** Tint only the best tier of each ore. */
+        @Shareable(Kind.BOOL)
+        public boolean effectiveBestOnly = false;
+        /** Tint the lowest tier too (only an ore with three or more tiers has one). */
+        @Shareable(Kind.BOOL)
+        public boolean effectiveShowLow = false;
+        /** Draw each tinted face's edges as well. */
+        @Shareable(Kind.BOOL)
+        public boolean effectiveOutline = false;
+        /** Tier colours, RRGGBB; empty for the default. */
+        @Shareable(Kind.HEX_COLOR)
+        public String effectiveBestColorHex = "33DD55";
+        @Shareable(Kind.HEX_COLOR)
+        public String effectiveMiddleColorHex = "E6C84A";
+        @Shareable(Kind.HEX_COLOR)
+        public String effectiveLowColorHex = "D9534F";
     }
 
     /** Gemstone Profit module: coins per hour from mined gemstones, priced off the Bazaar. */
@@ -786,7 +876,7 @@ public final class SBSConfig {
 
     public static final class PickobolusSettings {
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /** Highlight colour for the affected blocks. */
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
@@ -1056,7 +1146,7 @@ public final class SBSConfig {
     public static final class FairySoulSettings {
         /** Master switch - off draws nothing and tracks nothing. */
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /** Route to a soul, not just mark them. */
         @Shareable(Kind.BOOL)
@@ -1499,7 +1589,7 @@ public final class SBSConfig {
     public static final class PeltSettings {
         /** Master switch: no chat parsing, no scan, no boxes while this is off. */
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /** Box the quest animal once it is detected (through walls - finding it is the point). */
         @Shareable(Kind.BOOL)
@@ -1664,7 +1754,7 @@ public final class SBSConfig {
     public static final class AbiphoneSettings {
         /** Master toggle: reskin every Abiphone menu as a phone (default off, it renders). */
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
         /** Show the phone status bar (carrier + clock + signal + battery). */
         @Shareable(Kind.BOOL)
         public boolean statusBar = true;
@@ -1702,7 +1792,7 @@ public final class SBSConfig {
 
         /** highlight box + nametag colour (cycled preset). */
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
-        public sbs.modid.client.core.render.OverlayColor color = sbs.modid.client.core.render.OverlayColor.GREEN;
+        public sbs.modid.client.core.render.OverlayColor color = sbs.modid.client.core.render.OverlayColor.PURPLE;
 
         /** Draw the member's name above the box. */
         @Shareable(Kind.BOOL)
@@ -1768,7 +1858,7 @@ public final class SBSConfig {
         @Shareable(Kind.BOOL)
         public boolean beaconHighlight = true;
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
-        public sbs.modid.client.core.render.OverlayColor beaconColor = sbs.modid.client.core.render.OverlayColor.CYAN;
+        public sbs.modid.client.core.render.OverlayColor beaconColor = sbs.modid.client.core.render.OverlayColor.GREEN;
         /** Big alert when a beacon is placed. */
         @Shareable(Kind.BOOL)
         public boolean beaconAlert = true;
@@ -1786,7 +1876,7 @@ public final class SBSConfig {
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
         public sbs.modid.client.core.render.OverlayColor nukekubiColor = sbs.modid.client.core.render.OverlayColor.RED;
         @Shareable(Kind.BOOL)
-        public boolean nukekubiAlert = true;
+        public boolean nukekubiAlert = false;
         /** Tracer line to every nukekubi head, independent of {@link #showTracers}. */
         @Shareable(Kind.BOOL)
         public boolean nukekubiTracer = false;
@@ -1795,11 +1885,11 @@ public final class SBSConfig {
         @Shareable(Kind.BOOL)
         public boolean phaseHighlight = true;
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
-        public sbs.modid.client.core.render.OverlayColor phaseNormalColor = sbs.modid.client.core.render.OverlayColor.PURPLE;
+        public sbs.modid.client.core.render.OverlayColor phaseNormalColor = sbs.modid.client.core.render.OverlayColor.GREEN;
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
-        public sbs.modid.client.core.render.OverlayColor phaseBeaconColor = sbs.modid.client.core.render.OverlayColor.YELLOW;
+        public sbs.modid.client.core.render.OverlayColor phaseBeaconColor = sbs.modid.client.core.render.OverlayColor.RED;
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
-        public sbs.modid.client.core.render.OverlayColor phaseHitsColor = sbs.modid.client.core.render.OverlayColor.GREEN;
+        public sbs.modid.client.core.render.OverlayColor phaseHitsColor = sbs.modid.client.core.render.OverlayColor.YELLOW;
 
         // --- Zombie (Revenant) ---
         /** Alert when the boss enrages (T3/T4 Mad/Enraged) or the Atoned Horror charges its blast. */
@@ -2371,7 +2461,7 @@ public final class SBSConfig {
 
     public static final class BestiarySettings {
         /** Master toggle for the Bestiary Tracker module. */
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /** The mob to keep pinned on the HUD (name, matched loosely). Empty = nothing pinned. */
         public String pinnedMob = "";
@@ -2457,7 +2547,7 @@ public final class SBSConfig {
          * who never asked for it.
          */
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /** Name the block the crosshair rests on. */
         @Shareable(Kind.BOOL)
@@ -2780,7 +2870,7 @@ public final class SBSConfig {
          * would silently do nothing.
          */
         @Shareable(Kind.BOOL)
-        public boolean infestedNearestFirst = false;
+        public boolean infestedNearestFirst = true;
 
         /** Flash the plots the Pests widget lists as infested. */
         @Shareable(Kind.BOOL)
@@ -2813,7 +2903,7 @@ public final class SBSConfig {
     public static final class CollectionTrackerSettings {
         /** Master toggle for the Collection Tracker module. */
         @Shareable(Kind.BOOL)
-        public boolean enabled = true;
+        public boolean enabled = false;
 
         /** Show the session rate ("/h") next to the gain. */
         @Shareable(Kind.BOOL)
@@ -2863,7 +2953,7 @@ public final class SBSConfig {
         public boolean partyAnnounce = false;
 
         /** A boss death within this many blocks of you counts as your assist (auto-detect). */
-        public int detectRadius = 15;
+        public int detectRadius = 24;
 
         /**
          * How long a vanished boss is held before it counts as a kill. A boss whose body comes back
@@ -2873,7 +2963,7 @@ public final class SBSConfig {
 
         // --- Boss highlight: highlight the slayer mini-boss you are carrying ---
         /** Draw a box (and label) on every slayer mini-boss the counter can see in the world. */
-        public boolean highlightEnabled = false;
+        public boolean highlightEnabled = true;
         /**
          * @deprecated Legacy key from when this was called "ESP". Boxed so that "absent"
          *     is distinguishable from "false" - a rename must not silently reset a setting
@@ -2925,7 +3015,7 @@ public final class SBSConfig {
 
 
         /** Only box the boss type of the active carry (hides other players' slayers in a public lobby). */
-        public boolean highlightActiveBossOnly = false;
+        public boolean highlightActiveBossOnly = true;
         /**
          * @deprecated Legacy key from when this was called "ESP". Boxed so that "absent"
          *     is distinguishable from "false" - a rename must not silently reset a setting
@@ -2981,7 +3071,7 @@ public final class SBSConfig {
     public static final class RejoinTimerSettings {
         /** Master toggle for the Rejoin Timer. */
         @Shareable(Kind.BOOL)
-        public boolean enabled = true;
+        public boolean enabled = false;
 
         /** How long to wait after a kick before it says you can rejoin (seconds). */
         public int seconds = 60;
@@ -3126,6 +3216,62 @@ public final class SBSConfig {
 
     /** Web Browser module: a movable in-game browser you can watch while playing. */
     public BrowserSettings browser = new BrowserSettings();
+
+    /** Entity Hitboxes module (Visuals): the vanilla hitbox for chosen entity types, depth-tested. */
+    public EntityHitboxSettings entityHitboxes = new EntityHitboxSettings();
+
+    public static final class EntityHitboxSettings {
+        /** Master toggle. Off = the hook returns after this one check. */
+        @Shareable(Kind.BOOL)
+        public boolean enabled = false;
+
+        @Shareable(Kind.BOOL)
+        public boolean players = true;
+        @Shareable(Kind.BOOL)
+        public boolean self = false;
+        @Shareable(Kind.BOOL)
+        public boolean skyblockMobs = true;
+        @Shareable(Kind.BOOL)
+        public boolean passive = false;
+        @Shareable(Kind.BOOL)
+        public boolean hostile = true;
+        /** Off by default: Hypixel builds nametags and holograms from thousands of stands. */
+        @Shareable(Kind.BOOL)
+        public boolean armorStands = false;
+        @Shareable(Kind.BOOL)
+        public boolean items = false;
+        @Shareable(Kind.BOOL)
+        public boolean projectiles = false;
+        @Shareable(Kind.BOOL)
+        public boolean other = false;
+
+        /** Box colours per category, RRGGBB; empty = the category's default. */
+        public String playersHex = "";
+        public String selfHex = "";
+        public String skyblockMobsHex = "";
+        public String passiveHex = "";
+        public String hostileHex = "";
+        public String armorStandsHex = "";
+        public String itemsHex = "";
+        public String projectilesHex = "";
+        public String otherHex = "";
+
+        /** Only entities within this many blocks of the camera get a box. */
+        @Shareable(value = Kind.INT, min = 4, max = 128)
+        public int maxDistance = 32;
+
+        /** Leave player-shaped NPCs (not on the tab list) out. */
+        @Shareable(Kind.BOOL)
+        public boolean hideNpcs = true;
+
+        /** Also box invisible entities (off: invisible stands are how Hypixel builds holograms). */
+        @Shareable(Kind.BOOL)
+        public boolean includeInvisible = false;
+
+        /** Vanilla's extras: the eye-height line and the look direction arrow. */
+        @Shareable(Kind.BOOL)
+        public boolean eyeAndLook = true;
+    }
 
     public static final class BrowserSettings {
         /** Master toggle for the Web Browser module. */
@@ -3336,7 +3482,7 @@ public final class SBSConfig {
          * status is not something you can act on from where you are standing.
          */
         @Shareable(Kind.BOOL)
-        public boolean manageOrdersHud = false;
+        public boolean manageOrdersHud = true;
 
         /** Max starting capital for Best Flips in coins (sent to the server; 0 = unlimited). */
         public long flipsBudget = 0;
@@ -3398,22 +3544,22 @@ public final class SBSConfig {
          * better can raise it and see exactly which number it moved.
          */
         @Shareable(value = Kind.INT, min = 1, max = 100)
-        public int localFlipSharePct = 8;
+        public int localFlipSharePct = 15;
 
         /** Spread above this percentage reads as an anomaly rather than as an opportunity. */
         @Shareable(value = Kind.INT, min = 1, max = 500)
-        public int localFlipMaxSpreadPct = 12;
+        public int localFlipMaxSpreadPct = 25;
 
         /** Minimum units traded per week on EACH side; below it neither leg reliably fills. */
-        public long localFlipMinWeeklyVolume = 25_000;
+        public long localFlipMinWeeklyVolume = 10000;
 
         /** Minimum distinct orders on each side. A thin book is one person's to move. */
         @Shareable(value = Kind.INT, min = 0, max = 500)
-        public int localFlipMinOrders = 12;
+        public int localFlipMinOrders = 5;
 
         /** Share of one side's visible book allowed at a single price level before it reads as a wall. */
         @Shareable(value = Kind.INT, min = 10, max = 100)
-        public int localFlipMaxConcentrationPct = 35;
+        public int localFlipMaxConcentrationPct = 50;
 
         /** Show the entries the anomaly filters excluded, each labelled with why. */
         @Shareable(Kind.BOOL)
@@ -3441,7 +3587,7 @@ public final class SBSConfig {
 public static final class CaseOpeningSettings {
         /** Play the case-opening animation. Purely visual - the reward is unchanged either way. */
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /** Animation length in milliseconds, clamped to 2000-5000 by the reel. */
         @Shareable(value = Kind.INT, min = 2000, max = 5000)
@@ -3455,7 +3601,7 @@ public static final class CaseOpeningSettings {
     public static final class FishingSettings {
         /** Master switch: nothing is tracked and no HUD is drawn while this is off. */
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /** Big "!" on the HUD when a sea creature spawns. */
         @Shareable(Kind.BOOL)
@@ -3823,6 +3969,17 @@ public static final class CaseOpeningSettings {
         /** The movable card: chocolate per second, the best buy and the wait for it. */
         @Shareable(Kind.BOOL)
         public boolean showHud = false;
+
+        /**
+         * A Chocolate Factory button on a filler slot of the SkyBlock Menu. Independent of
+         * {@link #enabled}: the button reads no lore, so nothing about it is a guess.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean menuShortcut = true;
+
+        /** Which SkyBlock Menu slot the button sits on. Resolved through {@code MenuShortcut.resolveSlot}. */
+        @Shareable(value = Kind.INT, min = 0, max = 53)
+        public int menuShortcutSlot = sbs.modid.client.helper.chocolate.logic.MenuShortcut.DEFAULT_SLOT;
 
         // ---------------------------------------------------------- what the reader looks for
         // All five stay inside ShareValues.MAX_TEXT (64). That cap is not what an
@@ -4657,7 +4814,7 @@ public static final class CaseOpeningSettings {
          * screen opens – so clicking through a chain of SkyBlock menus does not move the mouse.
          */
         @Shareable(Kind.BOOL)
-        public boolean keepMousePosition = true;
+        public boolean keepMousePosition = false;
 
         /** Sprint without holding the key. */
         @Shareable(Kind.BOOL)
@@ -4694,7 +4851,7 @@ public static final class CaseOpeningSettings {
          * {@link sbs.modid.client.core.util.NumberDisplay}.
          */
         @Shareable(Kind.BOOL)
-        public boolean shortenNumbers = true;
+        public boolean shortenNumbers = false;
 
         /**
          * Put {@code [SBS]} in front of every chat message the mod sends for you - the {@code !command}
@@ -4722,10 +4879,10 @@ public static final class CaseOpeningSettings {
          * clicked there - a click opens the auction, the ✕ dismisses the card.
          */
         @Shareable(Kind.BOOL)
-        public boolean popupAlerts = true;
+        public boolean popupAlerts = false;
 
         /** How long a popup card stays on screen, in seconds. */
-        public int popupSeconds = 120;
+        public int popupSeconds = 179;
 
         /** Additionally print each flip as a chat line with a click-to-open link. */
         @Shareable(Kind.BOOL)
@@ -4790,7 +4947,7 @@ public static final class CaseOpeningSettings {
         public static final class ForgeSettings {
         /** Show the Forge Flips window while the Forge GUI is open. */
         @Shareable(Kind.BOOL)
-        public boolean showFlips = false;
+        public boolean showFlips = true;
 
         /** Max craft cost in coins (sent to the server, and applied locally; 0 = unlimited). */
         public long budget = 0;
@@ -5050,14 +5207,14 @@ public static final class CaseOpeningSettings {
 
         /** Hide Minecraft's vanilla armor bar (the armor value itself is unaffected). */
         @Shareable(Kind.BOOL)
-        public boolean hideArmorBar = false;
+        public boolean hideArmorBar = true;
 
         /**
          * Hide the potion-effect icons and text everywhere they are drawn – the gameplay HUD and the
          * panel beside open inventories (effects still apply normally).
          */
         @Shareable(Kind.BOOL)
-        public boolean hidePotionEffects = false;
+        public boolean hidePotionEffects = true;
 
         /** Per-element GUI-editor transforms (position + scale), keyed by {@code HudElement.id()}. */
         public Map<String, HudTransform> hudLayout = new LinkedHashMap<>();
@@ -5068,7 +5225,7 @@ public static final class CaseOpeningSettings {
 
         /** HUD card showing the active pet (icon, name, level, held item, XP % to next level). */
         @Shareable(Kind.BOOL)
-        public boolean showActivePet = false;
+        public boolean showActivePet = true;
 
         /**
          * A maxed pet's XP bar shimmers with the same travelling rainbow a maxed skill gets in the
@@ -5095,7 +5252,7 @@ public static final class CaseOpeningSettings {
 
         /** HUD text with the held item's remaining cooldown ("10.1s"), right of the crosshair. */
         @Shareable(Kind.BOOL)
-        public boolean showCooldownHud = false;
+        public boolean showCooldownHud = true;
 
         /**
          * Small chip beside the hotbar with the loaded arrow type and how many are left, while a bow
@@ -5103,11 +5260,11 @@ public static final class CaseOpeningSettings {
          * lore carries "Arrows Remaining: N").
          */
         @Shareable(Kind.BOOL)
-        public boolean showRemainingArrows = false;
+        public boolean showRemainingArrows = true;
 
         /** HUD card with ping (ms), estimated server TPS and FPS, top-left by default. */
         @Shareable(Kind.BOOL)
-        public boolean showServerStats = false;
+        public boolean showServerStats = true;
 
         /** In-world hotkey that opens the GUI editor directly; 0 = unbound. */
         @Shareable(Kind.KEYCODE)
@@ -5198,15 +5355,15 @@ public static final class CaseOpeningSettings {
     public static final class ItemOverlaySettings {
         /** How the rarity-colored overlay is drawn over items (off / round / square). */
         @Shareable(value = Kind.ENUM, enumType = RarityOverlayMode.class)
-        public RarityOverlayMode rarityMode = RarityOverlayMode.OFF;
+        public RarityOverlayMode rarityMode = RarityOverlayMode.SQUARE;
 
         /** Rarity overlay opacity in percent (5–80): how visible the color tint is over the item. */
         @Shareable(value = Kind.INT, min = 5, max = 80)
-        public int rarityOpacity = 30;
+        public int rarityOpacity = 25;
 
         /** Client-side item renaming via {@code /sbs itemrename <new name>} (held item only). */
         @Shareable(Kind.BOOL)
-        public boolean itemRenamer = false;
+        public boolean itemRenamer = true;
 
         /**
          * Persistent client-side renames: item identity (SkyBlock uuid, else its id) → new name.
@@ -5217,7 +5374,7 @@ public static final class CaseOpeningSettings {
 
         /** Animated rainbow (chroma) glint over maxed-enchantment names in item tooltips. */
         @Shareable(Kind.BOOL)
-        public boolean chromaMaxedEnchants = false;
+        public boolean chromaMaxedEnchants = true;
 
         /**
          * @deprecated Legacy per-effect speed, replaced by the single {@code theme.chromaSpeed}.
@@ -5288,7 +5445,7 @@ public static final class CaseOpeningSettings {
 
         /** Hold SHIFT while hovering an item to list enchants it can have but is missing. */
         @Shareable(Kind.BOOL)
-        public boolean shiftMissingEnchants = false;
+        public boolean shiftMissingEnchants = true;
 
         /**
          * Drop the enchantment lines vanilla prints under the item name on SkyBlock items.
@@ -5303,15 +5460,15 @@ public static final class CaseOpeningSettings {
 
         /** White draining overlay over items while their (vanilla) cooldown runs. */
         @Shareable(Kind.BOOL)
-        public boolean showItemCooldown = false;
+        public boolean showItemCooldown = true;
 
         /** Inject a "Lowest BIN" line at the bottom of item tooltips (fetched + cached from the API). */
         @Shareable(Kind.BOOL)
-        public boolean showLbin = false;
+        public boolean showLbin = true;
 
         /** Inject a "Lowest Bazaar Price" line at the bottom of item tooltips (fetched + cached). */
         @Shareable(Kind.BOOL)
-        public boolean showBazaarPrice = false;
+        public boolean showBazaarPrice = true;
 
         /**
          * Inject an "Est. Value" line: the item's market price <i>plus</i> everything applied onto
@@ -5389,11 +5546,11 @@ public static final class CaseOpeningSettings {
          */
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.util.NumberTextFormat.class)
         public sbs.modid.client.core.util.NumberTextFormat numberFormat =
-                sbs.modid.client.core.util.NumberTextFormat.AUTO;
+                sbs.modid.client.core.util.NumberTextFormat.FULL;
 
         /** CTRL + left-click a chat message to copy its clean text to the system clipboard. */
         @Shareable(Kind.BOOL)
-        public boolean copyChatToClipboard = false;
+        public boolean copyChatToClipboard = true;
 
         /**
          * Right-click chat messages to copy them, with Ctrl / Shift building a multi-message
@@ -5401,7 +5558,7 @@ public static final class CaseOpeningSettings {
          * left-click behaviours (links, run-command components, the shift-click profile lookup).
          */
         @Shareable(Kind.BOOL)
-        public boolean chatSelection = false;
+        public boolean chatSelection = true;
 
         /**
          * Turn coordinates posted in chat ("x: 187, y: 120, z: -430", or a bare "187 120 -430")
@@ -5591,6 +5748,31 @@ public static final class CaseOpeningSettings {
         @Shareable(value = Kind.INT, min = 1000, max = 200000)
         public int maxNodes = 20_000;
 
+        /**
+         * Hybrid planner for long routes: straight pieces across open terrain, A* only where it is not
+         * open. Used directly for far routes under open sky, and when plain A* is too slow.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean fastOpenTerrain = true;
+
+        /**
+         * Plain A* gets {@code switchBaseMs + switchPerBlockMs * distance} ms (clamped 250..2000) before
+         * the hybrid planner takes over - see {@code SwitchBudget}.
+         */
+        @Shareable(value = Kind.INT, min = 0, max = 2000)
+        public int switchBaseMs = 150;
+
+        @Shareable(value = Kind.INT, min = 0, max = 20)
+        public int switchPerBlockMs = 3;
+
+        /** When A* and the hybrid planner both fail, search the whole loaded island in the background. */
+        @Shareable(Kind.BOOL)
+        public boolean deepSearch = true;
+
+        /** Wall-clock limit of one deep search, in seconds. */
+        @Shareable(value = Kind.INT, min = 10, max = 300)
+        public int deepSearchMaxSeconds = 60;
+
         /** The saved waypoints (all dimensions; filtered per dimension at render time). */
         public List<sbs.modid.client.core.pathfinding.Waypoint> waypoints = new ArrayList<>();
     }
@@ -5688,7 +5870,7 @@ public static final class CaseOpeningSettings {
     public static final class QuestGuideSettings {
         /** Master toggle for the Quest Guide module. */
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /**
          * <b>Legacy.</b> The quest that was being tracked, globally, before progress became
@@ -5730,7 +5912,7 @@ public static final class CaseOpeningSettings {
          * and hides itself again a few seconds after the last gain.
          */
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /** Show the averaged XP per hour. */
         @Shareable(Kind.BOOL)
@@ -5755,7 +5937,7 @@ public static final class CaseOpeningSettings {
          * ({@code HudElement.INVENTORY_OVERLAY}).
          */
         @Shareable(Kind.BOOL)
-        public boolean hudOverlay = false;
+        public boolean hudOverlay = true;
 
         /**
          * Screen mode: the player inventory screen drops its blur/dimming backdrop and its panel
@@ -5768,7 +5950,7 @@ public static final class CaseOpeningSettings {
         @Shareable(value = Kind.INT,
                 min = sbs.modid.client.helper.inventory.ui.InventoryOverlay.MIN_OPACITY,
                 max = sbs.modid.client.helper.inventory.ui.InventoryOverlay.MAX_OPACITY)
-        public int opacity = 70;
+        public int opacity = 28;
 
         /**
          * Inventory Window: the inventory screen gets a title bar to drag it anywhere and fold it
@@ -5782,7 +5964,7 @@ public static final class CaseOpeningSettings {
          * {@link #SCOPE_ALL_CONTAINERS} (every plain container - chests and every Hypixel menu).
          */
         @Shareable(value = Kind.INT, min = 0, max = 1)
-        public int windowScope = SCOPE_INVENTORY;
+        public int windowScope = SCOPE_ALL_CONTAINERS;
 
         public static final int SCOPE_INVENTORY = 0;
         public static final int SCOPE_ALL_CONTAINERS = 1;
@@ -5887,7 +6069,7 @@ public static final class CaseOpeningSettings {
     public static final class AccessoryBagSettings {
         /** Master toggle for the accessory-bag highlights. */
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /** Highlight accessories that appear more than once in the open bag page. */
         @Shareable(Kind.BOOL)
@@ -5914,7 +6096,7 @@ public static final class CaseOpeningSettings {
         public String missingFilter = "MISSING";
 
         /** Persisted {@code AccessoryProgress.Sort}. */
-        public String missingSort = "POWER";
+        public String missingSort = "RARITY";
 
         /**
          * Include Rift-only accessories. Off by default: they are a separate progression that cannot
@@ -6123,12 +6305,12 @@ public static final class CaseOpeningSettings {
          * etherwarp-capable AOTE/AOTV. Entirely independent of {@link #zoom}.
          */
         @Shareable(Kind.BOOL)
-        public boolean targetHighlight = false;
+        public boolean targetHighlight = true;
 
         /** Outline colour of the target box. */
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
         public sbs.modid.client.core.render.OverlayColor highlightColor =
-                sbs.modid.client.core.render.OverlayColor.BLUE;
+                sbs.modid.client.core.render.OverlayColor.PURPLE;
 
         /** Outline opacity in percent (10–100): how solid the box lines are. */
         @Shareable(value = Kind.INT, min = 10, max = 100)
@@ -6260,14 +6442,14 @@ public static final class CaseOpeningSettings {
     public static final class PerformanceSettings {
         /** Master switch for the armor-stand render / tick culling. */
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /** Skip armor stands with nothing visible at all (invisible, no shown name, no equipment). */
         @Shareable(Kind.BOOL)
         public boolean hideChromeStands = true;
 
         /** Armor stands farther than this many blocks are not rendered (0 = vanilla, no limit). */
-        public int standRenderDistance = 48;
+        public int standRenderDistance = 24;
 
         /** Also skip the client tick of armor stands that are not rendered anyway. */
         @Shareable(Kind.BOOL)
@@ -6566,7 +6748,7 @@ public static final class CaseOpeningSettings {
 
         /** Outline the infested plots in the world. */
         @Shareable(Kind.BOOL)
-        public boolean pestPlotHighlight = false;
+        public boolean pestPlotHighlight = true;
 
         /**
          * Tracer line from the crosshair to the centre of every infested plot.
@@ -6612,7 +6794,7 @@ public static final class CaseOpeningSettings {
 
         /** Box the actual pest entities in the world (only while they are on screen). */
         @Shareable(Kind.BOOL)
-        public boolean pestHighlight = false;
+        public boolean pestHighlight = true;
         /**
          * @deprecated Legacy key from when this was called "ESP". Boxed so that "absent"
          *     is distinguishable from "false" - a rename must not silently reset a setting
@@ -6760,7 +6942,7 @@ public static final class CaseOpeningSettings {
          * cannot find to undo it, and the setting that would undo it is behind that window.
          */
         @Shareable(value = Kind.INT, min = SBSConfig.VisualsSettings.MIN_WINDOW_OPACITY, max = 100)
-        public int opacityPercent = 50;
+        public int opacityPercent = 36;
 
         /**
          * {@code true} = see-through only while the key is held, {@code false} = press to toggle.
@@ -6871,22 +7053,22 @@ public static final class CaseOpeningSettings {
 
         /** First-person fire overlay behaviour. */
         @Shareable(value = Kind.ENUM, enumType = FireOverlayMode.class)
-        public FireOverlayMode fireOverlay = FireOverlayMode.LOWERED;
+        public FireOverlayMode fireOverlay = FireOverlayMode.OFF;
 
         /** Text Editor master toggle: apply the replacement rules everywhere text is shown. */
         @Shareable(Kind.BOOL)
-        public boolean textEditorEnabled = false;
+        public boolean textEditorEnabled = true;
 
         /** Text Editor rules ("from" → "to"), each individually toggleable. */
         public List<sbs.modid.client.helper.visual.model.TextReplacement> textReplacements = new ArrayList<>();
 
         /** Explosion particle visibility. */
         @Shareable(value = Kind.ENUM, enumType = ExplosionMode.class)
-        public ExplosionMode explosion = ExplosionMode.HALF;
+        public ExplosionMode explosion = ExplosionMode.OFF;
 
         /** Ambient potion-effect particle visibility. */
         @Shareable(value = Kind.ENUM, enumType = PotionParticleMode.class)
-        public PotionParticleMode potionParticles = PotionParticleMode.SEETHROUGH;
+        public PotionParticleMode potionParticles = PotionParticleMode.ON;
 
         /**
          * Cull every falling-block entity (sand, gravel, the terracotta rained down in dungeons) so
@@ -6902,7 +7084,7 @@ public static final class CaseOpeningSettings {
          * dragon dissolves).
          */
         @Shareable(Kind.BOOL)
-        public boolean hideDragonDeath = false;
+        public boolean hideDragonDeath = true;
 
         /**
          * End Block Glow: make purple and pink blocks on the End island light themselves up, so the
@@ -6924,7 +7106,7 @@ public static final class CaseOpeningSettings {
          * still show.
          */
         @Shareable(value = Kind.INT, min = 10, max = 100)
-        public int endGlowIntensity = 70;
+        public int endGlowIntensity = 100;
 
         /**
          * Dark End Blocks: de-saturate and darken the pale blocks the End is built out of - end
@@ -6944,7 +7126,7 @@ public static final class CaseOpeningSettings {
          * (grey instead of yellow), 100 = pitch black.
          */
         @Shareable(Kind.PERCENT)
-        public int darkEndStrength = 65;
+        public int darkEndStrength = 71;
 
         /**
          * Dim Ghosts: turn down the charged-creeper aura that <i>is</i> a Mist ghost's visible body -
@@ -6963,7 +7145,7 @@ public static final class CaseOpeningSettings {
          * glare, lower is gentler, 5 = only a faint shape left.
          */
         @Shareable(value = Kind.INT, min = 5, max = 100)
-        public int ghostBrightness = 40;
+        public int ghostBrightness = 26;
 
         /**
          * Dim Mist Blocks: darken the white blocks the ghost pit is built out of - snow, white
@@ -6981,7 +7163,7 @@ public static final class CaseOpeningSettings {
          * max effect" - it does now.)
          */
         @Shareable(Kind.PERCENT)
-        public int mistDarkness = 55;
+        public int mistDarkness = 71;
     }
 
     public static final class MobHighlightSettings {
@@ -7070,7 +7252,7 @@ public static final class CaseOpeningSettings {
     public static final class BloodSettings {
         /** Master switch: nothing is scanned, boxed, timed or announced while this is off. */
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /** Box the mobs in the blood room. */
         @Shareable(Kind.BOOL)
@@ -7078,7 +7260,7 @@ public static final class CaseOpeningSettings {
 
         /** Draw each boxed mob's name above it. */
         @Shareable(Kind.BOOL)
-        public boolean showLabels = false;
+        public boolean showLabels = true;
 
         /**
          * Lines from the crosshair to <b>every</b> blood mob - the live ones in their kind's colour,
@@ -7125,7 +7307,7 @@ public static final class CaseOpeningSettings {
          * purpose, and in a normal run it fires on a moment nobody is playing towards.
          */
         @Shareable(Kind.BOOL)
-        public boolean campMove = false;
+        public boolean campMove = true;
 
         /** Print the predicted mark to your own chat as well as flashing it. */
         @Shareable(Kind.BOOL)
@@ -7318,11 +7500,11 @@ public static final class CaseOpeningSettings {
          * the local player while the camera is in third person.
          */
         @Shareable(Kind.BOOL)
-        public boolean selfNametag = false;
+        public boolean selfNametag = true;
 
         /** Show the crosshair in third person too (vanilla only draws it in first person). */
         @Shareable(Kind.BOOL)
-        public boolean crosshair = false;
+        public boolean crosshair = true;
 
         /** Own Player Transparency: draw your own model see-through in the world. */
         @Shareable(Kind.BOOL)
@@ -7339,7 +7521,7 @@ public static final class CaseOpeningSettings {
 
     public static final class TexturePackSettings {
         /** Which asset routing theme is active (default SBS). */
-        public TexturePackMode packTheme = TexturePackMode.SBS;
+        public TexturePackMode packTheme = TexturePackMode.DEFAULT;
 
         /**
          * Ignore server-enforced resource packs (e.g. Hypixel Skyblock's required pack): the push
@@ -7354,6 +7536,14 @@ public static final class CaseOpeningSettings {
          * {@link #ignoreEnforcedPacks} is on - that setting swallows the push before it can prompt.
          */
         public boolean autoAcceptServerPacks = true;
+
+        /**
+         * Keep Hypixel's SkyBlock pack loaded for the whole session (from Minecraft's cached copy, at
+         * the bottom of the stack, without the item-model remap) instead of reloading every resource
+         * on each lobby/SkyBlock switch: a push of the same pack is answered without loading it, a pop
+         * is ignored. Overruled by {@link #ignoreEnforcedPacks}. See {@code HypixelPackKeeper}.
+         */
+        public boolean keepHypixelPackLoaded = true;
     }
 
     public static final class PlayerViewerSettings {
@@ -7367,7 +7557,7 @@ public static final class CaseOpeningSettings {
          * SHIFT + left-click a player's name in chat opens their profile viewer. Replaces vanilla's
          * shift-click-to-insert-name, but only on real player names. Requires {@link #profileViewer}.
          */
-        public boolean chatNameClick = false;
+        public boolean chatNameClick = true;
 
         /** Recently viewed players (most recent first), for the /pv side history strip. */
         public List<String> recentPlayers = new ArrayList<>();
@@ -7501,7 +7691,7 @@ public static final class CaseOpeningSettings {
          * next to the search bar (never closed).
          */
         @Shareable(Kind.BOOL)
-        public boolean windowed = false;
+        public boolean windowed = true;
 
         /**
          * How much of the free area beside the container the static panel is allowed to fill, in
@@ -7615,6 +7805,14 @@ public static final class CaseOpeningSettings {
         public boolean kismetHint = true;
 
         /**
+         * Outline the reward chests in the room itself by what each preview showed: green the best,
+         * yellow profitable, red a loss, a grey "?" on one not looked into yet. A chest's contents
+         * are unknown until its preview is opened, so this fills in as the player clicks them.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean rewardChestGlow = true;
+
+        /**
          * Croesus's run list: colour the runs that still have a chest waiting, dim the finished ones.
          *
          * <p><b>Off by default, and the reason is the rule rather than caution.</b> Not one line of
@@ -7672,7 +7870,7 @@ public static final class CaseOpeningSettings {
 
         /** Custom SBS Dungeon Map overlay (mirrors the real dungeon map item into an SBS-styled HUD). */
         @Shareable(Kind.BOOL)
-        public boolean sbsDungeonMap = false;
+        public boolean sbsDungeonMap = true;
 
         /**
          * Hide the SBS Dungeon Map for the rest of the run once it reaches the boss.
@@ -7821,11 +8019,11 @@ public static final class CaseOpeningSettings {
 
         /** Identify database rooms and resolve their waypoints (chest/lever) to world coordinates. */
         @Shareable(Kind.BOOL)
-        public boolean roomWaypoints = false;
+        public boolean roomWaypoints = true;
 
         /** Yellow hitbox around every visible dungeon mob whose nametag carries the ✯ star. */
         @Shareable(Kind.BOOL)
-        public boolean boxStarredMobs = false;
+        public boolean boxStarredMobs = true;
 
         /**
          * F7/M7 phase timer: how long Maxor, Storm, Goldor, Necron and (M7) the dragons each took,
@@ -7967,24 +8165,32 @@ public static final class CaseOpeningSettings {
 
         /** Box the coal wither / blood doors while in a dungeon (locked colour + key colour). */
         @Shareable(Kind.BOOL)
-        public boolean witherDoors = false;
+        public boolean witherDoors = true;
 
         /** Colour of a locked wither / blood door. */
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
         public sbs.modid.client.core.render.OverlayColor witherDoorColor =
                 sbs.modid.client.core.render.OverlayColor.YELLOW;
 
-        /** Colour of your current room's door once you hold a wither key. */
+        /** Colour of the next door once anyone in the party has the key for it. */
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
         public sbs.modid.client.core.render.OverlayColor witherDoorKeyColor =
                 sbs.modid.client.core.render.OverlayColor.GREEN;
+
+        /** Besides the next door, draw every other known closed wither / blood door, faintly. */
+        @Shareable(Kind.BOOL)
+        public boolean witherDoorsShowAll = false;
+
+        /** Pointer line from the crosshair to the next wither / blood door. */
+        @Shareable(Kind.BOOL)
+        public boolean witherDoorPointer = false;
 
         /**
          * Draw a translucent green ground bubble in the Tank's 30-block "Diversion" range (the tank
          * diverts 80% of nearby teammates' damage), so you can see where you are covered.
          */
         @Shareable(Kind.BOOL)
-        public boolean showTankRange = false;
+        public boolean showTankRange = true;
 
         /** GLFW key that saves a route waypoint at the player's feet ({@code 0} = unbound). */
         @Shareable(Kind.KEYCODE)
@@ -8179,7 +8385,7 @@ public static final class CaseOpeningSettings {
 
         /** SBS Loadouts: full-grid loadout overlay with 3D player previews over Hypixel's menu. */
         @Shareable(Kind.BOOL)
-        public boolean sbsWardrobe = false;
+        public boolean sbsWardrobe = true;
 
         /**
          * SBS Wardrobe View: a full grid over Hypixel's "(N/M) Armor Sets" menu (the wardrobe, reached
@@ -8195,7 +8401,7 @@ public static final class CaseOpeningSettings {
          */
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.helper.loadouts.LoadoutWidgetMode.class)
         public sbs.modid.client.helper.loadouts.LoadoutWidgetMode loadoutWidget =
-                sbs.modid.client.helper.loadouts.LoadoutWidgetMode.OFF;
+                sbs.modid.client.helper.loadouts.LoadoutWidgetMode.MODEL;
 
         /**
          * Mirror My Player: the Equipped Loadout widget's model copies what you are doing - walking,
@@ -8223,7 +8429,7 @@ public static final class CaseOpeningSettings {
 
         /** Also match an item's lore, not just its name / id (slower, but finds by stat text). */
         @Shareable(Kind.BOOL)
-        public boolean searchLore = false;
+        public boolean searchLore = true;
 
         /**
          * Unused since the workspace became part of Full UI itself (a {@code false} here made the
@@ -8231,10 +8437,17 @@ public static final class CaseOpeningSettings {
          * Kept so old config files still deserialize.
          */
         @Shareable(Kind.BOOL)
-        public boolean seamlessUi = true;
+        public boolean seamlessUi = false;
 
         /** Result order: AMOUNT, PRICE, NAME or LOCATION (legacy COUNT reads as AMOUNT). */
-        public String sort = "AMOUNT";
+        public String sort = "NAME";
+
+        /**
+         * Full UI: each Ender Chest page / Backpack card shows the value of what is in it next to its
+         * name, and the workspace shows the total of all pages. Offline prices only (ValueSum).
+         */
+        @Shareable(Kind.BOOL)
+        public boolean showStorageValue = true;
 
         /** Item identities the player starred; they sort above everything else. */
         public List<String> favorites = new ArrayList<>();
@@ -8515,15 +8728,15 @@ public static final class CaseOpeningSettings {
         public String backgroundColorHex = STOCK_BACKGROUND_COLOR;
 
         /** Background opacity in percent (0 = fully transparent, 100 = solid). */
-        public int backgroundOpacity = 70;
+        public int backgroundOpacity = 50;
 
         /** Draw a 1px border around the panel. */
         @Shareable(Kind.BOOL)
-        public boolean showBorder = true;
+        public boolean showBorder = false;
 
         /** Border colour as {@code RRGGBB}. */
         @Shareable(Kind.HEX_COLOR)
-        public String borderColorHex = STOCK_BORDER_COLOR;
+        public String borderColorHex = "FFFFFF";
 
         /** Border opacity in percent (0-100). */
         public int borderOpacity = 55;
@@ -8559,7 +8772,7 @@ public static final class CaseOpeningSettings {
         /** How the big values are written: as the server sent them, {@code 12.7M}, or {@code 12,700,000}. */
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.util.NumberTextFormat.class)
         public sbs.modid.client.core.util.NumberTextFormat numberFormat =
-                sbs.modid.client.core.util.NumberTextFormat.AUTO;
+                sbs.modid.client.core.util.NumberTextFormat.FULL;
 
         /** Extra pixels between body lines, on top of the font's own line height (0-10). */
         public int lineSpacing = 1;
@@ -8575,7 +8788,7 @@ public static final class CaseOpeningSettings {
 
         /** Draw the title in bold. */
         @Shareable(Kind.BOOL)
-        public boolean titleBold = false;
+        public boolean titleBold = true;
 
         /** Cycle the title through the colour wheel instead of painting it {@link #titleColorHex}. */
         @Shareable(Kind.BOOL)
@@ -8590,7 +8803,7 @@ public static final class CaseOpeningSettings {
          * so the default leaves the sidebar exactly as it arrives; lowering it tightens the panel
          * without losing the blocks entirely, which is what {@link #hideEmptyLines} does.
          */
-        public int maxEmptyLines = 5;
+        public int maxEmptyLines = 2;
 
         /**
          * Append a "God Potion" row with the remaining time while one is active. On by default: the
@@ -8660,7 +8873,7 @@ public static final class CaseOpeningSettings {
          * players are used to seeing there.
          */
         @Shareable(Kind.BOOL)
-        public boolean realTime12Hour = true;
+        public boolean realTime12Hour = false;
 
         /**
          * Drop the server's own advertising line ({@code www.hypixel.net}) from the panel. It is the
@@ -8668,7 +8881,7 @@ public static final class CaseOpeningSettings {
          * it costs a full line plus the spacer above it.
          */
         @Shareable(Kind.BOOL)
-        public boolean hideWebsite = false;
+        public boolean hideWebsite = true;
 
         /** Add a row with the client's frame rate. */
         @Shareable(Kind.BOOL)
@@ -8836,6 +9049,38 @@ public static final class CaseOpeningSettings {
         public int sort = 0;
     }
 
+    /**
+     * Seymour Colours preferences. The collection itself is never stored - it is read from the
+     * storage index each time - and the word list and thresholds are personal, so not shared.
+     */
+    public SeymourColourSettings seymourColours = new SeymourColourSettings();
+
+    public static final class SeymourColourSettings {
+        /** Master toggle. Display only: off, nothing is shown and nothing is read. */
+        @Shareable(Kind.BOOL)
+        public boolean enabled = true;
+
+        /** Hex, best match and tags on a Seymour piece's tooltip. */
+        @Shareable(Kind.BOOL)
+        public boolean tooltip = true;
+
+        /** The same lines on every dyed leather piece, not only Seymour's. */
+        @Shareable(Kind.BOOL)
+        public boolean allLeather = false;
+
+        /** Tier bounds, inclusive upper ΔE: exact, near, close. Kept in order when read. */
+        public double exactUpTo = 1.0;
+        public double nearUpTo = 2.0;
+        public double closeUpTo = 5.0;
+
+        /** The player's hex words (2-6 digits, comma separated), e.g. "C0FFEE, BEEF". None by default. */
+        public String words = "";
+
+        /** Collection screen: sort (0 tier, 1 ΔE, 2 hex, 3 piece) and piece filter (0 all, 1-4). */
+        public int sort = 0;
+        public int filter = 0;
+    }
+
     /** Equipment in the inventory. The captured pieces are per profile, in {@code equipment.json}. */
     public EquipmentDisplaySettings equipmentDisplay = new EquipmentDisplaySettings();
 
@@ -8960,7 +9205,7 @@ public static final class CaseOpeningSettings {
          * Panel + row-cell opacity in percent (0 = invisible, 100 = solid). Deliberately low by
          * default: the SBS tab list floats over the world instead of blacking half the screen out.
          */
-        public int backgroundOpacity = 8;
+        public int backgroundOpacity = 4;
 
         /** Text/head/ping opacity in percent (0 = invisible, 100 = solid). */
         public int textOpacity = 100;
@@ -9000,7 +9245,7 @@ public static final class CaseOpeningSettings {
          * whatever its owner set; only a fresh one starts off.
          */
         @Shareable(Kind.BOOL)
-        public boolean hidePing = false;
+        public boolean hidePing = true;
 
         /** One of the {@code PING_*} constants above. Only consulted while {@link #hidePing} is off. */
         public int pingDisplay = PING_BARS;
@@ -9022,7 +9267,7 @@ public static final class CaseOpeningSettings {
         public boolean showBorder = false;
 
         /** Outline opacity in percent (0-100). */
-        public int borderOpacity = 35;
+        public int borderOpacity = 9;
 
         /**
          * A cell drawn behind every grid row. Off: the rows sit straight on the panel, which is what
@@ -9132,7 +9377,7 @@ public static final class CaseOpeningSettings {
     public static final class BuildToolsSettings {
         /** Master switch: commands, keys, the wand and the hologram are inert while off. */
         @Shareable(Kind.BOOL)
-        public boolean enabled = false;
+        public boolean enabled = true;
 
         /** Sets selection corner 1 at the block you look at ({@code 0} = unbound). Works everywhere. */
         @Shareable(Kind.KEYCODE)
@@ -9208,7 +9453,7 @@ public static final class CaseOpeningSettings {
         // "freecamAllIslands" was removed 2026-09-28, like cinematicCamera.allIslands.
 
         /** On servers the camera stays within this many blocks of you (4-128). */
-        public int freecamRange = 32;
+        public int freecamRange = 128;
 
         /** In singleplayer, an optional range limit; 0 = none. */
         public int freecamRangeSingleplayer = 0;
@@ -9801,6 +10046,74 @@ public static final class CaseOpeningSettings {
     }
 
     /**
+     * Diana: Appearance - which lines the two Diana cards show and where, and how each kind of world
+     * marker is drawn. Reached as {@code config.diana.appearance}.
+     *
+     * <p>Every initialiser here is the look the toolkit had before these settings existed, so an
+     * older config that lacks the object draws unchanged.
+     */
+    public static final class DianaAppearanceSettings {
+
+        /**
+         * {@code DianaHudLine} ids on the tracker card, in order. A line on neither card is hidden.
+         *
+         * <p><b>{@code null} means never arranged</b>, which is not the same as arranged to nothing:
+         * it resolves to the old card switches (see {@code DianaHudLayout.resolve}). Empty is a card
+         * the player cleared on purpose.
+         */
+        public List<String> trackerLines;
+
+        /** The same for the creature card. */
+        public List<String> creatureLines;
+
+        /** Most rows the per-creature block may add. 0 shows none. */
+        @Shareable(value = Kind.INT, min = 0, max = 14)
+        public int perCreatureRows = 14;
+
+        @Shareable(Kind.BOOL)
+        public boolean trackerTitle = true;
+
+        /** No title and tighter padding; overrides {@link #trackerTitle}. */
+        @Shareable(Kind.BOOL)
+        public boolean trackerCompact = false;
+
+        @Shareable(Kind.BOOL)
+        public boolean creatureTitle = true;
+
+        /** No title and tighter padding; overrides {@link #creatureTitle}. */
+        @Shareable(Kind.BOOL)
+        public boolean creatureCompact = false;
+
+        public sbs.modid.client.combat.diana.model.MarkerStyle startBurrow =
+                new sbs.modid.client.combat.diana.model.MarkerStyle();
+        public sbs.modid.client.combat.diana.model.MarkerStyle mobBurrow =
+                new sbs.modid.client.combat.diana.model.MarkerStyle();
+        public sbs.modid.client.combat.diana.model.MarkerStyle treasureBurrow =
+                new sbs.modid.client.combat.diana.model.MarkerStyle();
+        public sbs.modid.client.combat.diana.model.MarkerStyle guess =
+                new sbs.modid.client.combat.diana.model.MarkerStyle();
+        public sbs.modid.client.combat.diana.model.MarkerStyle rareCreature =
+                new sbs.modid.client.combat.diana.model.MarkerStyle();
+        public sbs.modid.client.combat.diana.model.MarkerStyle sharedCreature =
+                new sbs.modid.client.combat.diana.model.MarkerStyle();
+
+        /** Colour for a creature you can see, RRGGBB; empty keeps each creature's own colour. */
+        @Shareable(Kind.HEX_COLOR)
+        public String rareCreatureColorHex = "";
+
+        /** Colour for a creature a party member shared; empty keeps each creature's own colour. */
+        @Shareable(Kind.HEX_COLOR)
+        public String sharedCreatureColorHex = "";
+
+        /**
+         * Draw sample cards and sample markers while the settings, the line editor or the HUD editor
+         * is open. Nothing real is touched; off by default.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean preview = false;
+    }
+
+    /**
      * Diana - the Mythological Ritual. Burrow detection, the two guesses, chains, rare creatures.
      *
      * <p><b>The whole module ships off.</b> It paints the world, it can be made to write into party
@@ -9901,15 +10214,21 @@ public static final class CaseOpeningSettings {
         @Shareable(value = Kind.INT, min = 20, max = 300)
         public int chainEndRadius = 90;
 
-        /** The running-chains card. */
-        @Shareable(Kind.BOOL)
-        public boolean chainsHud = true;
+        /**
+         * The running-chains lines, in the switch form that predates arranging them.
+         *
+         * @deprecated mapped onto {@link DianaAppearanceSettings#trackerLines} once on load, then
+         *         nulled. Boxed so an absent key - the old default - is distinguishable from a
+         *         deliberate {@code false}; see {@code DianaHudLayout.fromLegacy}.
+         */
+        @Deprecated
+        public Boolean chainsHud;
 
         // --- Mythological creatures -------------------------------------------------------
 
-        /** The nearby-creature health card. */
-        @Shareable(Kind.BOOL)
-        public boolean creatureHealthHud = true;
+        /** @deprecated the creature health line; migrated as {@link #chainsHud} is. */
+        @Deprecated
+        public Boolean creatureHealthHud;
 
         /**
          * Alert when a rare creature drops below this many million health. 0 is off.
@@ -9920,9 +10239,9 @@ public static final class CaseOpeningSettings {
         @Shareable(value = Kind.INT, min = 0, max = 100)
         public int lowHealthMillions = 0;
 
-        /** Warn while the closest live rare creature has no shuriken on it. */
-        @Shareable(Kind.BOOL)
-        public boolean shurikenWarning = false;
+        /** @deprecated the no-shuriken line; migrated as {@link #chainsHud} is. */
+        @Deprecated
+        public Boolean shurikenWarning;
 
         /** Which channels the low-health alert uses. */
         @Shareable(value = Kind.INT, min = 0, max = 63)
@@ -9990,9 +10309,12 @@ public static final class CaseOpeningSettings {
         @Shareable(Kind.BOOL)
         public boolean tracker = true;
 
-        /** The session totals card. */
-        @Shareable(Kind.BOOL)
-        public boolean sessionHud = false;
+        /** @deprecated the session totals lines; migrated as {@link #chainsHud} is. */
+        @Deprecated
+        public Boolean sessionHud;
+
+        /** How the two cards and the world markers look - the Diana: Appearance page. */
+        public DianaAppearanceSettings appearance = new DianaAppearanceSettings();
 
         // --- Chat -------------------------------------------------------------------------
 

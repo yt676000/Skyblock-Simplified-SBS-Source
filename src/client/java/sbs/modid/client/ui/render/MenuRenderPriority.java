@@ -163,6 +163,7 @@ public final class MenuRenderPriority {
             if (tier == RenderTier.BACKGROUND) {
                 lastRunAtMs.put(id, windowStartedAtMs);
             }
+            // DEV-ONLY: cost stats only; scheduling runs either way
             if (DevMode.ACTIVE) {
                 Long previous = costNs.get(id);
                 costNs.put(id, previous == null
@@ -194,6 +195,7 @@ public final class MenuRenderPriority {
      * the most - which is the question anyone opening this file is actually asking.
      */
     private static void report(long now) {
+        // DEV-ONLY: cost stats only; scheduling runs either way
         if (!DevMode.ACTIVE || now - lastReportAtMs < REPORT_INTERVAL_MS) {
             return;
         }

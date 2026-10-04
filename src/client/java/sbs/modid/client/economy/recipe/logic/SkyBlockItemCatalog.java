@@ -517,7 +517,7 @@ public final class SkyBlockItemCatalog {
      * The API's leather-armor tint, given as {@code "r,g,b"} ("139,0,0"), packed into one RGB int;
      * {@code -1} when absent or malformed (the icon then keeps the item's default color).
      */
-    private static int parseColor(String color) {
+    public static int parseColor(String color) {
         if (color == null || color.isEmpty()) {
             return -1;
         }

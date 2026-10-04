@@ -225,6 +225,16 @@ public final class PetTracker implements ProfileScopedStore {
                 .iconOrFallback(sbs.modid.client.core.item.SkyblockItem.normalizeName(name));
     }
 
+    /**
+     * The real stack captured for the pet shown now (its applied skin included), or
+     * {@link ItemStack#EMPTY} when none was captured for it. Unlike {@link #icon()} it never falls
+     * back to the default pet head, so a caller can tell "the real skin" from "a stand-in".
+     */
+    public ItemStack capturedIcon() {
+        resolvePendingIcon();
+        return !icon.isEmpty() && !name.isEmpty() && name.equalsIgnoreCase(iconName) ? icon : ItemStack.EMPTY;
+    }
+
     /** Scans the tab list, and the Pets menu when it is open, for the active pet; ~twice per second. */
     public void tick(Minecraft minecraft) {
         try {

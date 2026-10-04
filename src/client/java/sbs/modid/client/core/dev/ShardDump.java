@@ -51,9 +51,8 @@ import java.util.Locale;
  *
  * <p><b>Capture only.</b> Nothing is clicked, no command is sent, no store is written.
  *
- * <p>Not gated behind {@link DevMode}, for {@code MenuProbe}'s reason: the menus that have to be
- * captured are on an account this tree cannot reach, so whoever is standing in front of them has to
- * be able to run it.
+ * <p><b>Developer mode only</b>, like every probe: the command is DEV_ONLY in CommandRegistry and
+ * arming checks {@link DevMode} again. A tester who has to capture something needs dev mode on.
  */
 public final class ShardDump {
 
@@ -95,6 +94,9 @@ public final class ShardDump {
 
     /** {@code /sbs sharddump [arm|off]}. */
     public void handleCommand(String argument) {
+        if (!DevMode.ACTIVE) { // DEV-ONLY: defence in depth behind the command gate
+            return;
+        }
         String action = argument == null ? "" : argument.trim().toLowerCase(Locale.ROOT);
         switch (action) {
             case "arm" -> {

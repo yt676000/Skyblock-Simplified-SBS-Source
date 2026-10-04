@@ -20,6 +20,7 @@ import sbs.modid.client.dungeons.secretroutes.model.SecretWaypoint;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * Decides which secret of the current dungeon room the pathfinder is routing to.
@@ -163,7 +164,26 @@ public final class SecretRouting {
                 out.add(waypoint);
             }
         }
-        return out;
+        return leversFirst(out, waypoint -> waypoint.source().subtype);
+    }
+
+    /**
+     * Levers before everything else: while any uncollected lever is left, only the levers are goals.
+     *
+     * <p>A lever usually opens the way to a room's chest or item, and routing to that secret first
+     * walks the player into a closed wall. The route data does not say <i>which</i> secret a lever
+     * unlocks, so the rule is the coarse one - every lever in the room before any other secret.
+     * Collecting the last lever empties this filter and the full set comes back, so the order among
+     * the other secrets is exactly what it was before.
+     */
+    static <T> List<T> leversFirst(List<T> candidates, Function<T, SecretWaypoint.Secret> subtype) {
+        List<T> levers = new ArrayList<>();
+        for (T candidate : candidates) {
+            if (subtype.apply(candidate) == SecretWaypoint.Secret.LEVER) {
+                levers.add(candidate);
+            }
+        }
+        return levers.isEmpty() ? candidates : levers;
     }
 
     /** Whether {@code candidates} is exactly what {@link #publishedKeys} was built from, in order. */

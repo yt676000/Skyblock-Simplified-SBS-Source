@@ -44,7 +44,7 @@ public enum BuildCommand {
     QUICK("quick", Reach.EVERYWHERE, "", "open Quick Paste, the grid of saved builds"),
     LIBRARY("library", Reach.EVERYWHERE, "", "manage saved builds: preview, rename, duplicate, delete, share"),
     FREECAM("freecam", Reach.EVERYWHERE, "", "fly the camera to select blocks you cannot reach (servers: gated)"),
-    HOLOGRAM("hologram", Reach.EVERYWHERE, "[on|off|clear]", "show, hide or drop the hologram"),
+    HOLOGRAM("hologram", Reach.EVERYWHERE, "[on|off|clear|debug]", "show, hide or drop the hologram; debug logs how fluids and heads are drawn"),
     SELECT("select", Reach.EVERYWHERE, "connected [family|any]", "select the build you look at, no corners needed"),
     MATERIALS("materials", Reach.EVERYWHERE, "[hologram|clipboard|selection]", "blocks needed, what you have, Bazaar cost"),
     GUIDE("guide", Reach.EVERYWHERE, "[on|off]", "build along layer by layer, with the next block boxed"),

@@ -133,10 +133,12 @@ public final class WebBrowserManager {
         if (GuiStateManager.getInstance().getCurrentScreen() != null) {
             return;   // a screen is open - it draws the browser itself
         }
+        // Same window clamp and same page rect as BrowserScreen: the page stays on the same pixels
+        // and at the same size whether the screen is open or not, so nothing reflows or jumps.
         SBSConfig.BrowserSettings c = cfg();
-        int x = clamp(c.x, 0, Math.max(0, g.guiWidth() - 40));
-        int y = clamp(c.y, 0, Math.max(0, g.guiHeight() - 20));
-        browser.render(g, x, y, c.w, c.h, Integer.MIN_VALUE, Integer.MIN_VALUE);
+        int[] window = BrowserLayout.window(c.x, c.y, c.w, c.h, g.guiWidth(), g.guiHeight());
+        int[] page = BrowserLayout.content(window[0], window[1], window[2], window[3]);
+        browser.render(g, page[0], page[1], page[2], page[3], Integer.MIN_VALUE, Integer.MIN_VALUE);
     }
 
     /** Adds https:// when a bare host/URL is typed, and treats a spaced query as a Google search. */
@@ -151,9 +153,5 @@ public final class WebBrowserManager {
                     + java.net.URLEncoder.encode(text, java.nio.charset.StandardCharsets.UTF_8);
         }
         return "https://" + text;
-    }
-
-    private static int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
     }
 }

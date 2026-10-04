@@ -34,6 +34,9 @@ public final class DianaDevLogCommand {
 
     /** {@code argument} is everything after {@code devlog}. */
     public static void handle(String argument) {
+        if (!sbs.modid.client.core.dev.DevMode.ACTIVE) { // DEV-ONLY: defence in depth behind the command gate
+            return;
+        }
         try {
             dispatch(argument);
         } catch (RuntimeException | LinkageError | StackOverflowError failure) {

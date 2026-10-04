@@ -41,8 +41,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * SBS Loadouts: a full-screen card grid over Hypixel's Loadouts menu (titled "(1/3) Loadouts";
- * the legacy "Wardrobe (1/2)" column menu is detected too).
+ * SBS Loadouts: a full-screen card grid over Hypixel's Loadouts menu (titled "(1/3) Loadouts").
+ * The wardrobe - "(N/M) Armor Sets" - is not this overlay's: it belongs to SBS Wardrobe View
+ * ({@code helper/wardrobe/ArmorSetsOverlay}), so each toggle switches off exactly one menu.
  *
  * <p><b>Data</b>: the modern menu carries one <b>loadout item</b> per loadout ("Loadout 3", with the
  * whole loadout in its lore: Helmet/Chestplate/Leggings/Boots, Necklace/Cloak/Belt/Gloves, Pet).
@@ -206,15 +207,23 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
                 ? screen.getTitle().getString().replaceAll(SECTION_SIGN + ".", "").trim() : "";
     }
 
-    /** The modern menu is "(1/3) Loadouts"; the legacy one "Wardrobe (1/2)". Both are ours. */
+    /**
+     * "(1/3) Loadouts" and its pages. Not "Wardrobe (1/2)": that legacy menu was last seen
+     * 2026-07-07, and claiming it here let SBS Loadouts cover a wardrobe that SBS Wardrobe View
+     * had been switched off for (docs/skyblock-ui/menus.md, Loadouts / Wardrobe).
+     */
     static boolean isLoadoutsMenu(String title) {
-        String lower = title.toLowerCase(Locale.ROOT);
-        return lower.contains("loadout") || lower.startsWith("wardrobe");
+        return title.toLowerCase(Locale.ROOT).contains("loadout");
+    }
+
+    /** Whether the overlay covers a menu with this title while SBS Loadouts is {@code enabled}. */
+    public static boolean covers(String title, boolean enabled) {
+        return enabled && isLoadoutsMenu(title);
     }
 
     /** True while the overlay is actively covering the menu (input should go to us). */
     public boolean isActive(AbstractContainerScreen<?> screen) {
-        return enabled() && !editMode && isLoadoutsMenu(title(screen));
+        return !editMode && covers(title(screen), enabled());
     }
 
     /**
@@ -526,13 +535,14 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
     }
 
     /**
-     * Real pet items harvested from the PETS menu, keyed by cleaned pet name ("golden dragon") -
-     * the ONLY place the pet exists as an item, complete with its skull texture and applied skin
-     * (the repo carries no pet appearances at all). Persisted with the rest of the cache.
+     * Real pet items harvested from the PETS menu - the ONLY place the pet exists as an item,
+     * complete with its skull texture and applied skin (the repo carries no pet appearances at all).
+     * Keyed by {@code name|level|rarity} plus a name-only entry that never trades a skinned stack for
+     * an unskinned one ({@link PetStackIndex}). Persisted with the rest of the cache.
      */
     private final Map<String, ItemStack> petStacks = new ConcurrentHashMap<>();
 
-    private static final Pattern PET_ITEM_NAME = Pattern.compile("^\\[Lvl\\s*[0-9]+]\\s*(.+)$");
+    private static final Pattern PET_ITEM_NAME = Pattern.compile("^\\[Lvl\\s*([0-9]+)]\\s*(.+)$");
 
     /**
      * Called for every container frame (before the loadouts gate): while a Pets menu is open, every
@@ -558,14 +568,13 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
             if (!m.matches()) {
                 continue;
             }
-            String key = cleanName(m.group(1));
             // Only a pet we do not already hold counts as a change. Storing it unconditionally made
             // every frame the Pets menu was open a "change", and each one reset the save throttle
             // (lastSaveAt = 0) and rewrote the whole cache: ~70 writes a second of a file that is
             // approaching a megabyte, for a minute at a time. Verified in the play instance's log.
-            ItemStack known = petStacks.get(key);
-            if (!key.isEmpty() && (known == null || !ItemStack.isSameItemSameComponents(known, stack))) {
-                petStacks.put(key, stack.copy());
+            int level = Integer.parseInt(m.group(1));
+            if (PetStackIndex.put(petStacks, m.group(2), level, rarityOf(stack), stack.copy(),
+                    LoadoutsOverlay::skinnedPet, ItemStack::isSameItemSameComponents)) {
                 changed = true;
             }
         }
@@ -902,6 +911,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
      * {@code [SBS][Loadouts] layout} lines.
      */
     private void logMenuLayout(AbstractContainerMenu menu, int upper, int page) {
+        // DEV-ONLY: layout log only
         if (!sbs.modid.client.core.dev.DevMode.ACTIVE || !loggedLayoutPages.add(page)) {
             return;
         }
@@ -2506,12 +2516,12 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
      * GitHub fetch, then the catalogue) are cached; a failure is never cached so it retries.
      */
     private ItemStack petIcon(String petLine) {
-        String petName = petLine.replaceAll("(?i)^\\[Lvl\\s*[0-9]+]\\s*", "");
-        // Applied-skin head from the Pets menu wins outright - never cached, always re-checked.
-        ItemStack skinned = petStacks.get(cleanName(petName));
-        if (skinned != null && !skinned.isEmpty()) {
-            return skinned;
+        // A real head (applied skin included) wins outright - never cached, always re-checked.
+        ItemStack real = realPetIcon(petLine);
+        if (!real.isEmpty()) {
+            return real;
         }
+        String petName = petLine.replaceAll("(?i)^\\[Lvl\\s*[0-9]+]\\s*", "");
         ItemStack cached = petIcons.get(petLine);
         if (cached != null) {
             return cached;
@@ -2529,6 +2539,48 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
             return resolved;
         }
         return ItemStack.EMPTY;   // retry next frame while the fetch is in flight
+    }
+
+    /**
+     * The pet's REAL head (applied skin included), or EMPTY when none is known - never a default
+     * stand-in. First the active pet's stack PetTracker captured at the pick (authoritative: the
+     * very item that was summoned) when the line is that pet by name and level; then the Pets-menu
+     * harvest, name + level first and skinned first, then by name.
+     */
+    private ItemStack realPetIcon(String petLine) {
+        Matcher levelled = PET_ITEM_NAME.matcher(strip(petLine).trim());
+        boolean hasLevel = levelled.matches();
+        String petName = hasLevel ? levelled.group(2) : strip(petLine).trim();
+        int level = hasLevel ? Integer.parseInt(levelled.group(1)) : -1;
+        var tracker = sbs.modid.client.ui.hud.logic.PetTracker.getInstance();
+        if (tracker.hasPet() && PetStackIndex.isActivePet(petName, level, tracker.name(), tracker.level())) {
+            ItemStack captured = tracker.capturedIcon();
+            if (!captured.isEmpty()) {
+                return captured;
+            }
+        }
+        ItemStack harvested = PetStackIndex.lookup(petStacks, petName, level, LoadoutsOverlay::skinnedPet);
+        return harvested == null ? ItemStack.EMPTY : harvested;
+    }
+
+    /** Whether a harvested pet stack carries an applied skin (Hypixel marks it "✦"). */
+    private static boolean skinnedPet(ItemStack stack) {
+        return stack != null && !stack.isEmpty() && PetStackIndex.skinned(stack.getHoverName().getString());
+    }
+
+    /**
+     * The pet's rarity for the harvest key: the colour of the name in the menu (rarity is drawn as
+     * the name colour), or "" when it carries none.
+     */
+    private static String rarityOf(ItemStack stack) {
+        String[] colour = {""};
+        stack.getHoverName().visit((style, text) -> {
+            if (style.getColor() != null && text.chars().anyMatch(Character::isLetter) && !text.contains("Lvl")) {
+                colour[0] = style.getColor().serialize();
+            }
+            return java.util.Optional.empty();
+        }, net.minecraft.network.chat.Style.EMPTY);
+        return colour[0];
     }
 
     /** Tooltip for a lore-listed part: its ORIGINAL coloured lore line, plus a muted label. */
@@ -2550,26 +2602,14 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
         return tip;
     }
 
-    /** Tooltip of a real armor stack: its coloured name + full lore, like hovering it in a menu. */
+    /** Tooltip of a real armor stack as a menu shows it, SBS lines included (see ItemTooltip). */
     private static List<Component> stackTooltip(ItemStack stack) {
-        List<Component> tip = new ArrayList<>();
-        tip.add(stack.getHoverName());
-        var lore = stack.get(net.minecraft.core.component.DataComponents.LORE);
-        if (lore != null) {
-            tip.addAll(lore.lines());
-        }
-        return tip;
+        return sbs.modid.client.core.item.ItemTooltip.of(stack);
     }
 
-    /** The hover tooltip: the loadout item's own coloured name + lore (armor, equipment, pet). */
+    /** The hover tooltip: the loadout item's real tooltip (armor, equipment, pet), SBS lines included. */
     private static List<Component> cardTooltip(Entry entry) {
-        List<Component> tip = new ArrayList<>();
-        tip.add(entry.loadoutItem().getHoverName());
-        var lore = entry.loadoutItem().get(net.minecraft.core.component.DataComponents.LORE);
-        if (lore != null) {
-            tip.addAll(lore.lines());
-        }
-        return tip;
+        return sbs.modid.client.core.item.ItemTooltip.of(entry.loadoutItem());
     }
 
     private static void drawButton(GuiGraphicsExtractor g, Font font, int x, int y, int w, String label) {
@@ -2757,8 +2797,10 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
                     // Pet HUD immediately from the loadout's own pet (Hypixel's summon chat line
                     // confirms it a moment later; this makes it instant and carries the skin icon).
                     if (button == 0 && entry.pet() != null) {
+                        // Only a REAL head is handed over: a default-skin stand-in would be stored as
+                        // this pet's captured skin and hide the real one from then on.
                         sbs.modid.client.ui.hud.logic.PetTracker.getInstance()
-                                .setActivePet(entry.pet(), petIcon(entry.pet()));
+                                .setActivePet(entry.pet(), realPetIcon(entry.pet()));
                     }
                     if (button == 0) {
                         // We just told the server to wear THIS slot. Whatever lands on the body from

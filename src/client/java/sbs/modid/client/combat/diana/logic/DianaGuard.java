@@ -84,7 +84,7 @@ public final class DianaGuard {
 
     /** Each place the toolkit is called from vanilla code. */
     public enum Hook {
-        CHAT, CHAT_HIDE, DIG, PARTICLES, ABILITY, TICK, HUD, RESET, SPHINX_CLICK
+        CHAT, CHAT_HIDE, DIG, PARTICLES, SOUND, ABILITY, TICK, HUD, RESET, SPHINX_CLICK
     }
 
     /** What tripped the guard, and where the report went. */
@@ -283,7 +283,7 @@ public final class DianaGuard {
             // No logger (unit tests without one): the flag above is what matters.
         }
         if (stop) {
-            pendingChat = "§eArrow guess paused after the game hitched §7— §f/sbs devlog diana rearm";
+            pendingChat = "§eArrow guess paused after the game hitched §7— §f/sbs diana clear";
         }
     }
 
@@ -329,12 +329,12 @@ public final class DianaGuard {
         try {
             SkyblockSimplifiedSBS.LOGGER.error("[SBS][Diana] the {} hook threw on input [{}] - the Diana tracker "
                             + "is off for the rest of this session so the game keeps running. Report: {}. "
-                            + "/sbs devlog diana rearm turns it back on.", hook, described, where, thrown);
+                            + "/sbs diana clear turns it back on.", hook, described, where, thrown);
         } catch (RuntimeException | LinkageError ignored) {
             // No logger (unit tests without one): the disable and the report above are what matter.
         }
         pendingChat = "§cDiana tracker disabled after an error §7— log saved to §f" + where
-                + "§7, §f/sbs devlog diana rearm";
+                + "§7, §f/sbs diana clear";
     }
 
     /**
@@ -392,6 +392,11 @@ public final class DianaGuard {
             return String.format(Locale.ROOT, "%s count=%d speed=%.4f offset=%.4f,%.4f,%.4f at %.3f,%.3f,%.3f",
                     type, packet.getCount(), packet.getMaxSpeed(), packet.getXDist(), packet.getYDist(),
                     packet.getZDist(), packet.getX(), packet.getY(), packet.getZ());
+        }
+        if (input instanceof net.minecraft.network.protocol.game.ClientboundSoundPacket packet) {
+            return String.format(Locale.ROOT, "sound %s pitch=%.4f at %.3f,%.3f,%.3f",
+                    packet.getSound().value().location(), packet.getPitch(), packet.getX(), packet.getY(),
+                    packet.getZ());
         }
         if (input instanceof Enum<?> constant) {
             return constant.name();

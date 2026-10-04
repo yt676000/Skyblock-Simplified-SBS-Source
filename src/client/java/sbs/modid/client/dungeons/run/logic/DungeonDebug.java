@@ -29,6 +29,7 @@ public final class DungeonDebug {
 
     /** True only while developer mode is enabled. */
     public static boolean enabled() {
+        // DEV-ONLY: debug chat only
         return DevMode.ACTIVE;
     }
 

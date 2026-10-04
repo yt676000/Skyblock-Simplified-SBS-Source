@@ -390,6 +390,33 @@ public final class RoomMapReader {
                 anchorMapCellZ + worldCell(z) - anchorWorldCellZ};
     }
 
+    /**
+     * The inverse of {@link #worldToMapCellIndex}: the world NW corner {@code {x, z}} of a map-grid
+     * cell (the room interior then spans {@code corner .. corner + 30}, the seam is {@code corner + 31}).
+     * {@code null} until the entrance anchor has been captured.
+     */
+    public static int[] cellToWorld(int cellX, int cellZ) {
+        if (!anchored) {
+            return null;
+        }
+        return new int[] {
+                (cellX - anchorMapCellX + anchorWorldCellX) * 32 - 8,
+                (cellZ - anchorMapCellZ + anchorWorldCellZ) * 32 - 8};
+    }
+
+    /**
+     * Commits an anchor directly: the world cell containing {@code (worldX, worldZ)} is map cell
+     * {@code (mapCellX, mapCellZ)}. Test seam for the conversion functions; the live anchor is only
+     * ever committed by the sampler.
+     */
+    static void anchorAt(int worldX, int worldZ, int mapCellX, int mapCellZ) {
+        anchored = true;
+        anchorWorldCellX = worldCell(worldX);
+        anchorWorldCellZ = worldCell(worldZ);
+        anchorMapCellX = mapCellX;
+        anchorMapCellZ = mapCellZ;
+    }
+
     /** Safe colour lookup from the map byte array (returns {@code -1} out of bounds). */
     public static byte getColor(MapItemSavedData map, int x, int z) {
         if (x < 0 || z < 0 || x >= MAP_SIZE || z >= MAP_SIZE) {
@@ -1028,10 +1055,12 @@ public final class RoomMapReader {
     /**
      * The sprite Hypixel gives the <b>local</b> player's dungeon-map marker: the vanilla green
      * {@code frame} icon (centre pixels #00FF4C), while every teammate gets {@code blue_marker}
-     * (#5775E0). Map data is per-client, so exactly one decoration is ever green.
+     * (#5775E0). Map data is per-client, so exactly one decoration is ever green. Looked up per call
+     * rather than held in a static, so loading this class never touches the decoration registry.
      */
-    private static final Identifier SELF_SPRITE =
-            MapDecorationTypes.FRAME.value().assetId();
+    private static Identifier selfSprite() {
+        return MapDecorationTypes.FRAME.value().assetId();
+    }
 
     /**
      * Whether a decoration is the local player's marker. The <b>sprite</b> is the definitive signal
@@ -1042,7 +1071,7 @@ public final class RoomMapReader {
      * do name their decorations.
      */
     static boolean isSelfDecoration(MapDecoration decoration, String ign) {
-        return SELF_SPRITE.equals(decoration.getSpriteLocation()) || nameMatches(decoration, ign);
+        return selfSprite().equals(decoration.getSpriteLocation()) || nameMatches(decoration, ign);
     }
 
     private static long lastMarkerLogAt;
@@ -1065,7 +1094,7 @@ public final class RoomMapReader {
             String name = decoration.name().map(c -> c.getString().replaceAll("§.", "").trim()).orElse("");
             sb.append('[').append(decoration.getSpriteLocation()).append(" name=\"").append(name)
                     .append("\" rot=").append(decoration.rot())
-                    .append(SELF_SPRITE.equals(decoration.getSpriteLocation()) ? " <-SELF(green)"
+                    .append(selfSprite().equals(decoration.getSpriteLocation()) ? " <-SELF(green)"
                             : nameMatches(decoration, me) ? " <-SELF(name)" : "")
                     .append("] ");
         }

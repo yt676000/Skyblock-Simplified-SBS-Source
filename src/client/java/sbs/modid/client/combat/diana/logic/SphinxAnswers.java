@@ -18,6 +18,7 @@ import sbs.modid.client.social.chat.logic.SBSChat;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,9 +37,21 @@ import java.util.regex.Pattern;
  * that reads as "it shows every answer except the right one" - because what they were seeing was
  * Hypixel's own three lines with no mark on any of them.
  *
- * <p>So both the question and the answers are matched as <b>substrings of a normalised line</b>, and
- * the comparison between an offered answer and the expected one is normalised too. Anything that can
- * carry a prefix is assumed to carry one.
+ * <p>So the question is matched as a <b>substring of a normalised line</b>. The answer lines are not:
+ * in the lines captured on 2026-10-04 they arrive bare ({@code §7   A) §f6}), so after stripping and
+ * trimming the letter is the first character, and the pattern is anchored there.
+ *
+ * <h2>The feedback loop that crashed the client</h2>
+ *
+ * <p>1.0.0-beta.10 (2026-10-04): the verdict this class prints is itself a chat line, and every chat
+ * line SBS prints used to be fed straight back through {@link #onChat} on the same call stack. The
+ * answer pattern was unanchored, so {@code Sphinx: B) 7 is correct.} read as option B with the text
+ * {@code 7 is correct.}; the session was still open because the verdict was printed before it was
+ * cleared; and the comparison accepted any offered text that <i>contained</i> the expected answer. Each
+ * verdict therefore produced the next one, one {@code is correct.} longer, 109 times in eight seconds.
+ * Four things now each break that loop on their own: the anchored pattern, clearing before printing,
+ * ignoring every line while printing, and an exact comparison. {@code SBSChat} also no longer feeds its
+ * own lines to any parser, and caps how many lines one feature sends a second.
  *
  * <h2>Answering</h2>
  *
@@ -73,13 +86,17 @@ public final class SphinxAnswers {
     private static final SphinxAnswers INSTANCE = new SphinxAnswers();
 
     /**
-     * A lettered answer line, wherever it sits in the line.
+     * A lettered answer line: the letter first, then {@code )} and the text.
      *
-     * <p>Not anchored at the start: the same speaker prefix that broke the question lookup would
-     * break this too. The letter has to be followed by {@code )} and something, which is specific
-     * enough that ordinary chat does not trip it.
+     * <p>Anchored at the start of the stripped, trimmed line. The real lines carry no speaker prefix
+     * ({@code §7   B) §f7}, 2026-10-04), and an unanchored pattern read {@code B) } in the middle of any
+     * line as an option - including party chat quoting one, and this class's own verdict, which is
+     * how it fed itself (see the class note).
      */
-    private static final Pattern ANSWER = Pattern.compile("(?:^|\\s)([ABC])\\)\\s+(.+?)\\s*$");
+    private static final Pattern ANSWER = Pattern.compile("^([ABC])\\)\\s+(.+?)\\s*$");
+
+    /** The tag the verdict lines are capped under in {@link SBSChat#send(String, Component)}. */
+    private static final String CHAT_FEATURE = "Sphinx";
 
     /** A session is abandoned if the three answers do not all arrive within this long. */
     private static final long SESSION_MS = 15_000L;
@@ -136,6 +153,12 @@ public final class SphinxAnswers {
     /** When {@link #armedIndex} was set, so the arming expires on its own. */
     private volatile long armedAt;
 
+    /** True while the verdict is being printed; every line that arrives meanwhile is ignored. */
+    private boolean announcing;
+
+    /** Where the verdict lines go. Replaced only by tests, which have no chat to print into. */
+    private Consumer<Component> out = body -> SBSChat.send(CHAT_FEATURE, body);
+
     private SphinxAnswers() {
     }
 
@@ -154,7 +177,7 @@ public final class SphinxAnswers {
     /** One chat line. Reads only - nothing is cancelled, nothing is rewritten. */
     public void onChat(String rawText) {
         SBSConfig.DianaSettings cfg = cfg();
-        if (!cfg.enabled || !cfg.sphinxAnswers || rawText == null) {
+        if (announcing || !cfg.enabled || !cfg.sphinxAnswers || rawText == null) {
             return;
         }
         String text = PlainText.strip(rawText).trim();
@@ -191,8 +214,17 @@ public final class SphinxAnswers {
         if (offered.size() < 3) {
             return;
         }
-        announce();
+        // Snapshot and close the session before printing anything: whatever the print leads to,
+        // there is no open riddle left for it to answer.
+        String solution = expected;
+        Map<String, String> answers = new LinkedHashMap<>(offered);
         clear();
+        announcing = true;
+        try {
+            announce(solution, answers);
+        } finally {
+            announcing = false;
+        }
     }
 
     /**
@@ -243,24 +275,35 @@ public final class SphinxAnswers {
      * the case where saying something would be worse than saying nothing - and where arming a click
      * would be worse still.
      */
-    private void announce() {
-        for (Map.Entry<String, String> entry : offered.entrySet()) {
-            if (!matches(entry.getValue(), expected)) {
+    private void announce(String solution, Map<String, String> answers) {
+        for (Map.Entry<String, String> entry : answers.entrySet()) {
+            if (!matches(entry.getValue(), solution)) {
                 continue;
             }
             String letter = entry.getKey();
-            SBSChat.send(Component.literal(" §bSphinx: §a" + letter + ") "
-                    + entry.getValue() + " §7is correct."));
             if (cfg().sphinxClickToAnswer) {
+                // Armed before printing, so the arming does not depend on the print returning.
                 armedIndex = indexOf(letter);
                 armedAt = System.currentTimeMillis();
-                SBSChat.send(Component.literal(
+            }
+            out.accept(Component.literal(" §bSphinx: §a" + letter + ") "
+                    + entry.getValue() + " §7is correct."));
+            if (cfg().sphinxClickToAnswer) {
+                out.accept(Component.literal(
                         " §7Open chat and click anywhere to answer, or click the answer yourself."));
             }
             return;
         }
-        DianaDebug.getInstance().note("sphinx: expected \"" + expected
+        DianaDebug.getInstance().note("sphinx: expected \"" + solution
                 + "\" but it was not among the three offered - the riddle table needs a look");
+    }
+
+    /**
+     * Sends the verdict lines to {@code sink} instead of the chat; {@code null} restores the chat.
+     * Tests only: {@code onChat} is otherwise unreachable without a running client.
+     */
+    public void outputForTest(Consumer<Component> sink) {
+        out = sink != null ? sink : body -> SBSChat.send(CHAT_FEATURE, body);
     }
 
     /**
@@ -340,18 +383,23 @@ public final class SphinxAnswers {
     }
 
     /**
-     * Whether an offered answer is the expected one, comparing the way {@link #normalise} does.
+     * Whether an offered answer is the expected one: equal once both are {@link #normalise}d.
      *
-     * <p>Public and static for the reason {@link #answerIn} is: it is the comparison the whole
-     * feature turns on, and an exact-string version of it is what shipped broken.
+     * <p>Equal, not "contains". The containment test it replaced is half of what fed the Sphinx
+     * loop ({@code 7 is correct.} contains {@code 7}), and it would equally accept {@code 17} for
+     * {@code 7}. No riddle is known to need it: the one answer line captured from the game
+     * ({@code B) 7}) is the table's answer exactly. A riddle whose offered text turns out to differ
+     * from the table - an article, a longer name - is fixed in the table, where the debug log's
+     * "not among the three offered" line points.
+     *
+     * <p>Public and static for the reason {@link #answerIn} is.
      */
     public static boolean matches(String offeredText, String expectedText) {
         if (offeredText == null || expectedText == null) {
             return false;
         }
-        String left = normalise(offeredText);
         String right = normalise(expectedText);
-        return !right.isEmpty() && (left.equals(right) || left.contains(right));
+        return !right.isEmpty() && normalise(offeredText).equals(right);
     }
 
     /**

@@ -52,6 +52,12 @@ public class ChatPriceListenerMixin {
 
     private void skyblockSimplified$capture(Component message) {
         ChatAccess.set((ChatComponent) (Object) this);
+        // A line SBS itself is printing is output, not input: no parser below reads it. Without this
+        // a parser that answers a line can answer its own answer - the Sphinx solver did, recursively,
+        // until the client died. See SBSChat.
+        if (sbs.modid.client.social.chat.logic.SBSChat.ownLineInFlight()) {
+            return;
+        }
         if (message != null) {
             String text = message.getString();
             // Chat probe (dev): while armed, records every line verbatim - first, so a capture is
@@ -175,6 +181,9 @@ public class ChatPriceListenerMixin {
             // Nucleus Run: crystal, bundle, chest, cost and [Sacks] lines (the gains are in the hover).
             // Crystal Hollows only; returns on the master switch elsewhere.
             sbs.modid.client.skills.mining.nucleus.logic.NucleusRunTracker.getInstance().onChat(text, message);
+            // Mines of Divan: the detector's finds end its hunt; the Keepers' lines move the Divan Tools
+            // checklist. Returns on a substring test for lines that mention neither.
+            sbs.modid.client.skills.mining.metaldetector.logic.DivanTracker.getInstance().onChat(text);
             // Jungle Temple cheese waypoint: the Kalhuiki Door Guardian's lines mean the player is at the door.
             sbs.modid.client.skills.mining.nucleus.logic.TempleCheeseWaypoint.getInstance().onChat(text);
             // Rejoin Timer: arm the countdown when a SkyBlock kick / limbo line shows up.
@@ -185,7 +194,7 @@ public class ChatPriceListenerMixin {
             sbs.modid.client.helper.fairysouls.logic.FairySoulTracker.getInstance().onChat(text);
             // Reminders: an NPC's "done" line is what restarts that chore's cooldown.
             sbs.modid.client.helper.reminder.logic.ReminderTracker.getInstance().onChat(text);
-            // Wither Door: a wither-key pickup / prompt turns the current room's door green.
+            // Wither Door: a party member's key pickup recolours the next door; an opening moves it on.
             sbs.modid.client.dungeons.run.logic.WitherDoorTracker.getInstance().onChat(text);
             // Year of the Pig: the orb charge / expiry lines and the piglet's orb payout.
             sbs.modid.client.helper.yearofthepig.logic.ShinyOrbTracker.getInstance().onChat(text);

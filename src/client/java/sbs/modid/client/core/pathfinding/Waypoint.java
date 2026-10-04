@@ -161,6 +161,14 @@ public final class Waypoint {
     public static final String SOURCE_DIANA_CREATURE = "dianacreature";
 
     /**
+     * {@link #source} value for the Diana appearance preview: one sample marker per marker type,
+     * published only while the preview is switched on and a settings screen is open.
+     *
+     * <p>Its own tag so clearing the samples can never touch a real burrow, guess or creature.
+     */
+    public static final String SOURCE_DIANA_PREVIEW = "dianapreview";
+
+    /**
      * {@link #source} value for a Crystal Hollows structure marker: one you found, or one another SBS
      * player in the same lobby found and shared.
      *
@@ -294,6 +302,22 @@ public final class Waypoint {
     public int fadeWithin = 0;
 
     /**
+     * How the marker box is drawn. {@link MarkerBox#OUTLINE} - the default, and what an absent field
+     * in an older config deserialises to - is the box every waypoint always had. A {@code null} from
+     * a hand-edited file is read as the default by the renderer.
+     */
+    public MarkerBox box = MarkerBox.OUTLINE;
+
+    /** Whether the light beam above the marker is drawn. Defaults to {@code true}, as before. */
+    public boolean beam = true;
+
+    /**
+     * How large the label is drawn. {@link MarkerLabelSize#NORMAL} - the default - is the size every
+     * label had before this field existed; {@code null} is read as it.
+     */
+    public MarkerLabelSize labelSize = MarkerLabelSize.NORMAL;
+
+    /**
      * The 0..1 factor every alpha this marker is drawn with gets multiplied by: {@link #opacity},
      * further reduced by the near-fade once the camera is inside {@link #fadeWithin} blocks.
      *
@@ -380,10 +404,10 @@ public final class Waypoint {
         return SOURCE_CH_MAP.equals(source);
     }
 
-    /** Whether this is one of the Diana toolkit's markers: a burrow, a guess or a creature. */
+    /** Whether this is one of the Diana toolkit's markers: a burrow, a guess, a creature or a sample. */
     public boolean isDiana() {
         return SOURCE_DIANA_BURROW.equals(source) || SOURCE_DIANA_GUESS.equals(source)
-                || SOURCE_DIANA_CREATURE.equals(source);
+                || SOURCE_DIANA_CREATURE.equals(source) || SOURCE_DIANA_PREVIEW.equals(source);
     }
 
     /** Whether this is a temporary marker dropped with the ping keybind. */

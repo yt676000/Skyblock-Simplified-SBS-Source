@@ -13,6 +13,7 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -94,10 +95,7 @@ public final class DungeonChestRanking {
      *              the caller, since a chest can never be in there)
      */
     private static Ranking scan(AbstractContainerMenu menu, int upper) {
-        Map<Integer, DungeonChestValue.Chest> chests = new HashMap<>();
-        Map<Integer, Long> profitable = new HashMap<>();
-        int bestSlot = -1;
-        long best = Long.MIN_VALUE;
+        Map<Integer, DungeonChestValue.Chest> chests = new LinkedHashMap<>();
         for (int i = 0; i < upper && i < menu.getItems().size(); i++) {
             Slot slot = menu.getSlot(i);
             ItemStack stack = slot.getItem();
@@ -105,20 +103,57 @@ public final class DungeonChestRanking {
                 continue;
             }
             DungeonChestValue.Chest chest = DungeonChestValue.of(stack);
-            if (chest == null) {
+            if (chest != null) {
+                chests.put(i, chest);
+            }
+        }
+        Map<Integer, Long> profitable = new HashMap<>();
+        int bestSlot = -1;
+        for (var entry : marks(chests).entrySet()) {
+            if (entry.getValue() == Mark.LOSS) {
                 continue;
             }
-            chests.put(i, chest);
-            long profit = chest.profit();
-            if (profit <= 0) {
-                continue;
-            }
-            profitable.put(i, profit);
-            if (profit > best) {
-                best = profit;
-                bestSlot = i;
+            profitable.put(entry.getKey(), chests.get(entry.getKey()).profit());
+            if (entry.getValue() == Mark.BEST) {
+                bestSlot = entry.getKey();
             }
         }
         return new Ranking(Map.copyOf(chests), Map.copyOf(profitable), bestSlot);
+    }
+
+    /** What a chest is drawn as: the single best, another that profits, or one that does not. */
+    public enum Mark {
+        BEST, PROFIT, LOSS
+    }
+
+    /**
+     * The ranking rule itself, for any set of chests - menu slots here, world positions in
+     * {@link RewardChestBoard}. One rule, so the chest that is green in the menu is the chest that
+     * is green in the room.
+     *
+     * <p>Strictly positive profit is {@code PROFIT}, the highest of those {@code BEST}; zero or less
+     * is {@code LOSS}. Ties go to the first in {@code chests}' iteration order, so pass an ordered
+     * map when the order must be stable from one call to the next.
+     */
+    public static <K> Map<K, Mark> marks(Map<K, DungeonChestValue.Chest> chests) {
+        K bestKey = null;
+        long best = Long.MIN_VALUE;
+        Map<K, Mark> out = new LinkedHashMap<>();
+        for (var entry : chests.entrySet()) {
+            long profit = entry.getValue().profit();
+            if (profit <= 0) {
+                out.put(entry.getKey(), Mark.LOSS);
+                continue;
+            }
+            out.put(entry.getKey(), Mark.PROFIT);
+            if (profit > best) {
+                best = profit;
+                bestKey = entry.getKey();
+            }
+        }
+        if (bestKey != null) {
+            out.put(bestKey, Mark.BEST);
+        }
+        return out;
     }
 }

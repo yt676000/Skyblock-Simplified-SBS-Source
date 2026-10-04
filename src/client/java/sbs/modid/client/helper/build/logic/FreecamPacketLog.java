@@ -36,6 +36,7 @@ public final class FreecamPacketLog {
 
     /** Called for every outgoing packet; returns at once outside developer mode. */
     public static void record(Packet<?> packet) {
+        // DEV-ONLY: packet log only
         if (!DevMode.ACTIVE) {
             return;
         }

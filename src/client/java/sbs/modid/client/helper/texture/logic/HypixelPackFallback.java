@@ -35,7 +35,8 @@ import java.util.function.Consumer;
 
 /**
  * Keeps the Hypixel SkyBlock pack loaded at the <b>bottom</b> of the pack stack while "Ignore
- * Enforced Texture Packs" is on.
+ * Enforced Texture Packs" or "Keep Hypixel Pack Loaded" is on. For the second, this pack <i>is</i>
+ * the server pack for the whole session - see {@link HypixelPackKeeper}.
  *
  * <p>This is the safety net of the pack-bypass approach: the server push is blocked (so the pack no
  * longer overrides anything on top), but its assets still exist at the lowest priority – so any
@@ -70,12 +71,39 @@ public final class HypixelPackFallback {
     /** Whether "nothing cached" has been logged since the last pick, for the same reason. */
     private static volatile boolean loggedEmpty;
 
+    /**
+     * The file the source last contributed, or {@code null} when the last pack reload contributed
+     * nothing. "Is the Hypixel pack actually loaded right now" for {@link HypixelPackKeeper}: a pack
+     * that is merely cached on disk does not count, so a push is only skipped when skipping it
+     * leaves the same pack on screen.
+     */
+    private static volatile Path activeFile;
+
     private HypixelPackFallback() {
     }
 
     /** Minecraft's server-pack download cache ({@code DownloadedPackSource}'s queue directory). */
     private static Path downloadsDir() {
         return Minecraft.getInstance().gameDirectory.toPath().resolve("downloads");
+    }
+
+    /** The cached pack the last reload put at the bottom of the stack, if any. */
+    public static Optional<Path> activePack() {
+        return Optional.ofNullable(activeFile);
+    }
+
+    /**
+     * The SHA-1 of a cached pack. Vanilla's download queue names each file after its hash
+     * ({@code downloads/<pack uuid>/<sha1>}), which is the same hash the server sends in the push.
+     */
+    public static String sha1(Path cachedFile) {
+        return cachedFile.getFileName().toString().toLowerCase(Locale.ROOT);
+    }
+
+    /** Whether the fallback source contributes at all: either setting that keeps the pack below. */
+    static boolean wanted() {
+        var settings = ConfigManager.getInstance().get().texturePack;
+        return settings.ignoreEnforcedPacks || settings.keepHypixelPackLoaded;
     }
 
     /** Whether Minecraft has a cached SkyBlock pack the fallback can use. */
@@ -182,7 +210,8 @@ public final class HypixelPackFallback {
 
         @Override
         public void loadPacks(Consumer<Pack> onLoad) {
-            if (!ConfigManager.getInstance().get().texturePack.ignoreEnforcedPacks) {
+            activeFile = null;
+            if (!wanted()) {
                 return;
             }
             Optional<Path> cached = cachedPack();
@@ -212,6 +241,7 @@ public final class HypixelPackFallback {
                         PackType.CLIENT_RESOURCES, selection);
                 if (pack != null) {
                     onLoad.accept(pack);
+                    activeFile = file;
                 }
             } catch (Throwable t) {
                 SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Pack] fallback pack unreadable", t);

@@ -101,6 +101,33 @@ final class Walkability {
     }
 
     /**
+     * The narrowest a support may be and still count as ground: half a block. Glass panes and iron
+     * bars (an eighth), fence posts (a quarter) and their connected runs are thinner than that across
+     * at least one axis; a player can balance on them, but a route over the top of a display case's
+     * pane or a fence is not one anybody walks.
+     */
+    static final double MIN_SUPPORT_WIDTH = 0.5;
+
+    /** Whether the block at {@code (x, y, z)} is broad enough to walk on ({@link #MIN_SUPPORT_WIDTH}). */
+    static boolean broadSupport(Level level, BlockPos.MutableBlockPos cursor, int x, int y, int z) {
+        if (!level.hasChunkAt(x, z)) {
+            return true;   // the unknown is a full block, as everywhere else
+        }
+        cursor.set(x, y, z);
+        VoxelShape shape = level.getBlockState(cursor).getCollisionShape(level, cursor);
+        if (shape.isEmpty()) {
+            return true;   // nothing there; the height rule decides
+        }
+        return broad(shape.max(Direction.Axis.X) - shape.min(Direction.Axis.X),
+                shape.max(Direction.Axis.Z) - shape.min(Direction.Axis.Z));
+    }
+
+    /** The footprint rule on two widths - pure, for the tests. */
+    static boolean broad(double widthX, double widthZ) {
+        return Math.min(widthX, widthZ) >= MIN_SUPPORT_WIDTH - 1e-9;
+    }
+
+    /**
      * Where the lowest thing overhead starts inside a block, {@code 0} (the block's base) to
      * {@code 1}, or {@code Double.NaN} when nothing is there. The other half of the height primitive:
      * a top slab's shape starts at {@code 0.5}, so a player can still fit under it while sneaking.
@@ -140,6 +167,9 @@ final class Walkability {
             return NO_STAND; // a full block or a top slab - the player cannot be inside it
         }
         double below = floor > 0.0 ? 0.0 : surfaceHeight(level, cursor, x, y - 1, z);
+        if (floor <= 0.0 && !broadSupport(level, cursor, x, y - 1, z)) {
+            return NO_STAND;   // a pane, bars or a post: something to fall off, not to walk on
+        }
         double above1 = ceilingBottom(level, cursor, x, y + 1, z);
         double above2 = Double.isNaN(above1) ? ceilingBottom(level, cursor, x, y + 2, z) : Double.NaN;
         return column(floor, below, above1, above2, allowSneak);

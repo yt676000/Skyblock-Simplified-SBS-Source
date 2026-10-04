@@ -9,6 +9,7 @@ sbs.modid.client.combat.carry.CarryModule
 sbs.modid.client.combat.damage.AbilityDamageModule
 sbs.modid.client.combat.damage.DamageAttributionModule
 sbs.modid.client.combat.damage.DamageOverlayModule
+sbs.modid.client.combat.diana.DianaAppearanceModule
 sbs.modid.client.combat.diana.DianaModule
 sbs.modid.client.combat.ghost.GhostHunterModule
 sbs.modid.client.combat.kuudra.KuudraModule
@@ -62,6 +63,7 @@ sbs.modid.client.helper.rift.EnigmaSoulsModule
 sbs.modid.client.helper.rift.RiftTimeModule
 sbs.modid.client.helper.routes.RoutesModule
 sbs.modid.client.helper.scoreboard.CustomScoreboardModule
+sbs.modid.client.helper.seymour.SeymourColoursModule
 sbs.modid.client.helper.slothotkey.SlotHotkeysModule
 sbs.modid.client.helper.sound.SoundManagerModule
 sbs.modid.client.helper.streamer.StreamerModule
@@ -106,3 +108,4 @@ sbs.modid.client.social.party.PartyHighlightModule
 sbs.modid.client.social.party.PartyOverlayModule
 sbs.modid.client.social.sendcoords.SendCoordsModule
 sbs.modid.client.ui.font.FontsModule
+sbs.modid.client.helper.hitboxes.EntityHitboxesModule

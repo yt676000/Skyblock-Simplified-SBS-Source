@@ -18,7 +18,6 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.decoration.ArmorStand;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.SkullBlock;
@@ -26,6 +25,7 @@ import net.minecraft.world.phys.Vec3;
 import sbs.modid.client.combat.mobhighlight.logic.MobHighlightTracker;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.core.player.RealPlayers;
 import sbs.modid.client.dungeons.events.ChatPatternRegistry;
 import sbs.modid.client.dungeons.events.DungeonAlert;
 import sbs.modid.client.dungeons.events.DungeonEvents;
@@ -580,7 +580,8 @@ public final class BloodRoomTracker {
             // The Watcher is the room's host, not one of its mobs: he keeps the room open, he anchors
             // it, and he never gets boxed or pointed at. Checked before players are dropped, because
             // he may well be one - and looked for every tick, even before the room is known, since
-            // finding him is what makes it known.
+            // finding him is what makes it known. Only real players are dropped below: a
+            // player-model mob is a fake player and is one of the room's mobs like any other.
             if (isWatcher(living)) {
                 watcher = true;
                 watcherPos = living.position();
@@ -591,7 +592,7 @@ public final class BloodRoomTracker {
                 blacklistBelow(level, living);
                 continue;
             }
-            if (!known || living instanceof Player) {
+            if (!known || RealPlayers.isRealPlayerEntity(living)) {
                 continue; // the room is not identified yet: nothing else in the dungeon counts
             }
             Component custom = living.getCustomName();
@@ -767,7 +768,7 @@ public final class BloodRoomTracker {
     private static LivingEntity mobFarBelow(ClientLevel level, ArmorStand stand) {
         List<LivingEntity> below = level.getEntitiesOfClass(LivingEntity.class,
                 stand.getBoundingBox().inflate(2.0, 0, 2.0).expandTowards(0, -8, 0),
-                mob -> mob != stand && !(mob instanceof ArmorStand) && !(mob instanceof Player)
+                mob -> mob != stand && !(mob instanceof ArmorStand) && !RealPlayers.isRealPlayerEntity(mob)
                         && mob.isAlive());
         LivingEntity best = null;
         double bestDistance = Double.MAX_VALUE;

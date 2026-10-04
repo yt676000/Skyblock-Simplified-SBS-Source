@@ -245,6 +245,7 @@ public final class PathfindingManager {
             }
             // Walking the route consumes it rather than dragging a tail behind the player.
             route.trimWalkedPart(position);
+            route.checkBlocked(position, System.currentTimeMillis());
             if (!startedOne && route.needsRecompute(block, position, current, mobility, tolerance(),
                     verticalTolerance(mobility))) {
                 route.startSearch(level, searchStart(player, level, mobility), current, mobility,

@@ -27,6 +27,7 @@ import sbs.modid.client.core.build.model.Schematic;
 import sbs.modid.client.core.build.model.SchematicHeader;
 import sbs.modid.client.core.build.model.SchematicTransform;
 import sbs.modid.client.core.build.model.Selection;
+import sbs.modid.client.core.build.render.GhostModels;
 import sbs.modid.client.core.build.logic.BlockStates;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.helper.build.logic.BuildChat;
@@ -490,6 +491,12 @@ public final class BuildCommands {
     private static void hologram(String rest) {
         HologramManager manager = HologramManager.getInstance();
         String word = rest.toLowerCase(Locale.ROOT);
+        if (word.equals("debug")) {
+            // Allowed without a hologram: arm first, then paste, and the first frame is logged.
+            GhostModels.armProbe();
+            BuildChat.info("Ghost probe armed - the next frame logs each fluid and head once ([SBS][Blueprint] in latest.log)");
+            return;
+        }
         if (manager.hologram() == null) {
             BuildChat.warn("No hologram - //paste shows the clipboard as one");
             return;

@@ -159,7 +159,7 @@ public final class MapModule implements SbsModule {
                         () -> { cfg().hollowsShareContribute = !cfg().hollowsShareContribute; save(); })
                         .describe("Sends the structures you walk into. Off, you still see what "
                                 + "others shared, and nothing about your own finds is sent.")
-                        .disabledIf(!cfg().hollowsShare),
+                        .disabledWhile(() -> !cfg().hollowsShare),
                 SettingRow.toggle("Show Unconfirmed Structures", () -> cfg().hollowsShareShowUnconfirmed,
                         () -> {
                             cfg().hollowsShareShowUnconfirmed = !cfg().hollowsShareShowUnconfirmed;
@@ -169,7 +169,7 @@ public final class MapModule implements SbsModule {
                                 + "and on both maps - drawn fainter and labelled unconfirmed. Off, a "
                                 + "shared structure appears once two players have reported it. Your "
                                 + "own finds always show.")
-                        .disabledIf(!cfg().hollowsShare),
+                        .disabledWhile(() -> !cfg().hollowsShare),
                 SettingRow.label("§8" + StructureSharing.getInstance().statusLine()),
                 SettingRow.label("§8A structure nobody has reported yet may still exist"),
 

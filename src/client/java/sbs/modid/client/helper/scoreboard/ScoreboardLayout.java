@@ -166,20 +166,52 @@ public final class ScoreboardLayout {
     }
 
     /**
-     * The layout the mod ships with - what a fresh install draws, and what the editor's Reset
-     * restores.
-     *
-     * <p>Hypixel's own order with the rows it hides folded in where they belong: the bank under the
-     * purse, the interest under the bank, the gems beside the bits, and the client-info rows as a
-     * block at the bottom. The blanks and the rule are placed deliberately rather than inherited,
-     * which is the point of shipping a layout at all - the panel is grouped by what a row is for.
-     *
-     * <p>{@link ScoreboardElements#UNRECOGNIZED} sits <b>after the objective</b>, not at the end.
-     * That is the slot Hypixel itself uses for whatever the situation is - the objective block in the
-     * open world, the run stats in a dungeon, a countdown during an event - so the rows this build
-     * does not recognise land where their kind belongs instead of underneath the buff timers.
+     * The shipped layout for a fresh install (since 2026-10-04): the maintainer's own arrangement.
+     * The economy rows first, then the objective and slayer quest, profile and buffs; everything a
+     * player only needs in one place is in the editor's palette instead (see {@link #defaultHidden}).
      */
     public static List<String> defaultOrder() {
+        return new ArrayList<>(List.of(
+                "date_server",
+                "sbs:time",
+                SEPARATOR_ID,
+                "skyblock_date",
+                "skyblock_time",
+                "location",
+                SPACER_ID,
+                "purse",
+                "sbs:bank",
+                "sbs:interest",
+                "sbs:gems",
+                "bits",
+                SPACER_ID,
+                "objective",
+                "slayer_quest",
+                SPACER_ID,
+                "sbs:profile",
+                "sbs:sb_level",
+                "sbs:cookie_buff",
+                "sbs:god_potion",
+                ScoreboardElements.UNRECOGNIZED));
+    }
+
+    /** The rows the shipped layout leaves out; a player adds them back from the editor's palette. */
+    public static List<String> defaultHidden() {
+        return new ArrayList<>(List.of(
+                "server_id", "motes", "rift_time", "copper", "north_stars", "mithril_powder",
+                "gemstone_powder", "glacite_powder", "heat", "cold", "commissions", "dungeon_cleared",
+                "dungeon_time", "dungeon_deaths", "dungeon_secrets", "dungeon_puzzles", "dungeon_crypts",
+                "dungeon_keys", "dungeon_party", "milestone", "reputation", "garden_visitors",
+                "garden_pests", "jacob_contest", "trapper", "event", "website", "sbs:fps", "sbs:ping",
+                "sbs:vote"));
+    }
+
+    /**
+     * The layout round 1 of the shipped defaults hands a player who never arranged one
+     * ({@code ConfigManager.adoptShippedDefaults}). Frozen: the fresh-install default moved on on
+     * 2026-10-04, and that change must not reach existing configs through this round.
+     */
+    public static List<String> round1Order() {
         return new ArrayList<>(List.of(
                 "date_server",
                 "sbs:time",
@@ -208,13 +240,11 @@ public final class ScoreboardLayout {
                 "sbs:ping"));
     }
 
-    /**
-     * What the shipped layout leaves out: the server's advertising line, the one sidebar row that
-     * tells you nothing you did not already know and costs a line doing it.
-     */
-    public static List<String> defaultHidden() {
+    /** The hidden rows that go with {@link #round1Order()}. */
+    public static List<String> round1Hidden() {
         return new ArrayList<>(List.of("website"));
     }
+
 
     /** Every catalogue id the layout does not place - what the editor's palette lists. */
     public static List<String> unplaced(List<String> order) {

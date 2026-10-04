@@ -86,15 +86,21 @@ public final class ChatTabsModule implements SbsModule {
     /**
      * The IRC tab, greyed out while IRC Chat itself is off — with the reason on the row, because a
      * row that is dead for invisible reasons is a bug report waiting to happen (ui/AGENTS.md).
+     *
+     * <p>The greying follows IRC Chat live. It used to be decided when the row was built, so a row
+     * built while IRC Chat was off stayed dead after it was switched on - on the Favourites page for
+     * the whole visit - and the IRC tab could not be switched off from it.
      */
-    private static SettingRow ircTab() {
-        boolean available = ChatTabs.ircAvailable();
-        SettingRow row = SettingRow.toggle("IRC Tab", () -> cfg().tabIrc,
-                        () -> { cfg().tabIrc = !cfg().tabIrc; apply(); })
+    static SettingRow ircTab() {
+        return SettingRow.toggle("IRC Tab", () -> cfg().tabIrc,
+                        () -> {
+                            cfg().tabIrc = !cfg().tabIrc;
+                            SettingRow.logChange("IRC Tab", cfg().tabIrc);
+                            apply();
+                        })
                 .describe(ChatTab.IRC.description() + ". Only appears while IRC Chat is switched on, "
-                        + "over on the Chat Options page"
-                        + (available ? "." : " - it is off at the moment, so this row does nothing."));
-        return available ? row : row.disabled();
+                        + "over on the Chat Options page; greyed out while it is off. Default: on.")
+                .disabledWhile(() -> !ChatTabs.ircAvailable());
     }
 
     @Override

@@ -408,6 +408,8 @@ public class HudMixin {
             sbs.modid.client.helper.reminder.render.LobbyDayHud.render(g);
             // Mining Events card - self-gating, Dwarven Mines and Crystal Hollows only.
             sbs.modid.client.skills.mining.events.render.MiningEventsHud.render(g);
+            // Divan Tools card - self-gating, Crystal Hollows only.
+            sbs.modid.client.skills.mining.metaldetector.render.DivanChecklistHud.render(g);
             // Crystal Hollows minimap and map-target heading - self-gating, Hollows only.
             sbs.modid.client.helper.map.render.HollowsMinimapHud.render(g);
             sbs.modid.client.helper.map.render.HollowsTargetHud.render(g);
@@ -783,6 +785,16 @@ public class HudMixin {
     private void skyblockSimplified$pickobolus(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.pickobolus")) {
             sbs.modid.client.skills.mining.render.PickobolusHighlight.render(g);
+            // Precision Mining: the marker on the block being mined; self-gated on its toggle.
+            sbs.modid.client.skills.mining.precision.render.PrecisionMiningRender.render(g);
+        }
+    }
+
+    /** Effective Ore Blocks: visible ore faces tinted by yield per strength (self-gating on toggle + zone). */
+    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
+    private void skyblockSimplified$effectiveBlocks(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.effectiveBlocks")) {
+            sbs.modid.client.skills.mining.render.EffectiveBlockHighlight.render(g);
         }
     }
 

@@ -74,10 +74,137 @@ public final class MiningHelpersModule implements SbsModule {
     @Override
     public List<SettingRow> settings() {
         List<SettingRow> rows = new java.util.ArrayList<>(baseSettings());
+        rows.addAll(precisionSettings());
         rows.addAll(hotmReminderSettings());
         rows.addAll(abilityReadySettings());
         rows.addAll(coldSettings());
+        rows.addAll(effectiveBlockSettings());
         return rows;
+    }
+
+    /**
+     * Effective Ore Blocks. Its own master switch rather than the cards' one above: it is a world
+     * overlay, not a card, and it ships off until a Dwarven Mines and a Glacite session confirm it.
+     */
+    private static List<SettingRow> effectiveBlockSettings() {
+        List<SettingRow> rows = new java.util.ArrayList<>();
+        rows.add(SettingRow.label("— Effective Ore Blocks —"));
+        rows.add(SettingRow.toggle("Effective Ore Blocks", () -> cfg().effectiveBlocks,
+                        () -> { cfg().effectiveBlocks = !cfg().effectiveBlocks; save(); })
+                .describe("Tints the Mithril, Umber and Tungsten blocks you can see by how much they "
+                        + "give per second of mining: green for the best block of that ore, yellow "
+                        + "for the middle. Only faces you can actually see are tinted - nothing "
+                        + "behind a wall. Mithril in the Dwarven Mines, the Crystal Hollows (light "
+                        + "blue wool only) and the Mineshafts; Umber and Tungsten in the Glacite "
+                        + "Tunnels and the Mineshafts; nowhere else. Display only. Default: off - the "
+                        + "block values are the wiki's and not confirmed in game yet."));
+        rows.add(SettingRow.toggle("Mithril", () -> cfg().effectiveMithril,
+                        () -> { cfg().effectiveMithril = !cfg().effectiveMithril; save(); })
+                .describe("Light blue wool (5 per block) over prismarine (2) over gray wool and cyan "
+                        + "terracotta (1), counted against how long each takes to break."));
+        rows.add(SettingRow.toggle("Umber", () -> cfg().effectiveUmber,
+                        () -> { cfg().effectiveUmber = !cfg().effectiveUmber; save(); })
+                .describe("Red sandstone (3) over brown terracotta (2) over terracotta (1)."));
+        rows.add(SettingRow.toggle("Tungsten", () -> cfg().effectiveTungsten,
+                        () -> { cfg().effectiveTungsten = !cfg().effectiveTungsten; save(); })
+                .describe("Clay (3) over cobblestone (1)."));
+        rows.add(SettingRow.toggle("Count Slabs And Stairs", () -> cfg().effectiveHalfBlocks,
+                        () -> { cfg().effectiveHalfBlocks = !cfg().effectiveHalfBlocks; save(); })
+                .describe("Cobblestone slabs and stairs give half a Tungsten each. With this on they "
+                        + "are the lowest tier and cobblestone moves to the middle. Default: off."));
+        rows.add(SettingRow.toggle("I Insta-Mine Soft Mithril", () -> cfg().effectiveInstaMineSoft,
+                        () -> { cfg().effectiveInstaMineSoft = !cfg().effectiveInstaMineSoft; save(); })
+                .describe("Turn on if you break gray wool and cyan terracotta instantly. Then they "
+                        + "give more per second than anything else and are tinted best. Your mining "
+                        + "speed is never read - this is your call. Default: off."));
+        rows.add(SettingRow.intField("Radius", 1, 24, () -> cfg().effectiveRadius,
+                        v -> { cfg().effectiveRadius = v; save(); }, " blocks")
+                .describe("How far around you blocks are looked at. 12 by default, 24 at most."));
+        rows.add(SettingRow.toggle("Best Tier Only", () -> cfg().effectiveBestOnly,
+                        () -> { cfg().effectiveBestOnly = !cfg().effectiveBestOnly; save(); })
+                .describe("Tint only the best block of each ore. Default: off."));
+        rows.add(SettingRow.toggle("Show Lowest Tier", () -> cfg().effectiveShowLow,
+                        () -> { cfg().effectiveShowLow = !cfg().effectiveShowLow; save(); })
+                .describe("Tint the worst block of an ore as well, in the colour below. Only an ore "
+                        + "with three different values has a lowest tier. Default: off."));
+        rows.add(SettingRow.toggle("Outline Faces", () -> cfg().effectiveOutline,
+                        () -> { cfg().effectiveOutline = !cfg().effectiveOutline; save(); })
+                .describe("Draws the edges of each tinted face too. Default: off."));
+        rows.add(SettingRow.color("Best Colour", () -> cfg().effectiveBestColorHex,
+                        () -> 0xFF000000 | sbs.modid.client.skills.mining.render.EffectiveBlockHighlight.DEFAULT_BEST,
+                        () -> openPicker("Best Ore Block", () -> cfg().effectiveBestColorHex,
+                                hex -> cfg().effectiveBestColorHex = hex))
+                .describe("The block that gives the most per second of mining."));
+        rows.add(SettingRow.color("Middle Colour", () -> cfg().effectiveMiddleColorHex,
+                        () -> 0xFF000000 | sbs.modid.client.skills.mining.render.EffectiveBlockHighlight.DEFAULT_MIDDLE,
+                        () -> openPicker("Middle Ore Block", () -> cfg().effectiveMiddleColorHex,
+                                hex -> cfg().effectiveMiddleColorHex = hex))
+                .describe("Worth mining, but not first."));
+        rows.add(SettingRow.color("Lowest Colour", () -> cfg().effectiveLowColorHex,
+                        () -> 0xFF000000 | sbs.modid.client.skills.mining.render.EffectiveBlockHighlight.DEFAULT_LOW,
+                        () -> openPicker("Lowest Ore Block", () -> cfg().effectiveLowColorHex,
+                                hex -> cfg().effectiveLowColorHex = hex))
+                .describe("Only used with Show Lowest Tier on."));
+        rows.add(SettingRow.label("§8Block values are the wiki's (unconfirmed in game)"));
+        return rows;
+    }
+
+    /**
+     * Precision Mining Target. Off by default until a probe has captured the perk's particle: the
+     * matcher is a guess, and a guess that marks the wrong thing should not be on for everyone.
+     */
+    private static List<SettingRow> precisionSettings() {
+        List<SettingRow> rows = new java.util.ArrayList<>();
+        rows.add(SettingRow.label("— Precision Mining —"));
+        rows.add(SettingRow.toggle("Precision Mining Target", () -> cfg().precisionTarget,
+                        () -> { cfg().precisionTarget = !cfg().precisionTarget; save(); })
+                .describe("With the Heart of the Mountain perk Precision Mining, puts a clear square on "
+                        + "the perk's particle on the block you are mining. Red while your crosshair is "
+                        + "off it, green while it is on it. Display only: you move the mouse, nothing "
+                        + "aims for you. Only ever on the block you are mining, and never through a "
+                        + "wall. Default: off - the particle has not been captured in game yet."));
+        rows.add(SettingRow.color("On Target Colour", () -> cfg().precisionOnColorHex, () -> 0xFF55FF55,
+                        () -> openPicker("Precision On Target", () -> cfg().precisionOnColorHex,
+                                hex -> cfg().precisionOnColorHex = hex))
+                .describe("The marker's colour while your crosshair is on the target."));
+        rows.add(SettingRow.color("Off Target Colour", () -> cfg().precisionOffColorHex, () -> 0xFFFF5555,
+                        () -> openPicker("Precision Off Target", () -> cfg().precisionOffColorHex,
+                                hex -> cfg().precisionOffColorHex = hex))
+                .describe("The marker's colour while it is not."));
+        rows.add(SettingRow.rangeSlider("Marker Size", 4, 50, () -> cfg().precisionMarkerSize,
+                        v -> { cfg().precisionMarkerSize = v; save(); }, "%")
+                .describe("How wide the square is, as a share of the block's width. 16% by default."));
+        rows.add(SettingRow.rangeSlider("On Target Radius", 3, 50, () -> cfg().precisionRadius,
+                        v -> { cfg().precisionRadius = v; save(); }, "%")
+                .describe("How close your crosshair's spot on the block has to be to the particle "
+                        + "before the marker turns green, as a share of the block's width. 15% by "
+                        + "default. How close the server itself counts has not been measured, so "
+                        + "this is a guess you can tune."));
+        rows.add(SettingRow.toggle("Crosshair Square", () -> cfg().precisionCrosshairRing,
+                        () -> { cfg().precisionCrosshairRing = !cfg().precisionCrosshairRing; save(); })
+                .describe("A small square around your crosshair in the same red or green while a "
+                        + "target is shown. Default: on."));
+        rows.add(SettingRow.toggle("Precision Line", () -> cfg().precisionHud,
+                        () -> { cfg().precisionHud = !cfg().precisionHud; save(); })
+                .describe("\"Precision: on target\" or \"off target\" as a line under the crosshair "
+                        + "while a target is shown. Default: off."));
+        rows.add(SettingRow.button("Move / Resize Precision Line", () -> open(new HudEditorScreen(
+                        new HudElement[] {HudElement.PRECISION_MINING}, "Edit Precision Line")))
+                .describe("Opens the editor where you drag the line anywhere on the screen and "
+                        + "scale it."));
+        return rows;
+    }
+
+    private static void openPicker(String label, java.util.function.Supplier<String> current,
+                                   java.util.function.Consumer<String> setter) {
+        net.minecraft.client.gui.screens.Screen previous =
+                sbs.modid.client.core.api.GuiStateManager.getInstance().getCurrentScreen();
+        open(new sbs.modid.client.ui.theme.ThemeColorPickerScreen(
+                "Mining  •  " + label, current.get(),
+                value -> {
+                    setter.accept(value == null ? "" : value);
+                    save();
+                }, previous));
     }
 
     /**

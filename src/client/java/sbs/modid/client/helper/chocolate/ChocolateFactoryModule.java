@@ -16,6 +16,7 @@ import sbs.modid.client.core.module.ModuleGroup;
 import sbs.modid.client.core.module.SbsModule;
 import sbs.modid.client.helper.chocolate.logic.ChocolateLore;
 import sbs.modid.client.helper.chocolate.logic.ChocolateStore;
+import sbs.modid.client.helper.chocolate.logic.MenuShortcut;
 import sbs.modid.client.helper.chocolate.model.ChocolateSnapshot;
 import sbs.modid.client.ui.hud.edit.model.HudElement;
 import sbs.modid.client.ui.hud.edit.ui.HudEditorScreen;
@@ -38,6 +39,11 @@ import java.util.List;
  * Hypixel bans for. Nothing here clicks, and there is no key on this page at all - not even a
  * harmless one - so that somebody looking at a screenshot of these settings can see there is no
  * key because nothing here presses anything.
+ *
+ * <p>The one button on this page that does something is the SkyBlock Menu shortcut, and what it does
+ * is send the factory command once when the player clicks it - the same as typing it. It clicks
+ * nothing inside the factory; {@code helper/chocolate/ui/ChocolateMenuShortcut} records why it
+ * qualifies.
  *
  * <p>Self-registered via {@code META-INF/services/sbs.modid.client.core.module.SbsModule}.
  */
@@ -116,6 +122,29 @@ public final class ChocolateFactoryModule implements SbsModule {
                         new HudElement[] {HudElement.CHOCOLATE_FACTORY}, "Edit Chocolate Factory")))
                 .describe("Opens the editor where you drag the card anywhere on the screen and "
                         + "scale it."));
+
+        // ---------------------------------------------------------- SkyBlock Menu button
+        rows.add(SettingRow.toggle("SkyBlock Menu Shortcut", () -> cfg().menuShortcut,
+                        () -> { cfg().menuShortcut = !cfg().menuShortcut; save(); })
+                .describe("Puts a Chocolate Factory button on an empty slot of the SkyBlock Menu. "
+                        + "Clicking it opens the factory, just as typing the command would; its "
+                        + "tooltip shows your numbers from the last time you had the factory open. "
+                        + "Works with the switch above off. Default: on.")
+                .anchor("chocolate_menu_shortcut"));
+        rows.add(SettingRow.options("Shortcut Slot",
+                        () -> MenuShortcut.freeSlots().stream().map(MenuShortcut::slotLabel).toList(),
+                        () -> MenuShortcut.slotLabel(MenuShortcut.resolveSlot(cfg().menuShortcutSlot)),
+                        label -> {
+                            int slot = MenuShortcut.slotFromLabel(label);
+                            if (slot >= 0) {
+                                cfg().menuShortcutSlot = MenuShortcut.resolveSlot(slot);
+                                save();
+                            }
+                        })
+                .describe("Where in the SkyBlock Menu the button sits. Only the empty slots are "
+                        + "offered; if Hypixel ever puts its own item on the one you picked, the "
+                        + "button steps aside. Default: slot 34, right of Personal Bank.")
+                .anchor("chocolate_menu_shortcut_slot"));
 
         // ---------------------------------------------------------------- stray rabbits
         rows.add(SettingRow.toggle("Stray Rabbit Alert", () -> cfg().strayAlert,
@@ -218,9 +247,7 @@ public final class ChocolateFactoryModule implements SbsModule {
                 ranked++;
             }
         }
-        long minutes = (System.currentTimeMillis() - snapshot.capturedAt) / 60_000L;
-        String age = minutes < 1 ? "just now"
-                : minutes < 60 ? minutes + " min ago" : (minutes / 60) + " h ago";
+        String age = MenuShortcut.age(snapshot.capturedAt, System.currentTimeMillis());
         return "§f" + ranked + "§7 of §f" + snapshot.upgrades.size()
                 + "§7 slot(s) could be ranked (read " + age + ")";
     }

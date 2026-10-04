@@ -15,6 +15,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.dev.RoomMapReader;
@@ -23,28 +24,33 @@ import sbs.modid.client.dungeons.run.render.DungeonHighlight;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Boxes the <b>wither / blood doors</b> in a Catacombs dungeon: normally in the "locked" colour,
- * but the door of the room you are in turns to the "key" colour the moment you pick a wither key up
- * ("… has obtained Wither Key!" / "RIGHT CLICK on a WITHER door to open it …"), so it is obvious
- * which door your key opens.
+ * Boxes the <b>next wither / blood door</b> of a Catacombs run from anywhere in the dungeon, in the
+ * "locked" colour until anyone in the party has the matching key, then in the "key" colour.
  *
- * <p><b>Detection.</b> Wither doors are solid {@link Blocks#COAL_BLOCK} plugs; the <b>blood door is
- * red hardened clay</b> (red terracotta – on the minimap its connector is painted red). The scanner
- * sweeps a box around the player for both materials, clusters the hits per material (each door is
- * one contiguous block), and boxes every cluster of at least {@link #MIN_CLUSTER} blocks. Because
- * décor coal / red clay exists too, every cluster is then <b>verified as a door position</b>: it
- * must sit on a 32-grid gap line inside the fixed doorway height band, and – once the dungeon map is
- * anchored – the map must paint a wither (black) or blood (red) connector on exactly that cell edge.
- * The colour of a cluster is decided per frame: green while you hold a key AND the cluster belongs
- * to your current room grid cell, else the locked colour.
+ * <p><b>Which door.</b> {@link NextDoor} reads the dungeon map: the closed key connectors on the
+ * explored frontier, nearest first. Opened doors are remembered per run (see {@link #opened}) so the
+ * highlight moves on as soon as a door is opened, whatever the map still paints.
+ *
+ * <p><b>Key state.</b> The key is shared by the whole party: a pickup by any member arms it, the next
+ * door opened by anyone consumes it. Wither and blood keys are tracked separately; {@link DoorKeyChat}
+ * classifies the lines.
+ *
+ * <p><b>Detection near the player.</b> Wither doors are solid {@link Blocks#COAL_BLOCK} plugs; the
+ * blood door is red hardened clay (red terracotta). The scanner sweeps the current room's footprint
+ * (or a radius around the player) along the 32-grid seams, clusters the hits per material and
+ * verifies each cluster as a door position against the map connector. A scanned cluster gives the
+ * exact box of a door and replaces the map-derived estimate; a door whose spot was swept with no
+ * coal left counts as opened.
  *
  * <p>Runs off the client tick via {@code GuiTrackingMixin}, gated hard on the Catacombs scoreboard;
- * the boxes are drawn by {@link DungeonHighlight}. Nothing here scans in the render pass.
+ * the boxes are drawn by {@link DungeonHighlight}. Nothing here scans in the render pass. The info is
+ * the same the minimap already shows; the box only points at it.
  */
 public final class WitherDoorTracker {
 
@@ -61,19 +67,35 @@ public final class WitherDoorTracker {
     private static final int MIN_CLUSTER = 6;
     /** Coal blocks within this Chebyshev distance belong to the same door. */
     private static final int CLUSTER_GAP = 2;
-    /** Safety net: forget a held key after this long (a key is normally used within seconds). */
+    /** Safety net: forget a held key after this long (a key is normally used within minutes). */
     private static final long KEY_TIMEOUT_MS = 10 * 60_000L;
     /** Cap on collected coal positions, so a pathological area can never blow up the clustering. */
     private static final int MAX_COAL = 400;
+    /** How close (map cells) a named player's marker must be to a door to be credited with opening it. */
+    private static final double OPENER_REACH_CELLS = 1.0;
 
-    /** One boxed door: its coal bounding box (inclusive) and whether it is the key-coloured one. */
-    public record DoorBox(BlockPos min, BlockPos max, boolean green) {
+    /**
+     * One boxed door: its bounding box (inclusive), whether it is drawn in the key colour, and whether
+     * it is the next door (full strength, pointer line) or another known door (faint).
+     */
+    public record DoorBox(BlockPos min, BlockPos max, boolean keyColour, boolean next) {
+    }
+
+    /** A scanned, position-verified block cluster; {@code edge} is its map edge or {@code null} unanchored. */
+    private record Cluster(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, boolean blood, Long edge) {
     }
 
     private volatile List<DoorBox> doorBoxes = List.of();
     private long lastScanAt;
-    private boolean hasKey;
-    private long keyAt;
+    private boolean witherKey;
+    private long witherKeyAt;
+    private boolean bloodKey;
+    private long bloodKeyAt;
+    /** Door edges ({@link NextDoor#edgeKey}) opened this run. Cleared when the Catacombs are left. */
+    private final Set<Long> opened = new HashSet<>();
+    /** The last ranked frontier, for crediting an "opened a WITHER door" line to a door. */
+    private List<NextDoor.Door> lastRanked = List.of();
+    private Long lastNextEdge;
 
     private WitherDoorTracker() {
     }
@@ -93,32 +115,67 @@ public final class WitherDoorTracker {
 
     // ------------------------------------------------------------------ chat
 
-    /** Every chat line; a wither-key pickup / prompt of MINE arms the green highlight. */
+    /** Every chat line: party-wide key pickups arm the key colour, door openings consume the key. */
     public void onChat(String text) {
-        if (!cfg().witherDoors || text == null) {
+        if (!cfg().witherDoors) {
             return;
         }
-        String lower = text.toLowerCase(Locale.ROOT);
-        // "<player> opened a WITHER door!" - the key is consumed on the spot, whoever opened it, so
-        // the highlight falls back to the locked colour until the next key pickup.
-        if (lower.contains("opened a wither door") || lower.contains("opened a blood door")) {
-            hasKey = false;
-            return;
+        DoorKeyChat.Event event = DoorKeyChat.parse(text);
+        long now = System.currentTimeMillis();
+        switch (event.kind()) {
+            case WITHER_KEY -> {
+                witherKey = true;
+                witherKeyAt = now;
+            }
+            case BLOOD_KEY -> {
+                bloodKey = true;
+                bloodKeyAt = now;
+            }
+            case WITHER_OPENED -> {
+                witherKey = false;
+                creditOpener(event.player());
+            }
+            case BLOOD_OPENED -> {
+                bloodKey = false;
+                // One blood door per run: every blood connector is done with.
+                for (NextDoor.Door door : lastRanked) {
+                    if (door.type() == RoomMapReader.DoorType.BLOOD) {
+                        opened.add(door.edge());
+                    }
+                }
+            }
+            default -> {
+                return;
+            }
         }
-        // The "RIGHT CLICK on a WITHER door" prompt is client-only (always mine). The "obtained
-        // Wither Key" line names a player, so it must name ME - a party member's key is not mine.
-        boolean mine = lower.contains("right click on a wither door")
-                || ((lower.contains("obtained wither key") || lower.contains("obtained blood key"))
-                        && namesLocalPlayer(text));
-        if (mine) {
-            hasKey = true;
-            keyAt = System.currentTimeMillis();
-        }
+        lastScanAt = 0L;   // re-evaluate on the next tick rather than up to SCAN_MS later
     }
 
-    private static boolean namesLocalPlayer(String text) {
-        LocalPlayer player = Minecraft.getInstance().player;
-        return player != null && text.contains(player.getGameProfile().name());
+    /**
+     * Marks the wither door nearest to the opener's map marker as opened, when the marker is within
+     * {@value #OPENER_REACH_CELLS} cells of one. A line whose opener has no named marker credits
+     * nothing; the coal scan or the map catches that door later.
+     */
+    private void creditOpener(String name) {
+        RoomMapReader.MapSnapshot snapshot = DungeonState.getInstance().snapshot();
+        if (name == null || snapshot == null || lastRanked.isEmpty()) {
+            return;
+        }
+        List<NextDoor.Door> wither = new ArrayList<>();
+        for (NextDoor.Door door : lastRanked) {
+            if (door.type() == RoomMapReader.DoorType.WITHER) {
+                wither.add(door);
+            }
+        }
+        for (RoomMapReader.PlayerMarker marker : RoomMapReader.playerMarkers(snapshot)) {
+            if (name.equalsIgnoreCase(marker.name())) {
+                NextDoor.Door door = NextDoor.nearest(wither, marker.cellX(), marker.cellZ(), OPENER_REACH_CELLS);
+                if (door != null) {
+                    opened.add(door.edge());
+                }
+                return;
+            }
+        }
     }
 
     // ------------------------------------------------------------------ tick
@@ -126,35 +183,169 @@ public final class WitherDoorTracker {
     /** Called once per client tick (throttled scan inside). */
     public void tick(Minecraft minecraft) {
         SBSConfig.DungeonsSettings cfg = cfg();
-        if (!cfg.witherDoors) {
-            reset();
-            return;
-        }
         LocalPlayer player = minecraft.player;
         ClientLevel level = minecraft.level;
-        // The slot-9 map gate also stops the scan in the boss room: no doors exist there, only
-        // décor coal that would get boxed.
-        if (player == null || level == null || !DungeonScoreboard.isInCatacombs()
-                || !RoomMapReader.hasDungeonMap()) {
-            reset();
+        if (!cfg.witherDoors || player == null || level == null || !DungeonScoreboard.isInCatacombs()) {
+            resetRun();
+            return;
+        }
+        // The slot-9 map gate also stops the scan in the boss room: no doors exist there, only décor
+        // coal that would get boxed. The run state survives a moment without the map.
+        if (!RoomMapReader.hasDungeonMap()) {
+            clearBoxes();
             return;
         }
         long now = System.currentTimeMillis();
-        if (hasKey && now - keyAt > KEY_TIMEOUT_MS) {
-            hasKey = false;   // stale safety net
+        if (witherKey && now - witherKeyAt > KEY_TIMEOUT_MS) {
+            witherKey = false;   // stale safety net
+        }
+        if (bloodKey && now - bloodKeyAt > KEY_TIMEOUT_MS) {
+            bloodKey = false;
         }
         if (now - lastScanAt < SCAN_MS) {
             return;
         }
         lastScanAt = now;
-        doorBoxes = scan(level, player.blockPosition());
+        doorBoxes = build(level, player.blockPosition(), cfg.witherDoorsShowAll);
     }
 
-    private void reset() {
+    private void clearBoxes() {
         if (!doorBoxes.isEmpty()) {
             doorBoxes = List.of();
         }
-        hasKey = false;
+    }
+
+    /** Forgets everything about the run: boxes, keys, opened doors. */
+    private void resetRun() {
+        clearBoxes();
+        witherKey = false;
+        bloodKey = false;
+        opened.clear();
+        lastRanked = List.of();
+        lastNextEdge = null;
+    }
+
+    private List<DoorBox> build(ClientLevel level, BlockPos player, boolean showAll) {
+        Sweep sweep = sweepArea(player);
+        Map<Long, RoomMapReader.MapTile> mapTiles = mapTilesByCell();
+        List<Cluster> clusters = scan(level, sweep, mapTiles);
+
+        RoomMapReader.MapSnapshot snapshot = RoomMapReader.isAnchored() ? DungeonState.getInstance().snapshot() : null;
+        if (snapshot == null) {
+            lastRanked = List.of();
+            return fromScanOnly(clusters, player, showAll);
+        }
+
+        // A frontier door whose spot was just swept with no coal / red clay left has been opened.
+        // The estimated box must lie well inside the sweep, so a door cut by the sweep's edge (and
+        // therefore too small a cluster) is never mistaken for an opened one.
+        if (!lastScanTruncated) {
+            Set<Long> scannedEdges = new HashSet<>();
+            for (Cluster cluster : clusters) {
+                scannedEdges.add(cluster.edge());
+            }
+            for (NextDoor.Door door : NextDoor.closedFrontier(snapshot, opened)) {
+                int[] box = NextDoor.worldBox(door);
+                if (box == null || scannedEdges.contains(door.edge())) {
+                    continue;
+                }
+                boolean swept = sweep.contains(box[0] - 2, box[2] - 2) && sweep.contains(box[3] + 2, box[5] + 2);
+                if (swept && level.hasChunkAt(new BlockPos((box[0] + box[3]) / 2, box[1], (box[2] + box[5]) / 2))) {
+                    opened.add(door.edge());
+                }
+            }
+        }
+
+        List<NextDoor.Door> ranked = NextDoor.ranked(snapshot, opened, bloodKey);
+        lastRanked = List.copyOf(ranked);
+        logNext(ranked.isEmpty() ? null : ranked.get(0));
+        if (ranked.isEmpty()) {
+            // Nothing on the map frontier: still box a closed door standing in front of the player,
+            // so a map that does not paint the frontier the way NextDoor expects degrades to the
+            // in-room boxes rather than to nothing.
+            List<Cluster> closed = new ArrayList<>();
+            for (Cluster cluster : clusters) {
+                if (!opened.contains(cluster.edge())) {
+                    closed.add(cluster);
+                }
+            }
+            return fromScanOnly(closed, player, showAll);
+        }
+
+        Map<Long, Cluster> byEdge = new HashMap<>();
+        for (Cluster cluster : clusters) {
+            byEdge.put(cluster.edge(), cluster);
+        }
+        List<DoorBox> boxes = new ArrayList<>();
+        for (int i = 0; i < ranked.size() && (i == 0 || showAll); i++) {
+            NextDoor.Door door = ranked.get(i);
+            boolean key = door.type() == RoomMapReader.DoorType.BLOOD ? bloodKey : witherKey;
+            Cluster scanned = byEdge.remove(door.edge());
+            if (scanned != null) {
+                boxes.add(box(scanned, key, i == 0));
+                continue;
+            }
+            int[] b = NextDoor.worldBox(door);
+            if (b != null) {
+                boxes.add(new DoorBox(new BlockPos(b[0], b[1], b[2]), new BlockPos(b[3], b[4], b[5]), key, i == 0));
+            }
+        }
+        if (showAll) {
+            // Closed doors in view that are not on the frontier (both sides already explored).
+            for (Cluster cluster : byEdge.values()) {
+                if (!opened.contains(cluster.edge())) {
+                    boxes.add(box(cluster, keyFor(cluster), false));
+                }
+            }
+        }
+        return List.copyOf(boxes);
+    }
+
+    /** Before the map anchor exists: the nearest scanned door is the next one, the rest faint. */
+    private List<DoorBox> fromScanOnly(List<Cluster> clusters, BlockPos player, boolean showAll) {
+        Cluster nearest = null;
+        double best = Double.MAX_VALUE;
+        for (Cluster cluster : clusters) {
+            double dx = (cluster.minX() + cluster.maxX()) / 2.0 - player.getX();
+            double dz = (cluster.minZ() + cluster.maxZ()) / 2.0 - player.getZ();
+            double d = dx * dx + dz * dz;
+            if (d < best) {
+                best = d;
+                nearest = cluster;
+            }
+        }
+        List<DoorBox> boxes = new ArrayList<>();
+        for (Cluster cluster : clusters) {
+            boolean next = cluster == nearest;
+            if (next || showAll) {
+                boxes.add(box(cluster, keyFor(cluster), next));
+            }
+        }
+        return List.copyOf(boxes);
+    }
+
+    private boolean keyFor(Cluster cluster) {
+        return cluster.blood() ? bloodKey : witherKey;
+    }
+
+    private static DoorBox box(Cluster c, boolean key, boolean next) {
+        return new DoorBox(new BlockPos(c.minX(), c.minY(), c.minZ()), new BlockPos(c.maxX(), c.maxY(), c.maxZ()),
+                key, next);
+    }
+
+    private void logNext(NextDoor.Door next) {
+        Long edge = next == null ? null : next.edge();
+        if (java.util.Objects.equals(edge, lastNextEdge)) {
+            return;
+        }
+        lastNextEdge = edge;
+        if (next == null) {
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Dungeon] next door: none on the frontier ({} opened)",
+                    opened.size());
+        } else {
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Dungeon] next door: {} on map cell {},{} {} ({} opened)",
+                    next.type(), next.cellX(), next.cellZ(), next.east() ? "east" : "south", opened.size());
+        }
     }
 
     // ------------------------------------------------------------------ scan
@@ -162,28 +353,36 @@ public final class WitherDoorTracker {
     /** The blood door's material: red hardened clay (red terracotta since the flattening). */
     private static final Block BLOOD_DOOR_BLOCK = Blocks.DYED_TERRACOTTA.pick(DyeColor.RED);
 
-    private List<DoorBox> scan(ClientLevel level, BlockPos player) {
+    /** The horizontal rectangle swept this scan. */
+    private record Sweep(int minX, int maxX, int minZ, int maxZ) {
+        boolean contains(int x, int z) {
+            return x >= minX && x <= maxX && z >= minZ && z <= maxZ;
+        }
+    }
+
+    /**
+     * The whole current room footprint (plus a margin for the seam doors just past its edge), so
+     * every door on the room's perimeter is measured exactly. Without a locked room (doorway,
+     * unpainted tile, dev mode without a map) a radius around the player.
+     */
+    private static Sweep sweepArea(BlockPos player) {
         int px = player.getX();
         int pz = player.getZ();
-
-        // Sweep the whole current room footprint (plus a margin for the seam doors just past its
-        // edge) so every wither / blood door on the room's perimeter is boxed from anywhere inside
-        // it - they show through the walls exactly like they do on the minimap. Without a locked
-        // room (doorway, unpainted tile, dev mode without a map) fall back to a player radius.
         DungeonRoomBorders.Borders room = DungeonRoomTracker.getInstance().borders();
-        int minX, maxX, minZ, maxZ;
         if (room != null) {
-            minX = Math.max(room.min().getX() - ROOM_EDGE_MARGIN, px - MAX_ROOM_REACH);
-            maxX = Math.min(room.max().getX() + ROOM_EDGE_MARGIN, px + MAX_ROOM_REACH);
-            minZ = Math.max(room.min().getZ() - ROOM_EDGE_MARGIN, pz - MAX_ROOM_REACH);
-            maxZ = Math.min(room.max().getZ() + ROOM_EDGE_MARGIN, pz + MAX_ROOM_REACH);
-        } else {
-            minX = px - RADIUS;
-            maxX = px + RADIUS;
-            minZ = pz - RADIUS;
-            maxZ = pz + RADIUS;
+            return new Sweep(
+                    Math.max(room.min().getX() - ROOM_EDGE_MARGIN, px - MAX_ROOM_REACH),
+                    Math.min(room.max().getX() + ROOM_EDGE_MARGIN, px + MAX_ROOM_REACH),
+                    Math.max(room.min().getZ() - ROOM_EDGE_MARGIN, pz - MAX_ROOM_REACH),
+                    Math.min(room.max().getZ() + ROOM_EDGE_MARGIN, pz + MAX_ROOM_REACH));
         }
+        return new Sweep(px - RADIUS, px + RADIUS, pz - RADIUS, pz + RADIUS);
+    }
 
+    /** Whether the last scan hit {@link #MAX_COAL}: its absence of coal then proves nothing. */
+    private boolean lastScanTruncated;
+
+    private List<Cluster> scan(ClientLevel level, Sweep sweep, Map<Long, RoomMapReader.MapTile> mapTiles) {
         // Collect the two door materials, but only in the band along the 32-grid seams where doors
         // live (see onSeam): sweeping a whole room stays cheap, and décor coal in the room interior
         // can never fill the position budget before a real door is reached. Kept apart per material
@@ -191,8 +390,8 @@ public final class WitherDoorTracker {
         List<int[]> coal = new ArrayList<>();
         List<int[]> redClay = new ArrayList<>();
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
+        for (int x = sweep.minX(); x <= sweep.maxX(); x++) {
+            for (int z = sweep.minZ(); z <= sweep.maxZ(); z++) {
                 if (!(onSeam(x) || onSeam(z))) {
                     continue;
                 }
@@ -206,20 +405,11 @@ public final class WitherDoorTracker {
                 }
             }
         }
-        if (coal.isEmpty() && redClay.isEmpty()) {
-            return List.of();
-        }
-
-        // The player's current room grid cell – the fallback when no footprint is locked.
-        int cornerX = DungeonRoomLocator.cornerCoord(px);
-        int cornerZ = DungeonRoomLocator.cornerCoord(pz);
-
-        Map<Long, RoomMapReader.MapTile> mapTiles = mapTilesByCell();
-
-        List<DoorBox> boxes = new ArrayList<>();
-        boxClusters(cluster(coal), mapTiles, room, cornerX, cornerZ, boxes);
-        boxClusters(cluster(redClay), mapTiles, room, cornerX, cornerZ, boxes);
-        return List.copyOf(boxes);
+        lastScanTruncated = coal.size() >= MAX_COAL || redClay.size() >= MAX_COAL;
+        List<Cluster> clusters = new ArrayList<>();
+        verify(cluster(coal), false, mapTiles, clusters);
+        verify(cluster(redClay), true, mapTiles, clusters);
+        return clusters;
     }
 
     /** Within 3 blocks of a 32-grid seam line on this axis - the band every wither/blood door sits in. */
@@ -255,9 +445,9 @@ public final class WitherDoorTracker {
         return clusters;
     }
 
-    /** Verifies each cluster as a door position and appends its box (see {@link #plausibleDoor}). */
-    private void boxClusters(List<List<int[]>> clusters, Map<Long, RoomMapReader.MapTile> mapTiles,
-                             DungeonRoomBorders.Borders room, int cornerX, int cornerZ, List<DoorBox> boxes) {
+    /** Verifies each cluster as a door position (see {@link #doorEdge}) and keeps the real ones. */
+    private static void verify(List<List<int[]>> clusters, boolean blood, Map<Long, RoomMapReader.MapTile> mapTiles,
+                               List<Cluster> out) {
         for (List<int[]> cluster : clusters) {
             if (cluster.size() < MIN_CLUSTER) {
                 continue;
@@ -272,13 +462,14 @@ public final class WitherDoorTracker {
                 maxY = Math.max(maxY, pos[1]);
                 maxZ = Math.max(maxZ, pos[2]);
             }
-            int centerX = (minX + maxX) / 2;
-            int centerZ = (minZ + maxZ) / 2;
-            if (!plausibleDoor(centerX, centerZ, minY, maxY, mapTiles)) {
+            if (maxY < DOOR_BAND_MIN_Y || minY > DOOR_BAND_MAX_Y) {
+                continue;
+            }
+            long edge = doorEdge((minX + maxX) / 2, (minZ + maxZ) / 2, mapTiles);
+            if (edge == NOT_A_DOOR) {
                 continue;   // décor coal: not on a grid edge, or the map paints no key door there
             }
-            boolean green = hasKey && adjacentToRoom(centerX, centerZ, room, cornerX, cornerZ);
-            boxes.add(new DoorBox(new BlockPos(minX, minY, minZ), new BlockPos(maxX, maxY, maxZ), green));
+            out.add(new Cluster(minX, minY, minZ, maxX, maxY, maxZ, blood, edge == UNANCHORED ? null : edge));
         }
     }
 
@@ -287,18 +478,18 @@ public final class WitherDoorTracker {
     /** Hypixel doorways sit at the fixed Y 66..73 band; a little slack for the coal wall's frame. */
     private static final int DOOR_BAND_MIN_Y = 64;
     private static final int DOOR_BAND_MAX_Y = 76;
+    /** {@link #doorEdge} results that are not an edge key: not a door / a door with no map anchor yet. */
+    private static final long NOT_A_DOOR = Long.MIN_VALUE;
+    private static final long UNANCHORED = Long.MIN_VALUE + 1;
 
     /**
-     * Whether a coal cluster really is a door: its centre must lie on exactly one 32-grid gap line
-     * (doors bridge the 1-block void seam between two room cells – décor coal sits inside a room),
-     * its blocks inside the fixed doorway height band, and – when the dungeon map already paints the
-     * corresponding cell edge – the map must show a wither/blood connector there.
+     * The map edge ({@link NextDoor#edgeKey}) of a cluster centre, or {@link #NOT_A_DOOR} when the cluster is
+     * not a door: its centre must lie on exactly one 32-grid gap line (doors bridge the 1-block void
+     * seam between two room cells – décor coal sits inside a room) and, when the map already paints
+     * that cell edge, the map must show a wither/blood connector there. {@link #UNANCHORED} while the
+     * map is not anchored and only the geometric check is possible.
      */
-    private static boolean plausibleDoor(int centerX, int centerZ, int minY, int maxY,
-                                         Map<Long, RoomMapReader.MapTile> mapTiles) {
-        if (maxY < DOOR_BAND_MIN_Y || minY > DOOR_BAND_MAX_Y) {
-            return false;
-        }
+    private static long doorEdge(int centerX, int centerZ, Map<Long, RoomMapReader.MapTile> mapTiles) {
         // Gap columns satisfy floorMod(c + 8, 32) == 31; ±2 tolerance because the coal plug is a
         // few blocks deep, so an asymmetric cluster centre can sit just beside the gap column.
         int lx = Math.floorMod(centerX + DungeonRoomLocator.GRID_SHIFT, DungeonRoomLocator.GRID);
@@ -306,22 +497,23 @@ public final class WitherDoorTracker {
         boolean onGapX = lx >= 29 || lx <= 1;
         boolean onGapZ = lz >= 29 || lz <= 1;
         if (onGapX == onGapZ) {
-            return false;   // inside a cell, or on a cell corner - no door is ever there
-        }
-        if (mapTiles == null) {
-            return true;    // no anchored map yet - the geometric check is all we have
+            return NOT_A_DOOR;   // inside a cell, or on a cell corner - no door is ever there
         }
         // The connector is stored on the west (X doors) / north (Z doors) tile of the shared edge.
         // Sample 4 blocks to each side of the gap so the tolerance above cannot flip the cell.
-        RoomMapReader.MapTile tile;
-        if (onGapX) {
-            int[] west = RoomMapReader.worldToMapCellIndex(centerX - 4, centerZ);
-            tile = west == null ? null : mapTiles.get(cellKey(west[0], west[1]));
-            return tile == null || tile.doorEast().keyDoor();
+        int[] cell = onGapX
+                ? RoomMapReader.worldToMapCellIndex(centerX - 4, centerZ)
+                : RoomMapReader.worldToMapCellIndex(centerX, centerZ - 4);
+        if (cell == null) {
+            return UNANCHORED;
         }
-        int[] north = RoomMapReader.worldToMapCellIndex(centerX, centerZ - 4);
-        tile = north == null ? null : mapTiles.get(cellKey(north[0], north[1]));
-        return tile == null || tile.doorSouth().keyDoor();
+        if (mapTiles != null) {
+            RoomMapReader.MapTile tile = mapTiles.get(cellKey(cell[0], cell[1]));
+            if (tile != null && !(onGapX ? tile.doorEast() : tile.doorSouth()).keyDoor()) {
+                return NOT_A_DOOR;
+            }
+        }
+        return NextDoor.edgeKey(cell[0], cell[1], onGapX);
     }
 
     /** The current map snapshot's tiles by cell, or {@code null} while no anchored map exists. */
@@ -342,29 +534,5 @@ public final class WitherDoorTracker {
 
     private static long cellKey(int cellX, int cellZ) {
         return ((long) cellX << 32) ^ (cellZ & 0xFFFFFFFFL);
-    }
-
-    /**
-     * Whether a door centre belongs to the room the player is in – so a held key highlights it. With
-     * a locked footprint that is "on or just outside the room's bounding box" (so every door of a
-     * multi-cell room highlights together, not only the one on the player's own cell); without one
-     * it falls back to the player's single grid cell.
-     */
-    private static boolean adjacentToRoom(int cx, int cz, DungeonRoomBorders.Borders room,
-                                          int cornerX, int cornerZ) {
-        if (room == null) {
-            return adjacentToCell(cx, cz, cornerX, cornerZ);
-        }
-        int pad = 4;
-        return cx >= room.min().getX() - pad && cx <= room.max().getX() + pad
-                && cz >= room.min().getZ() - pad && cz <= room.max().getZ() + pad;
-    }
-
-    /** Whether a door centre lies on / just outside the room cell {@code corner..corner+ROOM_SPAN}. */
-    private static boolean adjacentToCell(int cx, int cz, int cornerX, int cornerZ) {
-        int pad = 4;
-        int span = DungeonRoomLocator.ROOM_SPAN;
-        return cx >= cornerX - pad && cx <= cornerX + span + pad
-                && cz >= cornerZ - pad && cz <= cornerZ + span + pad;
     }
 }

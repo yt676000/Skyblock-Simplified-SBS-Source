@@ -67,9 +67,8 @@ import java.util.Optional;
  * "our injected lines are surely not in the raw lore" from an assumption into a line-by-line diff
  * that is part of the artifact. It runs on the client thread and reads the same caches a hover would.
  *
- * <p><b>Deliberately not gated behind {@link DevMode}.</b> Some of what needs capturing depends on
- * account state nobody here has (a maxed attribute, a fusion-only shard), so the file has to be
- * something a normal player can produce and send back. It stays harmless because it only ever reads.
+ * <p><b>Developer mode only</b>, like every probe: the command is DEV_ONLY in CommandRegistry and
+ * arming checks {@link DevMode} again. A tester who has to capture something needs dev mode on.
  */
 public final class MenuProbe {
 
@@ -112,6 +111,9 @@ public final class MenuProbe {
 
     /** {@code /sbs probe [arm|off|status]} - bare form captures the open menu once, right now. */
     public void handleCommand(String argument) {
+        if (!DevMode.ACTIVE) { // DEV-ONLY: defence in depth behind the command gate
+            return;
+        }
         String arg = argument == null ? "" : argument.trim().toLowerCase(Locale.ROOT);
         switch (arg) {
             case "arm", "on", "watch" -> arm();

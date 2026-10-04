@@ -63,6 +63,8 @@ public final class SettingRowList {
 
     private final WidgetSink sink;
     private final List<AbstractWidget> widgets = new ArrayList<>();
+    /** The row each entry of {@link #widgets} was built from, index for index. */
+    private final List<SettingRow> widgetRows = new ArrayList<>();
 
     /** The list's scrollbar - the mod's shared one, so it drags exactly like the module sidebar. */
     private final SciFiScrollbar bar = new SciFiScrollbar();
@@ -175,6 +177,7 @@ public final class SettingRowList {
             sink.remove(widget);
         }
         widgets.clear();
+        widgetRows.clear();
 
         int visible = maxVisible();
         scroll = Math.max(0, Math.min(scroll, Math.max(0, rows.size() - visible)));
@@ -191,6 +194,7 @@ public final class SettingRowList {
             }
             sink.add(widget);
             widgets.add(widget);
+            widgetRows.add(row);
             y += rowStep();
         }
     }
@@ -231,6 +235,19 @@ public final class SettingRowList {
             sink.remove(widget);
         }
         widgets.clear();
+        widgetRows.clear();
+    }
+
+    /**
+     * Greys out, or brings back, every visible row whose availability follows another setting
+     * ({@link SettingRow#disabledWhile}). The host calls this every frame <b>before</b> its widgets
+     * draw: a toggle does not rebuild the page, so a row's state frozen at build time stays wrong
+     * until the player leaves and comes back - on the Favourites page, for the whole visit.
+     */
+    public void syncAvailability() {
+        for (int i = 0; i < widgets.size(); i++) {
+            widgetRows.get(i).syncAvailability(widgets.get(i));
+        }
     }
 
     // ------------------------------------------------------------------

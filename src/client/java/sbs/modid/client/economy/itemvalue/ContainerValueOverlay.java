@@ -17,11 +17,13 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import sbs.modid.client.core.config.ConfigManager;
-import sbs.modid.client.core.item.SkyblockItem;
 import sbs.modid.client.core.mixin.AbstractContainerScreenAccessor;
 import sbs.modid.client.core.util.NumberDisplay;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * "What is everything in here worth": a small card above the open menu totalling the value of the
@@ -147,51 +149,24 @@ public final class ContainerValueOverlay {
         lastScan = now;
         lastContainerId = containerId;
 
-        long container = 0;
-        long inventory = 0;
-        int containerMisses = 0;
-        int inventoryMisses = 0;
+        // Split by side, then the shared rule (ValueSum) - the storage page values use the same one.
+        List<ItemStack> containerStacks = new ArrayList<>();
+        List<ItemStack> inventoryStacks = new ArrayList<>();
         boolean sawContainerSlot = false;
-
         for (Slot slot : screen.getMenu().slots) {
             boolean player = slot.container instanceof Inventory;
             if (!player) {
                 sawContainerSlot = true;
             }
-            ItemStack stack = slot.getItem();
-            if (stack.isEmpty()) {
-                continue;
-            }
-            ItemAppraisal.Appraisal value = ItemAppraisal.of(stack);
-            if (value.priced()) {
-                if (player) {
-                    inventory += value.total();
-                } else {
-                    container += value.total();
-                }
-                if (!value.complete()) {
-                    if (player) {
-                        inventoryMisses++;
-                    } else {
-                        containerMisses++;
-                    }
-                }
-            } else if (SkyblockItem.id(stack) != null) {
-                // Only real SkyBlock items count as a miss. Hypixel fills its menus with unnamed
-                // glass panes and decorative heads; reporting those as "unpriced" would turn every
-                // menu into a wall of warnings about items that were never worth anything.
-                if (player) {
-                    inventoryMisses++;
-                } else {
-                    containerMisses++;
-                }
-            }
+            (player ? inventoryStacks : containerStacks).add(slot.getItem());
         }
+        ValueSum.Total containerTotal = ValueSum.of(containerStacks);
+        ValueSum.Total inventoryTotal = ValueSum.of(inventoryStacks);
 
-        containerValue = container;
-        inventoryValue = inventory;
-        containerUnpriced = containerMisses;
-        inventoryUnpriced = inventoryMisses;
+        containerValue = containerTotal.value();
+        inventoryValue = inventoryTotal.value();
+        containerUnpriced = containerTotal.unpriced();
+        inventoryUnpriced = inventoryTotal.unpriced();
         hasContainerSlots = sawContainerSlot;
     }
 }

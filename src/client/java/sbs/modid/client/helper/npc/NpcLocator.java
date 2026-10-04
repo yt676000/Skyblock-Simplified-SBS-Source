@@ -63,6 +63,12 @@ public final class NpcLocator {
         return INSTANCE;
     }
 
+    /** The NPC whose marker is currently published (transient), or {@code null}. */
+    private Npc published;
+
+    /** Whether the one-off cleanup of persisted NPC markers from older versions has run. */
+    private boolean legacyPurged;
+
     private static RecipeViewerSettings cfg() {
         return ConfigManager.getInstance().get().recipeViewer;
     }
@@ -93,6 +99,9 @@ public final class NpcLocator {
 
     /** Called every client tick: publishes / clears the pathfinding waypoint as you travel and arrive. */
     public void onClientTick() {
+        if (!legacyPurged) {
+            purgeLegacyWaypoints();
+        }
         if (target == null) {
             return;
         }
@@ -192,24 +201,32 @@ public final class NpcLocator {
         return SkyBlockLocation.onIsland(npc.island());
     }
 
+    /**
+     * Publishes the marker as a transient waypoint, like every other publisher: it exists only while
+     * the path was asked for and the player is on the NPC's island, so it must never outlive the
+     * session. (It used to go into the persisted list, where a marker left at quit survived the
+     * restart - with {@code target} gone, nothing cleared it.)
+     */
     private void ensureWaypoint(Npc npc) {
-        for (Waypoint waypoint : WaypointStore.all()) {
-            if (waypoint.isNpc() && waypoint.x == (int) Math.round(npc.x())
-                    && waypoint.z == (int) Math.round(npc.z())) {
-                return;   // already published
-            }
+        if (published == npc && WaypointStore.hasSource(Waypoint.SOURCE_NPC)) {
+            return;   // already published
         }
-        clearWaypoint();
-        WaypointStore.all().add(new Waypoint(npc.name(),
+        published = npc;
+        WaypointStore.setTransient(Waypoint.SOURCE_NPC, List.of(new Waypoint(npc.name(),
                 new BlockPos((int) Math.round(npc.x()), (int) Math.round(npc.y()), (int) Math.round(npc.z())),
-                WaypointStore.currentDimension(), Waypoint.SOURCE_NPC));
-        ConfigManager.getInstance().save();
-        PathfindingManager.getInstance().invalidate();
+                WaypointStore.currentDimension(), Waypoint.SOURCE_NPC)));
     }
 
     private void clearWaypoint() {
+        published = null;
+        WaypointStore.clearTransient(Waypoint.SOURCE_NPC);   // invalidates the pathfinder if it removed one
+    }
+
+    /** Drops NPC markers older versions wrote into the persisted list - once per session. */
+    private void purgeLegacyWaypoints() {
+        legacyPurged = true;
         List<Waypoint> all = WaypointStore.all();
-        if (all.removeIf(Waypoint::isNpc)) {
+        if (!all.isEmpty() && all.removeIf(Waypoint::isNpc)) {
             ConfigManager.getInstance().save();
             PathfindingManager.getInstance().invalidate();
         }

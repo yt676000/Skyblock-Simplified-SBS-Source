@@ -512,6 +512,9 @@ public final class SBSMainScreen extends Screen implements sbs.modid.client.ui.t
         // adds and removes widgets. Doing this after it - or from any pass registered inside it -
         // mutates the list vanilla is walking.
         drainDeferredWork();
+        // A row greyed out by another setting follows it live: flipping IRC Chat brings the IRC Tab
+        // row back on this frame, on the Favourites page too, without a rebuild.
+        rowList.syncAvailability();
         super.extractRenderState(g, mouseX, mouseY, partialTick);
         if (rowsPending) {
             // Drawn after super so it sits on the panel rather than under it. There are no row

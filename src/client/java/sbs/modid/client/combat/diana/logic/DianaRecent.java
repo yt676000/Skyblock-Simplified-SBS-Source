@@ -26,8 +26,8 @@ import java.util.function.Function;
  * pass are not recorded; they carry no input and would push everything else out.
  *
  * <p><b>Two rings.</b> Particle packets arrive by the hundred, chat lines by the handful; one shared
- * ring would hold nothing but particles a second after the Hub loaded. Particles get one ring of
- * {@value #SIZE}, everything else another, and a dump merges both by time - the last
+ * ring would hold nothing but particles a second after the Hub loaded. Particle and sound packets
+ * get one ring of {@value #SIZE}, everything else another, and a dump merges both by time - the last
  * {@value #SIZE} of each, the "last 200 events" of the brief.
  *
  * <p><b>Free while nothing fails.</b> A slot is a time, a hook and a reference to the input the hook
@@ -55,7 +55,7 @@ public final class DianaRecent {
             case TICK, HUD, CHAT_HIDE -> {
                 // No input worth keeping, and CHAT_HIDE is the same line CHAT already recorded.
             }
-            case PARTICLES -> PARTICLES.add(hook, input);
+            case PARTICLES, SOUND -> PARTICLES.add(hook, input);
             default -> EVENTS.add(hook, input);
         }
     }

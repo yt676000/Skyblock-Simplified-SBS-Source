@@ -13,7 +13,11 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -29,6 +33,14 @@ import java.util.Set;
  * and arrival clears a marker for a moment; without the grace the route blinked out and - back when
  * there was one path - the next source's route snapped in for those frames. If the goals come back
  * inside the grace the route carries on, and the old path stays drawn until the new search lands.
+ *
+ * <p><b>Phases.</b> A search starts as plain A*. A long walking route to one goal may hand over to
+ * the {@link HybridPlanner} - straight away when start and goal are both under open sky and far apart,
+ * or when A* outlives its {@link SwitchBudget}. If A* and the hybrid planner both fail, a background
+ * <b>deep search</b> covers the whole loaded island at a low per-tick slice (or reuses a route an
+ * earlier deep search found - {@link DeepRouteCache}). Every switch logs one line, kept in
+ * {@link #lastSwitch()}; the finished route logs its per-phase totals once. See
+ * {@code docs/features/hybrid-pathfinding.md}.
  *
  * <p>Client thread only, like the manager.
  */
@@ -46,9 +58,38 @@ public final class Route {
     /** How far the player must move before a proven "no route" is searched again. */
     private static final int NO_ROUTE_RETRY_BLOCKS = 12;
 
+    /** Start and goal both under open sky and at least this far apart: hybrid from the start. */
+    static final double HYBRID_DIRECT_DISTANCE = 64;
+
+    /** Per-tick wall time the deep search may use - small, so frame time is unaffected. */
+    private static final long DEEP_SLICE_NANOS = 1_000_000L;
+
+    /** Window half-width of the deep search: the whole loaded area of any island. */
+    private static final int DEEP_RANGE = 1_024;
+
+    /**
+     * Memory guard, not a work limit: the deep search is bounded by its time, but every expanded node
+     * is an object until the search ends. 1.5 million is roughly the most a minute of 1 ms slices
+     * expands; past it the search ends as if the time ran out.
+     */
+    private static final int DEEP_MAX_NODES = 1_500_000;
+
+    /** A deep search for the same goal is not repeated within this time, wherever the player goes. */
+    private static final long DEEP_RETRY_MS = 5 * 60_000L;
+
+    /** On a cached deep route, no progress for this long while on it means it is blocked. */
+    private static final long BLOCKED_MS = 20_000L;
+
+    /** Completion summaries for the same route are not logged more often than this. */
+    private static final long SUMMARY_LOG_MS = 30_000L;
+    private static final Map<String, Long> SUMMARY_LOGGED = new HashMap<>();
+
+    /** How a route's search is currently running. */
+    enum Phase { ASTAR, HYBRID, CACHED, DEEP }
+
     /** What the HUD list and the marker say about a route. */
     public enum State {
-        SEARCHING, ROUTE, PARTIAL, NO_ROUTE, ARRIVED, STALE, PAUSED
+        SEARCHING, DEEP_SEARCH, ROUTE, PARTIAL, NO_ROUTE, ARRIVED, STALE, PAUSED
     }
 
     private final RouteSource source;
@@ -74,6 +115,35 @@ public final class Route {
 
     /** Set by the manager when the route cap leaves this source out. */
     private boolean paused;
+
+    // ---- phases (see the class note) ----
+    private Terrain terrain;
+    private int maxNodes;
+    private int maxFall;
+    private List<JumpPad> pads = List.of();
+    private Phase phase;
+    private HybridPlanner hybrid;
+    /** The deep search, or the A* stitching the player onto a cached deep route. */
+    private PathfinderTask deep;
+    private boolean hybridTried;
+    private long searchStartNanos;
+    private long phaseStartNanos;
+    private double startDistance;
+    private long switchBudgetMs;
+    private int phaseNodes;
+    private final Map<Phase, long[]> phaseTotals = new HashMap<>();   // ms, nodes
+    private int openSegments;
+    private int fineSegments;
+    private String lastSwitch = "";
+    private double deepProgress;
+    private boolean deepExhausted;
+    private boolean unverified;
+    private final Map<String, Long> deepTried = new HashMap<>();
+    private List<BlockPos> cachedRoute;
+    private String cachedKey;
+    private boolean fromDeepCache;
+    private long blockedSince;
+    private double blockedLength;
 
     Route(RouteSource source) {
         this.source = source;
@@ -112,7 +182,30 @@ public final class Route {
     }
 
     public boolean searching() {
-        return task != null;
+        return task != null || hybrid != null || deep != null;
+    }
+
+    /** The last phase switch, as logged ("switch astar->hybrid d=143 blocks ..."), or empty. */
+    public String lastSwitch() {
+        return lastSwitch;
+    }
+
+    /** Deep search progress 0..1 (share of its time limit used), while one runs. */
+    public double deepProgress() {
+        return deepProgress;
+    }
+
+    /** Whether the deep search searched everything reachable and found no way. */
+    public boolean deepExhausted() {
+        return deepExhausted;
+    }
+
+    /**
+     * Whether the route crosses terrain the Far Terrain module served from memory rather than the
+     * server sent live - it may be stale.
+     */
+    public boolean unverified() {
+        return unverified;
     }
 
     public boolean noRoute() {
@@ -145,7 +238,10 @@ public final class Route {
         if (arrived) {
             return State.ARRIVED;
         }
-        if (task != null && path.isEmpty()) {
+        if (deep != null && phase == Phase.DEEP) {
+            return State.DEEP_SEARCH;
+        }
+        if (searching() && path.isEmpty()) {
             return State.SEARCHING;
         }
         if (noRoute) {
@@ -194,7 +290,7 @@ public final class Route {
     void missing(long now) {
         if (staleSince < 0) {
             staleSince = now;
-            task = null;   // nothing to search for; the drawn path is what the grace keeps
+            cancel();   // nothing to search for; the drawn path is what the grace keeps
         }
     }
 
@@ -205,14 +301,17 @@ public final class Route {
 
     void pause(boolean paused) {
         if (paused && !this.paused) {
-            task = null;
+            cancel();
         }
         this.paused = paused;
     }
 
     /** Drops the path and forces a fresh search, keeping the route itself. */
     void reset() {
-        task = null;
+        cancel();
+        deepExhausted = false;
+        unverified = false;
+        fromDeepCache = false;
         path = List.of();
         teleports = Set.of();
         padLandings = Set.of();
@@ -228,33 +327,379 @@ public final class Route {
 
     // ------------------------------------------------------------------ search
 
+    /** Stops every running search; the published path stays. Also the player-cancel path. */
+    void cancel() {
+        task = null;
+        hybrid = null;
+        deep = null;
+        phase = null;
+        deepProgress = 0;
+    }
+
     /**
      * Spends up to {@code budget} nodes on the running search.
      *
-     * @return the nodes it was allowed, for the manager's calibration; 0 when nothing ran
+     * @return the nodes it was allowed, for the manager's calibration; 0 when nothing ran - and for
+     *         the deep search, which runs on its own small time slice, not the shared node budget
      */
     int step(int budget) {
-        if (task == null) {
-            return 0;
+        if (task != null) {
+            stepAstar(task, budget);
+            return budget;
         }
-        if (task.step(budget)) {
-            path = task.path();
-            teleports = task.teleportNodes();
-            padLandings = task.padNodes();
-            sneaks = task.sneakNodes();
-            reachedGoal = task.reachedGoal();
-            noRoute = task.noRoute();
-            if (noRoute) {
-                noRouteFrom = searchedFrom;
-                noRoutePads = JumpPads.getInstance().generation();
-            }
-            if (goals.size() != 1) {
-                target = resolveReached(task.reachedGoalPos());
-            }
-            lastComputed = System.currentTimeMillis();
-            task = null;
+        if (hybrid != null) {
+            stepHybrid(budget);
+            return budget;
         }
-        return budget;
+        if (deep != null) {
+            if (phase == Phase.CACHED) {
+                stepCached(budget);
+                return budget;
+            }
+            stepDeep();
+        }
+        return 0;
+    }
+
+    private void stepAstar(PathfinderTask running, int budget) {
+        int before = running.expanded();
+        boolean done = running.step(budget);
+        phaseNodes += running.expanded() - before;
+        if (!done) {
+            if (hybridEligible() && !hybridTried && SwitchBudget.shouldSwitch(elapsedMs(phaseStartNanos),
+                    switchBudgetMs, startDistance, running.bestDistance())) {
+                logSwitch("astar", "hybrid", running.bestDistance());
+                task = null;
+                startHybrid();
+            }
+            return;
+        }
+        task = null;
+        if (running.reachedGoal()) {
+            publish(running);
+            complete("astar");
+            return;
+        }
+        if (hybridEligible() && !hybridTried) {
+            logSwitch("astar", "hybrid", running.bestDistance());
+            publish(running);   // the partial path stays drawn meanwhile
+            startHybrid();
+            return;
+        }
+        if (deepWanted(running)) {
+            publish(running);
+            startDeepOrCached("astar", running.bestDistance());
+            return;
+        }
+        publish(running);
+        complete("astar");
+    }
+
+    private void stepHybrid(int budget) {
+        HybridPlanner running = hybrid;
+        int before = running.nodes();
+        boolean done = running.step(budget);
+        phaseNodes += running.nodes() - before;
+        if (!done) {
+            return;
+        }
+        hybrid = null;
+        openSegments = running.openSegments();
+        fineSegments = running.fineSegments();
+        if (running.reachedGoal() || !cfg().deepSearch || !deepAllowed()) {
+            publishPath(running.path(), running.teleportNodes(), running.padNodes(), running.sneakNodes(),
+                    running.reachedGoal(), false);
+            complete("hybrid");
+            return;
+        }
+        publishPath(running.path(), running.teleportNodes(), running.padNodes(), running.sneakNodes(),
+                false, false);
+        startDeepOrCached("hybrid", running.remaining());
+    }
+
+    /** The A* that joins the player onto a cached deep route, then the cached rest of it. */
+    private void stepCached(int budget) {
+        PathfinderTask running = deep;
+        int before = running.expanded();
+        boolean done = running.step(budget);
+        phaseNodes += running.expanded() - before;
+        if (!done) {
+            return;
+        }
+        deep = null;
+        BlockPos joined = running.reachedGoalPos();
+        int at = joined == null ? -1 : cachedRoute.indexOf(joined);
+        if (!running.reachedGoal() || at < 0) {
+            startDeep("cached", running.bestDistance());   // could not reach the cached route
+            return;
+        }
+        List<BlockPos> stitched = new ArrayList<>(running.path());
+        stitched.addAll(cachedRoute.subList(at + 1, cachedRoute.size()));
+        publishPath(HybridPlanner.withoutLoops(stitched), running.teleportNodes(), running.padNodes(),
+                running.sneakNodes(), true, false);
+        fromDeepCache = true;
+        blockedSince = System.currentTimeMillis();
+        blockedLength = length();
+        unverified = crossesServedTerrain(path);
+        complete("cached");
+    }
+
+    private void stepDeep() {
+        PathfinderTask running = deep;
+        long sliceStart = System.nanoTime();
+        int before = running.expanded();
+        boolean done = false;
+        while (System.nanoTime() - sliceStart < DEEP_SLICE_NANOS) {
+            if (running.step(256)) {
+                done = true;
+                break;
+            }
+        }
+        phaseNodes += running.expanded() - before;
+        long limitMs = Math.max(10, cfg().deepSearchMaxSeconds) * 1000L;
+        long elapsed = elapsedMs(phaseStartNanos);
+        deepProgress = Math.min(1.0, (double) elapsed / limitMs);
+        if (!done && elapsed < limitMs) {
+            return;
+        }
+        boolean timedOut = !done;
+        if (timedOut) {
+            running.stop();
+        }
+        deep = null;
+        deepProgress = 0;
+        if (running.reachedGoal()) {
+            publish(running);
+            unverified = crossesServedTerrain(path);
+            String key = cacheKey();
+            if (key != null) {
+                DeepRouteCache.getInstance().put(key, path);
+            }
+            complete("deep");
+            return;
+        }
+        if (running.exhausted() && !running.hitRangeLimit()) {
+            deepExhausted = true;   // everything reachable searched: say so, draw nothing
+            publishPath(List.of(), Set.of(), Set.of(), Set.of(), false, true);
+            complete("deep");
+            return;
+        }
+        // Out of time (or memory guard): keep whichever partial is longer-reaching to draw.
+        if (!running.path().isEmpty()) {
+            publish(running);
+        }
+        lastSwitch = lastSwitch + (lastSwitch.isEmpty() ? "" : " | ") + "deep search stopped after "
+                + elapsed / 1000 + " s";
+        complete("deep");
+    }
+
+    private boolean hybridEligible() {
+        return cfg().fastOpenTerrain && mobility != null && mobility.mode() == PathMode.WALK && goals.size() == 1;
+    }
+
+    /** Budget spent, or exhausted inside a window too small to prove anything - and not tried lately. */
+    private boolean deepWanted(PathfinderTask finished) {
+        if (!cfg().deepSearch || !deepAllowed()) {
+            return false;
+        }
+        return !finished.exhausted() || finished.hitRangeLimit();
+    }
+
+    private boolean deepAllowed() {
+        if (mobility == null || mobility.mode() != PathMode.WALK) {
+            return false;
+        }
+        Long last = deepTried.get(goalsKey());
+        return last == null || System.currentTimeMillis() - last > DEEP_RETRY_MS;
+    }
+
+    private void startHybrid() {
+        hybridTried = true;
+        endPhase();
+        phase = Phase.HYBRID;
+        hybrid = new HybridPlanner(terrain, searchedFrom, goals.getFirst().pos(), maxNodes, mobility, maxFall, pads);
+    }
+
+    /** A cached deep route for one of the goals, joined by a normal A*; else a real deep search. */
+    private void startDeepOrCached(String from, double remaining) {
+        for (Waypoint goal : goals) {
+            String key = DeepRouteCache.key(sbs.modid.client.core.location.SkyBlockLocation.island(), goal);
+            List<BlockPos> cached = DeepRouteCache.getInstance().get(key);
+            if (cached == null) {
+                continue;
+            }
+            cachedRoute = cached;
+            cachedKey = key;
+            List<BlockPos> joinPoints = new ArrayList<>();
+            int stride = Math.max(1, cached.size() / 64);
+            for (int i = 0; i < cached.size(); i += stride) {
+                joinPoints.add(cached.get(i));
+            }
+            logSwitch(from, "cached", remaining);
+            endPhase();
+            phase = Phase.CACHED;
+            deep = new PathfinderTask(terrain, searchedFrom, joinPoints, maxNodes, mobility, maxFall, pads);
+            return;
+        }
+        startDeep(from, remaining);
+    }
+
+    private void startDeep(String from, double remaining) {
+        deepTried.put(goalsKey(), System.currentTimeMillis());
+        logSwitch(from, "deep", remaining);
+        endPhase();
+        phase = Phase.DEEP;
+        deepProgress = 0;
+        List<BlockPos> positions = new ArrayList<>(goals.size());
+        for (Waypoint waypoint : goals) {
+            positions.add(waypoint.pos());
+        }
+        deep = new PathfinderTask(terrain, searchedFrom, positions, DEEP_MAX_NODES, mobility, maxFall, pads,
+                DEEP_RANGE, BreakableWalls.NONE);
+    }
+
+    /** Publishes a finished A* task's result, resolving the target for a goal set. */
+    private void publish(PathfinderTask finished) {
+        publishPath(finished.path(), finished.teleportNodes(), finished.padNodes(), finished.sneakNodes(),
+                finished.reachedGoal(), finished.noRoute());
+        if (goals.size() != 1) {
+            target = resolveReached(finished.reachedGoalPos());
+        }
+    }
+
+    private void publishPath(List<BlockPos> newPath, Set<BlockPos> hops, Set<BlockPos> landings,
+                             Set<BlockPos> crouched, boolean reached, boolean proven) {
+        path = newPath;
+        teleports = hops;
+        padLandings = landings;
+        sneaks = crouched;
+        reachedGoal = reached;
+        noRoute = proven;
+        if (noRoute) {
+            noRouteFrom = searchedFrom;
+            noRoutePads = JumpPads.getInstance().generation();
+        }
+        lastComputed = System.currentTimeMillis();
+    }
+
+    /** Closes the running phase's totals. */
+    private void endPhase() {
+        if (phase != null) {
+            long[] totals = phaseTotals.computeIfAbsent(phase, p -> new long[2]);
+            totals[0] += elapsedMs(phaseStartNanos);
+            totals[1] += phaseNodes;
+        }
+        phaseNodes = 0;
+        phaseStartNanos = System.nanoTime();
+    }
+
+    /** One line per switch; kept for the route HUD ({@link #lastSwitch()}). */
+    private void logSwitch(String from, String to, double remaining) {
+        double distance = goals.isEmpty() ? 0 : HybridPlanner.horizontal(searchedFrom, goals.getFirst().pos());
+        long elapsed = elapsedMs(phaseStartNanos);
+        int progress = (int) Math.round(100 * SwitchBudget.progress(startDistance, remaining));
+        lastSwitch = String.format(Locale.ROOT,
+                "switch %s->%s d=%d blocks budget=%d ms elapsed=%d ms nodes=%d progress=%d%% (remaining %d blocks)",
+                from, to, Math.round(distance), switchBudgetMs, elapsed, phaseNodes, progress, Math.round(remaining));
+        sbs.modid.SkyblockSimplifiedSBS.LOGGER.info("[SBS][Path] {}", lastSwitch);
+    }
+
+    /** The route is done: the per-phase totals, once per route (throttled). */
+    private void complete(String mode) {
+        endPhase();
+        phase = null;
+        String key = source + ">" + goalsKey();
+        long now = System.currentTimeMillis();
+        Long last = SUMMARY_LOGGED.get(key);
+        if (last != null && now - last < SUMMARY_LOG_MS) {
+            return;
+        }
+        SUMMARY_LOGGED.put(key, now);
+        long totalMs = elapsedMs(searchStartNanos);
+        long totalNodes = 0;
+        StringBuilder phases = new StringBuilder();
+        for (Phase each : Phase.values()) {
+            long[] totals = phaseTotals.get(each);
+            if (totals == null) {
+                continue;
+            }
+            totalNodes += totals[1];
+            phases.append(' ').append(each.name().toLowerCase(Locale.ROOT)).append('=')
+                    .append(totals[0]).append("ms/").append(totals[1]).append('n');
+        }
+        sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
+                "[SBS][Path] mode={} ms={} nodes={} segments open={} fine={} reached={} |{}",
+                mode, totalMs, totalNodes, openSegments, fineSegments, reachedGoal, phases);
+    }
+
+    private String goalsKey() {
+        StringBuilder key = new StringBuilder();
+        for (Waypoint goal : goals) {
+            key.append(goal.x).append(',').append(goal.y).append(',').append(goal.z).append(';');
+        }
+        return key.toString();
+    }
+
+    /** The deep-route cache key for the goal this route reached, or {@code null}. */
+    private String cacheKey() {
+        Waypoint reached = goals.size() == 1 ? goals.getFirst() : target;
+        return reached == null ? null
+                : DeepRouteCache.key(sbs.modid.client.core.location.SkyBlockLocation.island(), reached);
+    }
+
+    /**
+     * Whether any node lies in a chunk the Far Terrain module served from memory: outside the live
+     * radius around the player while it is active. An approximation - the module keeps no per-chunk
+     * "served" flag - that errs towards "unverified".
+     */
+    private static boolean crossesServedTerrain(List<BlockPos> nodes) {
+        if (!sbs.modid.client.helper.terrain.FarTerrainManager.active()) {
+            return false;
+        }
+        net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
+        if (minecraft.player == null) {
+            return false;
+        }
+        int live = sbs.modid.client.helper.terrain.FarTerrainManager.liveRadius();
+        int px = minecraft.player.blockPosition().getX() >> 4;
+        int pz = minecraft.player.blockPosition().getZ() >> 4;
+        for (BlockPos node : nodes) {
+            if (Math.max(Math.abs((node.getX() >> 4) - px), Math.abs((node.getZ() >> 4) - pz)) > live) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A cached deep route that stops making progress while the player is on it is blocked on the
+     * ground (a door shut, a block placed): drop it from the cache and search afresh.
+     */
+    void checkBlocked(Vec3 playerPos, long now) {
+        if (!fromDeepCache || searching() || path.size() < 2) {
+            return;
+        }
+        double remaining = length();
+        if (remaining < blockedLength - 2) {
+            blockedLength = remaining;
+            blockedSince = now;
+            return;
+        }
+        if (now - blockedSince > BLOCKED_MS && isOnPath(playerPos, 2, 3)) {
+            if (cachedKey != null) {
+                DeepRouteCache.getInstance().invalidate(cachedKey);
+            }
+            deepTried.remove(goalsKey());
+            reset();
+        }
+    }
+
+    private static long elapsedMs(long since) {
+        return (System.nanoTime() - since) / 1_000_000L;
+    }
+
+    private static sbs.modid.client.core.config.SBSConfig.PathfindingSettings cfg() {
+        return sbs.modid.client.core.config.ConfigManager.getInstance().get().pathfinding;
     }
 
     /**
@@ -307,7 +752,11 @@ public final class Route {
      */
     boolean needsRecompute(BlockPos playerBlock, Vec3 playerPos, List<Waypoint> current,
                            PlayerMobility.Mobility now, double tolerance, double verticalTolerance) {
-        if (task != null) {
+        // A deep search can run for a minute: a changed target ends it rather than waiting it out.
+        if (phase == Phase.DEEP && !sameGoals(current, goals)) {
+            cancel();
+        }
+        if (searching()) {
             return false;   // one search at a time per route; finishing beats restarting
         }
         // Mid-flight from a jump pad: off every route by design. Re-plan once it lands.
@@ -387,6 +836,34 @@ public final class Route {
             positions.add(waypoint.pos());
         }
         searchedFrom = from;
-        task = new PathfinderTask(level, from, positions, maxNodes, now, maxFall, pads);
+        this.terrain = Terrain.of(level);
+        this.maxNodes = maxNodes;
+        this.maxFall = maxFall;
+        this.pads = pads == null ? List.of() : pads;
+        cancel();
+        hybridTried = false;
+        deepExhausted = false;
+        unverified = false;
+        fromDeepCache = false;
+        phaseTotals.clear();
+        openSegments = 0;
+        fineSegments = 0;
+        lastSwitch = "";
+        searchStartNanos = System.nanoTime();
+        phaseStartNanos = searchStartNanos;
+        phaseNodes = 0;
+        double distance = HybridPlanner.horizontal(from, positions.getFirst());
+        switchBudgetMs = SwitchBudget.budgetMs(distance, cfg().switchBaseMs, cfg().switchPerBlockMs);
+        BlockPos goal = positions.getFirst();
+        if (hybridEligible() && distance > HYBRID_DIRECT_DISTANCE
+                && terrain.openSky(from.getX(), from.getY() + 1, from.getZ())
+                && terrain.openSky(goal.getX(), goal.getY() + 1, goal.getZ())) {
+            startDistance = distance;
+            startHybrid();   // both ends open and far apart: no point letting A* try first
+            return;
+        }
+        phase = Phase.ASTAR;
+        task = new PathfinderTask(terrain, from, positions, maxNodes, now, maxFall, this.pads);
+        startDistance = task.bestDistance();
     }
 }

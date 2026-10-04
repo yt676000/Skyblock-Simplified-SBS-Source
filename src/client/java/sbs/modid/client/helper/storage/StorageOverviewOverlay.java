@@ -149,6 +149,28 @@ public final class StorageOverviewOverlay {
      */
     private List<ShownCard> shownCards = List.of();
 
+    /**
+     * Page value cache, keyed by page id. A page's {@link StorageIndex.Snapshot} is replaced only when
+     * the page changed (new menu state id), so "same snapshot object" means "same contents" and the
+     * value is reused. Never valued per frame.
+     */
+    private final Map<String, PageValue> pageValues = new java.util.HashMap<>();
+
+    /** Total of every page, rebuilt with the cards on the learn cadence. */
+    private sbs.modid.client.economy.itemvalue.ValueSum.Total allPagesValue =
+            sbs.modid.client.economy.itemvalue.ValueSum.Total.ZERO;
+
+    /**
+     * A floor (some item unpriced) is re-valued at most this often even if the page did not change:
+     * right after login the price caches are still warming up, and a page valued then would read
+     * "0+" until it was next opened.
+     */
+    private static final long FLOOR_RECHECK_MS = 30_000;
+
+    private record PageValue(StorageIndex.Snapshot snapshot,
+                             sbs.modid.client.economy.itemvalue.ValueSum.Total total, long at) {
+    }
+
     /** Set when the query changed, so the next frame re-filters instead of waiting out the cadence. */
     private boolean filterDirty;
 
@@ -374,6 +396,26 @@ public final class StorageOverviewOverlay {
     }
 
     /**
+     * Labels of the Ender Chest pages and Backpacks the Storage menu listed but that have no
+     * snapshot - their contents are unknown. Empty both when everything is captured and when the
+     * Storage menu has not been opened this session; {@link #knowsPages()} tells the two apart.
+     */
+    public List<String> uncapturedPages() {
+        List<String> out = new ArrayList<>();
+        for (PageCard page : pages()) {
+            if (page.snapshot() == null) {
+                out.add(page.label());
+            }
+        }
+        return out;
+    }
+
+    /** Whether the Storage menu has been seen this session, so {@link #uncapturedPages()} is meaningful. */
+    public boolean knowsPages() {
+        return !knownPages.isEmpty();
+    }
+
+    /**
      * Turns {@link #cachedPages} into the cards to draw. Without a query that is simply every page
      * at full size; with one, only the pages holding a hit survive, each reduced to its matching
      * cells. The open page is matched against the <b>live</b> menu (so an item just dropped in
@@ -470,6 +512,7 @@ public final class StorageOverviewOverlay {
             learnBackpackSlots(screen);
             cachedPages = pages();
             shownCards = visibleCards(screen, activeId);
+            allPagesValue = allPagesValue();
         }
         int w = screen.width;
         int h = screen.height;
@@ -495,6 +538,18 @@ public final class StorageOverviewOverlay {
         int searchX = (w - searchW) / 2;
         int searchY = invY - SEARCH_H - 8;
         drawSearch(g, font, searchX, searchY, searchW);
+        if (showValue() && allPagesValue.any()) {
+            // Right of the search bar. At 1280x720 / GUI scale 4 that gap is ~50px, so the label
+            // drops its prefix rather than running off the screen; the bare value is ~40px.
+            int room = w - (searchX + searchW + 8) - 4;
+            String full = "§7All pages §6" + allPagesValue.label();
+            String bare = "§6" + allPagesValue.label();
+            String shown = font.width(full) <= room ? full : font.width(bare) <= room ? bare : null;
+            if (shown != null) {
+                g.text(font, Component.literal(shown), searchX + searchW + 8,
+                        searchY + (SEARCH_H - font.lineHeight) / 2 + 1, SBSTheme.TEXT);
+            }
+        }
 
         // --- the page grid fills the space above the search ---
         // Scissored to its band so scrolled cards can never bleed over the search bar / inventory.
@@ -590,11 +645,19 @@ public final class StorageOverviewOverlay {
             SciFiRender.roundedRectWithBorder(g, x - 2, y - 2, CARD_W + 4, cardH + 4,
                     SBSTheme.CORNER_RADIUS, 0x00000000, 0xFFFFE24B);
         }
+        // The page's value sits right-aligned on the title row; the name is trimmed to make room.
+        var value = showValue() ? pageValue(card.page()) : null;
+        String valueText = value == null || !value.any() ? "" : value.label();
+        int valueW = valueText.isEmpty() ? 0 : font.width(valueText) + 4;
         // While searching the title carries the hit count - that IS the answer to "where is my stuff".
-        String title = trim(font, label, CARD_W - 6 - (cells == null ? 0 : font.width(" 00")));
+        String title = trim(font, label, CARD_W - 6 - valueW - (cells == null ? 0 : font.width(" 00")));
         g.text(font, Component.literal((isActive ? "§e" : titleHovered ? "§b" : "§f") + title
                         + (cells == null ? "" : " §7" + cells.length)),
                 x + 2, y + 2, SBSTheme.ACCENT_BRIGHT);
+        if (!valueText.isEmpty()) {
+            g.text(font, Component.literal("§6" + valueText), x + CARD_W - 2 - font.width(valueText), y + 2,
+                    SBSTheme.TEXT);
+        }
         // The active page is already open - re-sending its command would just reload the menu
         // under the cursor, so only the other cards are click-to-open. The hit rect is clamped to
         // the visible scroll band: the scissor clips the pixels, this clips the click.
@@ -891,13 +954,43 @@ public final class StorageOverviewOverlay {
         }
     }
 
-    private static List<Component> tooltip(ItemStack stack, String where) {
-        List<Component> tip = new ArrayList<>();
-        tip.add(stack.getHoverName());
-        var lore = stack.get(net.minecraft.core.component.DataComponents.LORE);
-        if (lore != null) {
-            tip.addAll(lore.lines());
+    private static boolean showValue() {
+        return ConfigManager.getInstance().get().storageSearch.showStorageValue;
+    }
+
+    /** A page's value from the cache; {@code null} for a page never opened (contents unknown). */
+    private sbs.modid.client.economy.itemvalue.ValueSum.Total pageValue(PageCard page) {
+        StorageIndex.Snapshot snapshot = page.snapshot();
+        if (snapshot == null) {
+            return null;
         }
+        long now = System.currentTimeMillis();
+        PageValue cached = pageValues.get(page.id());
+        if (cached == null || cached.snapshot() != snapshot
+                || (cached.total().floor() && now - cached.at() >= FLOOR_RECHECK_MS)) {
+            cached = new PageValue(snapshot, sbs.modid.client.economy.itemvalue.ValueSum.of(snapshot.items()), now);
+            pageValues.put(page.id(), cached);
+        }
+        return cached.total();
+    }
+
+    private sbs.modid.client.economy.itemvalue.ValueSum.Total allPagesValue() {
+        var total = sbs.modid.client.economy.itemvalue.ValueSum.Total.ZERO;
+        if (!showValue()) {
+            return total;
+        }
+        for (PageCard page : cachedPages) {
+            var value = pageValue(page);
+            if (value != null) {
+                total = total.plus(value);
+            }
+        }
+        return total;
+    }
+
+    /** The item's real tooltip (SBS lines included - see {@link ItemTooltip}), plus where it is. */
+    private static List<Component> tooltip(ItemStack stack, String where) {
+        List<Component> tip = sbs.modid.client.core.item.ItemTooltip.of(stack);
         tip.add(Component.literal("§8" + where));
         return tip;
     }

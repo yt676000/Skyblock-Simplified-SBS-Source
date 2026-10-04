@@ -62,3 +62,13 @@ code-index.md
 # .claude/settings.json. Local coordination between concurrent sessions, not repository
 # content: every machine has different ones and they are meaningless anywhere else.
 /.claude/agents/
+
+# Raw dev recordings (Server Scanner, Layout Recorder, probes, Diana DevLog). They hold player
+# names, purse and profile data and belong in the private SBS-Scans repo, never here - see
+# docs/dev-recordings.md. Only trimmed, redacted fixtures under src/test/resources/ are tracked.
+# Anchored: an unanchored folder rule would match a source package of the same name.
+*.jsonl
+!/src/test/resources/**/*.jsonl
+/Development_Stuff/
+/probe/
+/SBS-Scans/

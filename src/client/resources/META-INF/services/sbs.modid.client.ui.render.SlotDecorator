@@ -7,6 +7,7 @@ sbs.modid.client.economy.bazaar.render.BazaarOrderDecorator
 sbs.modid.client.economy.bitsshop.render.BitsShopDecorator
 sbs.modid.client.economy.npcshop.render.NpcShopDecorator
 sbs.modid.client.economy.recipe.render.SearchHighlightDecorator
+sbs.modid.client.helper.chocolate.ui.ChocolateMenuShortcut
 sbs.modid.client.helper.gamemenu.GameMenuDecorator
 sbs.modid.client.helper.inventory.render.AccessoryBagDecorator
 sbs.modid.client.helper.inventory.render.SlotLockDecorator

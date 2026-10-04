@@ -15,7 +15,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -28,7 +27,7 @@ import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.dev.RoomRotation;
 import sbs.modid.client.dungeons.run.logic.DungeonRoomTracker;
 import sbs.modid.client.dungeons.run.logic.DungeonRoomMatcher.RoomMatch;
-import sbs.modid.client.dungeons.run.logic.DungeonStateManager;
+import sbs.modid.client.dungeons.run.logic.CollectedSecrets;
 import sbs.modid.client.dungeons.events.DungeonEvents;
 import sbs.modid.client.dungeons.secretroutes.model.SecretRoute;
 import sbs.modid.client.dungeons.secretroutes.model.SecretWaypoint;
@@ -82,12 +81,10 @@ public final class SecretRoutesManager {
     private final Set<SecretWaypoint> passed = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
     private String passedRoom;
 
-    /** Secret waypoints collected this visit (hidden from the render); reset on room change. */
-    private final Set<SecretWaypoint> collected = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
     private boolean containerWasOpen;
-    private int lastSecretCount = -1;
 
     private SecretRoutesManager() {
+        CollectedSecrets.getInstance().addCandidateSource(this::uncollectedSecrets);
     }
 
     public static SecretRoutesManager getInstance() {
@@ -243,12 +240,11 @@ public final class SecretRoutesManager {
         if (player == null || minecraft.level == null || !cfg.enabled) {
             return;
         }
-        // A room change clears the walked-past / collected memory so a route re-shows on re-entry.
+        // A room change clears the walked-past memory so a route re-dims from scratch on re-entry.
+        // Collected secrets are NOT cleared: they live in CollectedSecrets for the whole run.
         String room = boundRoomName();
         if (!java.util.Objects.equals(room, passedRoom)) {
             passed.clear();
-            collected.clear();
-            lastSecretCount = -1;
             passedRoom = room;
         }
         if ((scanning || breakerScanning) && recordingRoute != null) {
@@ -263,10 +259,10 @@ public final class SecretRoutesManager {
     }
 
     /**
-     * Detects a secret being collected and hides its waypoint (Secret-Clicked coupling): a lever
-     * pulled at a LEVER point, a chest opened next to a CHEST point, or the run-wide secret count
-     * rising while near any secret point (covers item/bat/essence pickups without guessing a chat
-     * line). Fires {@link DungeonEvents#fireSecretFound} and, when enabled, sound + overlay feedback.
+     * Detects a secret being collected at one of this route's points - a lever pulled at a LEVER
+     * point, a chest opened next to a CHEST point - and reports it through
+     * {@link DungeonEvents#fireSecretFound}. Items, bats and essences (the secret counters) are
+     * {@link CollectedSecrets}' job, and so is hiding: the render asks it, not a list of our own.
      */
     private void detectCollected(Minecraft minecraft, LocalPlayer player) {
         SecretRoute route = selectedRoute();
@@ -278,12 +274,11 @@ public final class SecretRoutesManager {
 
         // Lever pulled: a powered lever standing at the waypoint block.
         for (SecretWaypoint waypoint : route.waypoints) {
-            if (collectable(waypoint) && waypoint.subtype == SecretWaypoint.Secret.LEVER) {
-                BlockPos world = RoomRotation.relativeToActual(match.facing(), match.anchor(),
-                        waypoint.relX, waypoint.relY, waypoint.relZ);
+            if (collectable(waypoint, match) && waypoint.subtype == SecretWaypoint.Secret.LEVER) {
+                BlockPos world = blockOf(match, waypoint);
                 BlockState state = minecraft.level.getBlockState(world);
                 if (state.getBlock() == Blocks.LEVER && state.getValue(BlockStateProperties.POWERED)) {
-                    collect(waypoint, "lever", match);
+                    DungeonEvents.fireSecretFound(new DungeonEvents.Secret("lever", world));
                 }
             }
         }
@@ -293,35 +288,47 @@ public final class SecretRoutesManager {
         if (containerOpen && !containerWasOpen) {
             SecretWaypoint nearest = nearestCollectable(route, match, pos, SecretWaypoint.Secret.CHEST);
             if (nearest != null) {
-                collect(nearest, "chest", match);
+                DungeonEvents.fireSecretFound(new DungeonEvents.Secret("chest", blockOf(match, nearest)));
             }
         }
         containerWasOpen = containerOpen;
+    }
 
-        // Any secret found (the run counter rose) → nearest un-collected point near the player.
-        int secrets = DungeonStateManager.getInstance().secretsFound();
-        if (secrets >= 0 && lastSecretCount >= 0 && secrets > lastSecretCount) {
-            SecretWaypoint nearest = nearestCollectable(route, match, pos, null);
-            if (nearest != null) {
-                collect(nearest, "secret", match);
+    /** An enabled SECRET-type waypoint that {@link CollectedSecrets} does not hold yet. */
+    private boolean collectable(SecretWaypoint waypoint, RoomMatch match) {
+        return waypoint.enabled && waypoint.type == SecretWaypoint.Type.SECRET
+                && !CollectedSecrets.getInstance().isCollected(match.name(), blockOf(match, waypoint));
+    }
+
+    /** The world block of a stored point under this run's rotation. */
+    private static BlockPos blockOf(RoomMatch match, SecretWaypoint waypoint) {
+        return RoomRotation.relativeToActual(match.facing(), match.anchor(),
+                waypoint.relX, waypoint.relY, waypoint.relZ);
+    }
+
+    /** The selected route's uncollected secret points, for the counter path. */
+    private List<BlockPos> uncollectedSecrets() {
+        SecretRoute route = selectedRoute();
+        RoomMatch match = boundRoom();
+        List<BlockPos> out = new ArrayList<>();
+        if (route == null || match == null || !cfg().enabled) {
+            return out;
+        }
+        for (SecretWaypoint waypoint : route.waypoints) {
+            if (collectable(waypoint, match)) {
+                out.add(blockOf(match, waypoint));
             }
         }
-        lastSecretCount = secrets;
+        return out;
     }
 
-    /** An enabled, still-uncollected SECRET-type waypoint. */
-    private boolean collectable(SecretWaypoint waypoint) {
-        return waypoint.enabled && waypoint.type == SecretWaypoint.Type.SECRET
-                && !collected.contains(waypoint);
-    }
-
-    /** Nearest collectable secret point (optionally of one subtype) within the collect radius. */
+    /** Nearest collectable secret point of one subtype within the collect radius. */
     private SecretWaypoint nearestCollectable(SecretRoute route, RoomMatch match, Vec3 pos,
                                               SecretWaypoint.Secret subtype) {
         SecretWaypoint best = null;
         double bestDistance = COLLECT_RADIUS_SQR;
         for (SecretWaypoint waypoint : route.waypoints) {
-            if (!collectable(waypoint) || (subtype != null && waypoint.subtype != subtype)) {
+            if (!collectable(waypoint, match) || waypoint.subtype != subtype) {
                 continue;
             }
             Vec3 world = worldOf(match, waypoint);
@@ -332,23 +339,6 @@ public final class SecretRoutesManager {
             }
         }
         return best;
-    }
-
-    /** Marks a secret collected: hides its waypoint, fires the event, and plays optional feedback. */
-    private void collect(SecretWaypoint waypoint, String kind, RoomMatch match) {
-        if (!collected.add(waypoint)) {
-            return;
-        }
-        BlockPos world = RoomRotation.relativeToActual(match.facing(), match.anchor(),
-                waypoint.relX, waypoint.relY, waypoint.relZ);
-        DungeonEvents.fireSecretFound(new DungeonEvents.Secret(kind, world));
-        if (ConfigManager.getInstance().get().dungeons.secretClickedFeedback) {
-            LocalPlayer player = Minecraft.getInstance().player;
-            if (player != null) {
-                player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.8f);
-                player.sendOverlayMessage(Component.literal("§aSecret collected §7(" + kind + ")"));
-            }
-        }
     }
 
     /** Appends the player's current feet block to the recording trail (canonical, deduped). */
@@ -566,7 +556,8 @@ public final class SecretRoutesManager {
         }
         List<RenderWaypoint> out = new ArrayList<>(route.waypoints.size());
         for (SecretWaypoint waypoint : route.waypoints) {
-            if (!waypoint.enabled || collected.contains(waypoint)) {
+            if (!waypoint.enabled || (waypoint.type == SecretWaypoint.Type.SECRET
+                    && CollectedSecrets.getInstance().isCollected(match.name(), blockOf(match, waypoint)))) {
                 continue; // collected secrets are hidden for the rest of the run (Secret-Clicked coupling)
             }
             out.add(new RenderWaypoint(waypoint, worldOf(match, waypoint), passed.contains(waypoint)));

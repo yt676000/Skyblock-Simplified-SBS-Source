@@ -102,14 +102,16 @@ public final class RouteListHud {
         String tail = switch (route.state()) {
             case PAUSED -> "§7paused";
             case SEARCHING -> "§7searching";
-            case NO_ROUTE -> "§cno route";
+            case DEEP_SEARCH -> "§7Searching the whole island... " + Math.round(route.deepProgress() * 100) + "%";
+            case NO_ROUTE -> route.deepExhausted() ? "§cno walkable route - hidden entrance?" : "§cno route";
             case ARRIVED -> "§aarrived";
             case STALE -> "§7lost";
             case ROUTE, PARTIAL -> {
                 double metres = route.reachedGoal() ? route.length()
                         : target == null ? 0 : Math.sqrt(minecraft.player.distanceToSqr(
                                 target.x + 0.5, target.y, target.z + 0.5));
-                yield Math.round(metres) + "m" + (route.reachedGoal() ? "" : " §c~");
+                yield Math.round(metres) + "m" + (route.reachedGoal() ? "" : " §c~")
+                        + (route.unverified() ? " §e(unverified)" : "");
             }
         };
         return name + "  " + tail;

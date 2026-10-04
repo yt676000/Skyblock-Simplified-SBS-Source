@@ -12,7 +12,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 
 /**
- * The three questions the pathfinder asks the world. An interface so {@link PathfinderTask} can be
+ * The questions the pathfinder asks the world. An interface so {@link PathfinderTask} can be
  * run on a hand-built grid in unit tests - the pad and no-route decisions are search logic and are
  * tested as such, not in a live world.
  */
@@ -33,6 +33,27 @@ interface Terrain {
      */
     default int standKind(int x, int y, int z) {
         return canStand(x, y, z) ? Walkability.STAND : Walkability.NO_STAND;
+    }
+
+    // The three below are only asked by the open-terrain corridor (OpenCorridor), never by A*.
+    // Defaults describe a featureless open field, so a grid built for an A* test needs nothing new.
+
+    /** Whether nothing above {@code (x, y, z)} blocks the sky - "open air", not a cave or a roof. */
+    default boolean openSky(int x, int y, int z) {
+        return true;
+    }
+
+    /** Whether the block at {@code (x, y, z)} holds water or lava. */
+    default boolean liquid(int x, int y, int z) {
+        return false;
+    }
+
+    /**
+     * Whether the block's collision reaches above a full block - fences, walls, fence gates. A
+     * player can stand on top of one but cannot step or jump onto it.
+     */
+    default boolean tall(int x, int y, int z) {
+        return false;
     }
 
     /** The live world, through {@link Walkability} exactly as before. */
@@ -59,6 +80,26 @@ interface Terrain {
             @Override
             public int standKind(int x, int y, int z) {
                 return Walkability.standKind(level, cursor, x, y, z, allowSneak);
+            }
+
+            @Override
+            public boolean openSky(int x, int y, int z) {
+                cursor.set(x, y, z);
+                return level.canSeeSky(cursor);
+            }
+
+            @Override
+            public boolean liquid(int x, int y, int z) {
+                if (!level.hasChunkAt(x, z)) {
+                    return false;
+                }
+                cursor.set(x, y, z);
+                return !level.getFluidState(cursor).isEmpty();
+            }
+
+            @Override
+            public boolean tall(int x, int y, int z) {
+                return Walkability.surfaceHeight(level, cursor, x, y, z) > 1.0;
             }
         };
     }

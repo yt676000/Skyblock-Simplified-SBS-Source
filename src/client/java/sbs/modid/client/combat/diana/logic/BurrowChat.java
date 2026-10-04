@@ -52,11 +52,15 @@ public final class BurrowChat {
 
     private static final BurrowChat INSTANCE = new BurrowChat();
 
-    /** "You dug out a Griffin Burrow! (2/4)" - the only line that states the chain's length. */
+    /** "You dug out a Griffin Burrow! (8/10)" - the only line that states the chain's length. */
     private static final Pattern PROGRESS = Pattern.compile(
             "(?i)^.*\\byou\\b.*\\bgriffin burrow\\b.*\\((\\d+)\\s*/\\s*(\\d+)\\)\\s*$");
 
-    /** "You finished the Griffin burrow chain!" - no progress suffix, hence its own pattern. */
+    /**
+     * "You finished the Griffin burrow chain! (10/10)". It <b>does</b> carry the progress suffix
+     * (captured 2026-10-04, contrary to the study), so it also matches {@link #PROGRESS} and must be
+     * tested first - otherwise it is read as one more dig and the chain is never ended.
+     */
     private static final Pattern CHAIN_DONE = Pattern.compile(
             "(?i)^.*\\byou finished the griffin burrow chain\\b.*$");
 
@@ -77,16 +81,36 @@ public final class BurrowChat {
             "plushie", "urn", "hilt", "dye",
     };
 
-    /** Ritual chatter the player may ask to be rid of once the toolkit is doing the same job. */
+    /**
+     * Ritual chatter the player may ask to be rid of once the toolkit is doing the same job. The
+     * first is the captured wording ("Follow the arrows!", 2026-10-04); the older long form is kept
+     * in case both are sent.
+     */
     private static final Pattern[] CHATTER = {
+            Pattern.compile("(?i)^\\s*follow the arrows!\\s*$"),
             Pattern.compile("(?i)^\\s*follow the arrows to find the .*treasure.*$"),
             Pattern.compile("(?i)^\\s*this ability is on cooldown for .*$"),
             Pattern.compile("(?i)^\\s*warping\\.\\.\\.\\s*$"),
             Pattern.compile("(?i)^\\s*there are blocks in the way!\\s*$"),
     };
 
+    /** How long a spade click stays a candidate for "the block that chat line was about". */
+    private static final long CLICK_MEMORY_MS = 2_500L;
+
+    /** Clicks kept; players spam-click around a burrow, and only the last few matter. */
+    private static final int CLICK_MEMORY = 8;
+
+    /** How far a known burrow may be from a recent click and still be the one that was dug. */
+    private static final double DUG_RADIUS = 2.5;
+
     /** The block the player most recently dug, so a chat line with no coordinates can find it. */
     private volatile BlockPos lastDug;
+
+    /** Recent spade clicks, newest last. Client thread only. */
+    private final java.util.ArrayDeque<Click> clicks = new java.util.ArrayDeque<>();
+
+    private record Click(BlockPos pos, long at) {
+    }
 
     /**
      * The last {@code (n/m)} progress line and when it arrived. Read by nothing but the guard's error
@@ -112,9 +136,77 @@ public final class BurrowChat {
         return lastDug;
     }
 
-    /** Called from the attack mixin when the player left-clicks (digs) a block with a spade. */
+    /**
+     * Called from the attack mixin when the player left-clicks a block with a spade.
+     *
+     * <p>A click is not yet a dig. The 2026-10-04 capture shows players clicking the burrow and the
+     * blocks around it several times a second; the dig chat line follows whichever click the server
+     * accepted, often one tick after a click on a <i>neighbouring</i> block. So clicks are only
+     * remembered here, and {@link #dugBurrow} decides at the chat line which block was dug.
+     */
     public void onBlockDug(BlockPos pos) {
+        if (pos == null) {
+            return;
+        }
         lastDug = pos;
+        clicks.addLast(new Click(pos, System.currentTimeMillis()));
+        while (clicks.size() > CLICK_MEMORY) {
+            clicks.removeFirst();
+        }
+    }
+
+    /**
+     * The block a dig chat line is about: the known burrow nearest a recent click, within
+     * {@link #DUG_RADIUS}, preferring the newest click; then a live guess the same way; then the last
+     * clicked block. Known burrows first because the burrow particles say exactly where it is, and
+     * the clicks only say roughly where the player was hitting.
+     */
+    BlockPos dugBurrow() {
+        long now = System.currentTimeMillis();
+        clicks.removeIf(click -> now - click.at() > CLICK_MEMORY_MS);
+        if (clicks.isEmpty()) {
+            return lastDug;
+        }
+        java.util.List<BlockPos> candidates = new java.util.ArrayList<>();
+        for (BurrowRecord record : BurrowStore.getInstance().all()) {
+            candidates.add(record.pos);
+        }
+        BlockPos found = nearestToClicks(candidates);
+        if (found != null) {
+            return found;
+        }
+        candidates.clear();
+        BlockPos spade = SpadeGuess.getInstance().guess();
+        if (spade != null) {
+            candidates.add(spade);
+        }
+        for (GuessChain chain : ArrowGuess.getInstance().chains()) {
+            if (chain.current() != null) {
+                candidates.add(chain.current());
+            }
+        }
+        found = nearestToClicks(candidates);
+        return found != null ? found : lastDug;
+    }
+
+    private BlockPos nearestToClicks(java.util.List<BlockPos> candidates) {
+        BlockPos best = null;
+        double bestDistance = DUG_RADIUS * DUG_RADIUS;
+        java.util.Iterator<Click> newestFirst = clicks.descendingIterator();
+        while (newestFirst.hasNext()) {
+            BlockPos click = newestFirst.next().pos();
+            for (BlockPos candidate : candidates) {
+                double distance = candidate.distSqr(click);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    best = candidate;
+                }
+            }
+            if (best != null) {
+                return best;
+            }
+        }
+        return null;
     }
 
     /**
@@ -134,13 +226,14 @@ public final class BurrowChat {
             return;
         }
 
+        // The finish line carries "(10/10)" too, so it is tested before the progress line.
+        if (CHAIN_DONE.matcher(text).matches()) {
+            onChainFinished();
+            return;
+        }
         Matcher progress = PROGRESS.matcher(text);
         if (progress.matches()) {
             onProgress(parseInt(progress.group(1)), parseInt(progress.group(2)));
-            return;
-        }
-        if (CHAIN_DONE.matcher(text).matches()) {
-            onChainFinished();
             return;
         }
         if (DEATH.matcher(text).matches() && SkyBlockLocation.onIsland("Hub")) {
@@ -198,7 +291,14 @@ public final class BurrowChat {
         // ending on both would pop two chains for one chain's worth of digging.
 
         DianaTracker.getInstance().onBurrowDug();
+        BlockPos dug = dugBurrow();
         countDig(null);
+        // The server draws the arrow to the next burrow out of this one in the same tick as this
+        // line (captured 2026-10-04). The arrow guess restarts here and not on every click: players
+        // keep clicking while the arrow is drawn, and each restart threw its particles away.
+        if (current < total && dug != null) {
+            ArrowGuess.getInstance().onBlockDug(dug);
+        }
         DianaDebug.getInstance().note("burrow " + current + "/" + total);
     }
 
@@ -217,7 +317,7 @@ public final class BurrowChat {
      */
     private void onDeath() {
         ChainTracker.getInstance().ended();
-        BlockPos pos = lastDug;
+        BlockPos pos = dugBurrow();
         BurrowRecord record = BurrowStore.getInstance().peek(pos);
         if (record != null && record.kind == BurrowKind.MOB && record.timesDug >= 1) {
             BurrowStore.getInstance().remove(pos);
@@ -271,7 +371,7 @@ public final class BurrowChat {
      * @param kindFromChat the kind the reward line implies, or {@code null} when it said nothing
      */
     private void countDig(BurrowKind kindFromChat) {
-        BlockPos pos = lastDug;
+        BlockPos pos = dugBurrow();
         if (pos == null) {
             return;
         }
@@ -299,6 +399,7 @@ public final class BurrowChat {
     /** World change, server hop, island change, or the player asking. */
     public void reset() {
         lastDug = null;
+        clicks.clear();
         lastProgress = 0;
         lastProgressOf = 0;
         lastProgressAt = 0L;

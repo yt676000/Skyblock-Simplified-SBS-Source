@@ -17,11 +17,14 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.api.GuiStateManager;
 import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.dev.DevMode;
 import sbs.modid.client.core.dev.RoomMapReader;
 import sbs.modid.client.core.dev.RoomRotation;
+import sbs.modid.client.core.player.RealPlayers;
 import sbs.modid.client.dungeons.run.logic.DungeonDoorScanner.DoorMatch;
 import sbs.modid.client.dungeons.run.logic.DungeonRoomMatcher.BlockLookup;
 import sbs.modid.client.dungeons.run.logic.DungeonRoomMatcher.BlockResult;
@@ -29,8 +32,10 @@ import sbs.modid.client.dungeons.run.logic.DungeonRoomMatcher.RoomMatch;
 import sbs.modid.client.dungeons.rooms.DungeonRoom;
 import sbs.modid.client.dungeons.rooms.DungeonRoomDatabase;
 import sbs.modid.client.dungeons.run.render.DungeonHighlight;
+import sbs.modid.client.dungeons.events.DungeonEvents;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -120,6 +125,7 @@ public final class DungeonRoomTracker {
     private boolean standingDown;
 
     private DungeonRoomTracker() {
+        CollectedSecrets.getInstance().addCandidateSource(this::uncollectedSecrets);
         // The end-of-run score summary is the other hard "past the room grid" signal: the run is
         // over, the boss room is all that is left, and nothing on the grid will be found again.
         sbs.modid.client.dungeons.events.ChatPatternRegistry.getInstance().register(
@@ -153,19 +159,36 @@ public final class DungeonRoomTracker {
         return INSTANCE;
     }
 
+    /**
+     * Whether any consumer needs the locked room <b>identified</b> against the database (its name /
+     * {@link #activeMatch()}): room waypoints, the SBS Dungeon Map, Secret Routes, the puzzle solver
+     * (finds its puzzle by room name) and the blood helper (finds the blood room by name). A consumer
+     * that reads the tracker must be listed here, or it works only while something else is on.
+     */
+    static boolean needsIdentification(SBSConfig config) {
+        return config.dungeons.roomWaypoints || config.dungeons.sbsDungeonMap
+                || config.secretRoutes.enabled || config.dungeons.puzzleSolver || config.blood.enabled;
+    }
+
+    /** Whether any consumer needs at least the room footprint: the identifiers plus the wither doors. */
+    static boolean needsFootprint(SBSConfig config) {
+        return needsIdentification(config) || config.dungeons.witherDoors;
+    }
+
     // ---- client-tick entry (from GuiTrackingMixin) -------------------------------------------------
 
     /** Called once per client tick. Heavy work runs only once per room entry; the rest is light. */
     public void tick(Minecraft minecraft) {
-        var dungeons = ConfigManager.getInstance().get().dungeons;
-        boolean featureOn = dungeons.roomWaypoints;
-        // The wither/blood door boxes need the current room footprint, and the SBS Dungeon Map needs
-        // the DB match (room name + secrets counter), so the tracker also locks rooms when either of
-        // those is on. Identification runs whenever the map OR waypoints want it (identifyOn); waypoint
-        // *rendering* stays gated on roomWaypoints alone (in DungeonHighlight), so the map never draws boxes.
-        boolean identifyOn = featureOn || dungeons.sbsDungeonMap;
-        boolean trackRooms = identifyOn || dungeons.witherDoors;
-        if (!trackRooms && !DevMode.ACTIVE) {
+        SBSConfig config = ConfigManager.getInstance().get();
+        boolean featureOn = config.dungeons.roomWaypoints;
+        // Waypoint *rendering* stays gated on roomWaypoints alone (in DungeonHighlight), so the map
+        // never draws boxes; identification and footprint locking follow every consumer's demand.
+        boolean identifyOn = needsIdentification(config);
+        // Developer mode only ADDS here: with no consumer on it keeps the locator running for the
+        // diagnostics. It is never the reason a player feature gets its room.
+        // DEV-ONLY: diagnostics only; consumers have their own demand
+        boolean trackRooms = needsFootprint(config) || DevMode.ACTIVE;
+        if (!trackRooms) {
             clear();
             return;
         }
@@ -188,10 +211,12 @@ public final class DungeonRoomTracker {
             resumeScanning();
             lastScanPos = null;
             DungeonRunRegistry.getInstance().clear(); // new run = fresh room memory
+            CollectedSecrets.getInstance().clear();
             runFootprints.clear();
             lockedRooms.clear();
             RoomMapReader.resetAnchor();
             DungeonHighlight.getInstance().clearStarredMobs();
+            clearStarredMobState();
             return;
         }
 
@@ -280,6 +305,7 @@ public final class DungeonRoomTracker {
         // Unlocked: locate the room around the player, but only when they moved to a new block.
         if (borders == null && !current.equals(lastScanPos)) {
             lastScanPos = current;
+            // DEV-ONLY: diagnostics only; consumers have their own demand
             if (DevMode.ACTIVE) {
                 debugDoorSweep(level, current);
             }
@@ -400,6 +426,7 @@ public final class DungeonRoomTracker {
         if (featureOn) {
             attemptIdentify(level, player);
         }
+        // DEV-ONLY: diagnostics only; consumers have their own demand
         if (DevMode.ACTIVE) {
             BlockLookup lookup = pos -> BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()).toString();
             runDiagnostics(lookup);
@@ -756,17 +783,42 @@ public final class DungeonRoomTracker {
     /** The ✯ star Hypixel puts into the armor-stand nametag of starred dungeon mobs. */
     private static final String STARRED_MOB_MARK = "✯"; // "✯"
 
+    /** Horizontal reach of the stand-to-mob search: a tag lags behind a moving mob, or hangs over a wide one. */
+    private static final double STAR_SEARCH_RADIUS = 1.25;
+
+    /** How far below the stand a body is searched for. */
+    private static final double STAR_SEARCH_DEPTH = 3.0;
+
+    /** Ticks a visibility answer is reused before the rays are cast again for that mob. */
+    private static final int STAR_VISIBILITY_TICKS = 4;
+
+    /** Beyond this the rays are not cast at all - the same reach the single-ray test had. */
+    private static final double STAR_SIGHT_RANGE = 128.0;
+
+    /** Per mob id: the tick its visibility was last tested, and the answer (1 visible, 0 not). */
+    private final Map<Integer, long[]> starVisibility = new HashMap<>();
+
+    /** Probe lines already written, keyed by stand id and outcome, so each is logged once. */
+    private final Set<String> starProbeLogged = new HashSet<>();
+
+    private long starTick;
+
     /**
-     * Collects the starred mobs (✯ in the floating nametag) for the yellow boxes. <b>No highlight:</b> a mob
-     * is only boxed while the player has an actual unobstructed line of sight to it – anything behind
-     * a wall / around a corner is skipped, so only genuinely visible mobs are ever highlighted.
+     * Collects the starred mobs (✯ in the floating nametag) for the yellow boxes. <b>No highlight
+     * through walls:</b> a mob is only boxed while some part of it is in the player's direct line of
+     * sight ({@link StarredMobMatch#anyVisible}); a mob fully behind a wall or around a corner is
+     * skipped, so only genuinely visible mobs are ever highlighted.
      */
     private void tickStarredMobs(LocalPlayer player, ClientLevel level) {
         if (!ConfigManager.getInstance().get().dungeons.boxStarredMobs) {
             DungeonHighlight.getInstance().clearStarredMobs();
+            clearStarredMobState();
             return;
         }
+        long tick = ++starTick;
+        boolean probe = DungeonDebug.enabled();
         List<net.minecraft.world.entity.Entity> starred = new ArrayList<>();
+        Set<Integer> seen = new HashSet<>();
         for (net.minecraft.world.entity.Entity entity : level.entitiesForRendering()) {
             if (!(entity instanceof net.minecraft.world.entity.decoration.ArmorStand stand)
                     || !stand.hasCustomName()) {
@@ -776,36 +828,108 @@ public final class DungeonRoomTracker {
             if (name == null || !name.getString().contains(STARRED_MOB_MARK)) {
                 continue;
             }
-            net.minecraft.world.entity.LivingEntity mob = mobBelow(level, stand);
-            if (mob != null && player.hasLineOfSight(mob)) {
-                starred.add(mob);
+            StarredMobMatch.Pick<net.minecraft.world.entity.LivingEntity> pick = mobBelow(level, stand);
+            net.minecraft.world.entity.LivingEntity mob = pick.mob();
+            StarredMobMatch.Outcome outcome = pick.outcome();
+            if (mob != null) {
+                seen.add(mob.getId());
+                if (isVisible(player, level, mob, tick)) {
+                    starred.add(mob);
+                } else {
+                    outcome = StarredMobMatch.Outcome.NO_LINE_OF_SIGHT;
+                }
+            }
+            if (probe) {
+                probeStar(stand, name.getString(), mob, outcome);
             }
         }
+        starVisibility.keySet().retainAll(seen);
         DungeonHighlight.getInstance().setStarredMobs(starred);
     }
 
-    /** The living mob a ✯ nametag armor stand belongs to: nearest living entity just below the stand. */
-    private static net.minecraft.world.entity.LivingEntity mobBelow(
-            ClientLevel level, net.minecraft.world.entity.decoration.ArmorStand stand) {
-        List<net.minecraft.world.entity.LivingEntity> mobs = level.getEntitiesOfClass(
-                net.minecraft.world.entity.LivingEntity.class,
-                stand.getBoundingBox().inflate(0.75, 0, 0.75).expandTowards(0, -3, 0),
-                m -> m != stand && !(m instanceof net.minecraft.world.entity.decoration.ArmorStand)
-                        && !(m instanceof net.minecraft.world.entity.player.Player) && m.isAlive());
-        net.minecraft.world.entity.LivingEntity best = null;
-        double bestDistance = Double.MAX_VALUE;
-        for (net.minecraft.world.entity.LivingEntity mob : mobs) {
-            double distance = mob.distanceToSqr(stand);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                best = mob;
-            }
+    /** Throttled visibility: the rays for one mob are cast every few ticks, the answer reused between. */
+    private boolean isVisible(LocalPlayer player, ClientLevel level,
+                              net.minecraft.world.entity.LivingEntity mob, long tick) {
+        long[] last = starVisibility.get(mob.getId());
+        if (last != null && tick - last[0] < STAR_VISIBILITY_TICKS) {
+            return last[1] != 0;
         }
-        return best;
+        boolean visible = castSightRays(player, level, mob);
+        starVisibility.put(mob.getId(), new long[] {tick, visible ? 1 : 0});
+        return visible;
+    }
+
+    /** Whether any sample point of the mob is reached by an unobstructed ray from the player's eye. */
+    private static boolean castSightRays(LocalPlayer player, ClientLevel level,
+                                         net.minecraft.world.entity.LivingEntity mob) {
+        if (mob.level() != level) {
+            return false;
+        }
+        net.minecraft.world.phys.Vec3 eye = player.getEyePosition();
+        if (eye.distanceTo(mob.position()) > STAR_SIGHT_RANGE) {
+            return false;
+        }
+        return StarredMobMatch.anyVisible(StarredMobMatch.samplePoints(mob.getBoundingBox(), mob.getEyeY()),
+                target -> level.clip(new net.minecraft.world.level.ClipContext(eye, target,
+                        net.minecraft.world.level.ClipContext.Block.COLLIDER,
+                        net.minecraft.world.level.ClipContext.Fluid.NONE, player)).getType()
+                        == net.minecraft.world.phys.HitResult.Type.MISS);
+    }
+
+    /**
+     * The body a ✯ nametag stand belongs to. Candidates are every living entity in a box
+     * {@link #STAR_SEARCH_RADIUS} out and {@link #STAR_SEARCH_DEPTH} down from the stand, real players
+     * flagged rather than dropped so the probe can say so; {@link StarredMobMatch#pick} chooses the
+     * one whose top is closest under the tag. Hypixel's player-model mobs are fake players and are
+     * ordinary candidates.
+     */
+    private static StarredMobMatch.Pick<net.minecraft.world.entity.LivingEntity> mobBelow(
+            ClientLevel level, net.minecraft.world.entity.decoration.ArmorStand stand) {
+        List<net.minecraft.world.entity.LivingEntity> bodies = level.getEntitiesOfClass(
+                net.minecraft.world.entity.LivingEntity.class,
+                stand.getBoundingBox().inflate(STAR_SEARCH_RADIUS, 0, STAR_SEARCH_RADIUS)
+                        .expandTowards(0, -STAR_SEARCH_DEPTH, 0),
+                m -> m != stand && !(m instanceof net.minecraft.world.entity.decoration.ArmorStand)
+                        && m.isAlive());
+        // The tag is drawn at the top of the stand's box: the tops are measured from there.
+        double tagY = stand.getBoundingBox().maxY;
+        List<StarredMobMatch.Candidate<net.minecraft.world.entity.LivingEntity>> candidates =
+                new ArrayList<>(bodies.size());
+        for (net.minecraft.world.entity.LivingEntity body : bodies) {
+            double dx = body.getX() - stand.getX();
+            double dz = body.getZ() - stand.getZ();
+            candidates.add(new StarredMobMatch.Candidate<>(body,
+                    Math.abs(tagY - body.getBoundingBox().maxY), Math.sqrt(dx * dx + dz * dz),
+                    RealPlayers.isRealPlayerEntity(body)));
+        }
+        return StarredMobMatch.pick(candidates);
+    }
+
+    /** Dev probe: one log line per stand and outcome, saying which body the tag matched and why. */
+    private void probeStar(net.minecraft.world.entity.decoration.ArmorStand stand, String rawName,
+                           net.minecraft.world.entity.LivingEntity mob, StarredMobMatch.Outcome outcome) {
+        if (!starProbeLogged.add(stand.getId() + ":" + outcome.name())) {
+            return;
+        }
+        String type = mob == null ? "none"
+                : BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).getPath()
+                + (mob instanceof net.minecraft.world.entity.player.Player ? " (fake player)" : "");
+        SkyblockSimplifiedSBS.LOGGER.info("[SBS][StarMobs] ✯ '{}' → {} ({})",
+                rawName.replaceAll(String.valueOf((char) 0x00A7) + ".", ""), type, outcome.reason());
+    }
+
+    private void clearStarredMobState() {
+        starVisibility.clear();
+        starProbeLogged.clear();
     }
 
     // ---- per-tick secret tracking ------------------------------------------------------------------
 
+    /**
+     * Detects levers and chests directly and reports them through {@link DungeonEvents#fireSecretFound};
+     * then hides every waypoint {@link CollectedSecrets} holds, whoever detected it - Secret Routes,
+     * the secret counters (items, bats, essences), or this method a tick ago.
+     */
     private void tickSecrets(LocalPlayer player, ClientLevel level) {
         if (active == null) {
             return;
@@ -816,7 +940,7 @@ public final class DungeonRoomTracker {
             }
             BlockState state = level.getBlockState(waypoint.world());
             if (state.getBlock() == Blocks.LEVER && state.getValue(BlockStateProperties.POWERED)) {
-                hide(waypoint.name(), "lever");
+                DungeonEvents.fireSecretFound(new DungeonEvents.Secret("lever", waypoint.world()));
             }
         }
         boolean containerOpen = GuiStateManager.getInstance().getCurrentScreen() instanceof AbstractContainerScreen;
@@ -834,10 +958,31 @@ public final class DungeonRoomTracker {
                 }
             }
             if (nearest != null) {
-                hide(nearest.name(), "chest");
+                DungeonEvents.fireSecretFound(new DungeonEvents.Secret("chest", nearest.world()));
             }
         }
         containerWasOpen = containerOpen;
+
+        CollectedSecrets collected = CollectedSecrets.getInstance();
+        for (WorldWaypoint waypoint : waypoints) {
+            if (!hiddenWaypoints.contains(waypoint.name()) && collected.isCollected(active.name(), waypoint.world())) {
+                hide(waypoint.name(), waypoint.type());
+            }
+        }
+    }
+
+    /** The current room's unhidden secret waypoints, for the counter path ("standing" is no secret). */
+    private List<BlockPos> uncollectedSecrets() {
+        List<BlockPos> out = new ArrayList<>();
+        if (active == null || !ConfigManager.getInstance().get().dungeons.roomWaypoints) {
+            return out;
+        }
+        for (WorldWaypoint waypoint : waypoints) {
+            if (!hiddenWaypoints.contains(waypoint.name()) && !"standing".equals(waypoint.type())) {
+                out.add(waypoint.world());
+            }
+        }
+        return out;
     }
 
     private static boolean isChest(BlockState state) {
@@ -932,5 +1077,6 @@ public final class DungeonRoomTracker {
         wasInCatacombs = false;
         runFootprints.clear();
         lockedRooms.clear();
+        clearStarredMobState();
     }
 }

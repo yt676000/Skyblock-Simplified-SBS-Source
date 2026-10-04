@@ -50,16 +50,17 @@ import java.util.Locale;
  * unknown chain length and is reported that way. A wrong constant should cost a missing waypoint,
  * never a confident wrong one.
  *
- * <h2>What is deliberately empty</h2>
+ * <h2>What the 2026-10-04 capture settled, and what it did not</h2>
  *
- * <p>{@link #arrowBands} ships empty. Three sources describe the arrow colours and no two agree, and
- * a distance band is the worst kind of value to guess because a wrong one sends the player walking.
- * Empty degrades the arrow guess to "no range filter": more candidates, none confidently wrong.
+ * <p>Every signature below arrived on this client exactly as written. The yellow arrow band is
+ * confirmed: five yellow arrows pointed at burrows 123-274 blocks away, inside 112-282. The red and
+ * green bands keep the study's numbers - red was seen once with a target nobody dug, green not at
+ * all - and say so in their labels; a wrong band filters a candidate out, so it costs a guess rather
+ * than placing a wrong one.
  *
- * <p>Chain lengths past the Ancestral Spade are absent for the same reason. Four is documented, six
- * with the Erudite reforge is documented; that chains also exist at eight and ten is documented, but
- * which spade produces which is not, and guessing it would have the toolkit announce a chain
- * finished while a burrow is still out there.
+ * <p>One chain length is measured: an Erudite Deific Spade digs chains of ten. The others stay
+ * absent, because a chain reported one step short has the toolkit announce a finish while a burrow
+ * is still out there.
  */
 public final class DianaParticleData implements VersionedDocument {
 
@@ -101,8 +102,8 @@ public final class DianaParticleData implements VersionedDocument {
     /** Block ids a burrow may be in. Same rule: empty disables the check. */
     public List<String> groundBlocks = new ArrayList<>();
 
-    /** The curve constants the spade guess extrapolates along. */
-    public SpadeCurve spadeCurve = new SpadeCurve();
+    /** The pitch-to-distance rule the Echo guess runs on. */
+    public EchoDistance echo = new EchoDistance();
 
     /** One measured chain length. */
     public static final class Chain {
@@ -130,33 +131,30 @@ public final class DianaParticleData implements VersionedDocument {
     }
 
     /**
-     * The constants describing the arc Hypixel draws for the spade's ability.
+     * How far away the burrow an Echo points at is, read off the notes the trail plays.
      *
-     * <p><b>Nobody has derived these.</b> They plainly encode a curve whose control point is placed
-     * as a function of launch pitch, but no derivation is recorded anywhere they appear, which is
-     * exactly why they live in a file with a {@link #certainty} tag beside them rather than as
-     * literals in the fitter. A capture of one ability use plus the burrow it actually pointed at
-     * checks the whole pipeline end to end without anyone having to understand them.
+     * <p>Each point of the Echo trail arrives with a {@code block.note_block.harp} sound whose pitch
+     * rises by a fixed step per point, and that step is inversely proportional to the distance from
+     * the trail's first point to the burrow: {@code distance = scale / step + offset}. Fitted on
+     * 2026-10-04 to eleven Echoes whose burrow was then dug, from 12 to 240 blocks; ten of the eleven
+     * land within 1.7 blocks, the worst at 5. {@code scale} is close to e; nothing says it must be.
+     *
+     * <p>This replaced the extrapolation constants carried over from another client's description
+     * of the old spade ability, which the same capture showed sending the player the wrong way.
      */
-    public static final class SpadeCurve {
+    public static final class EchoDistance {
 
-        /** Subtracted from the sine when inverting the observed pitch. */
-        public double pitchShift = 0.75;
+        /** Multiplies the reciprocal of the per-note pitch step. */
+        public double scale = 2.7114;
 
-        /** Scales the sine term of the control-point distance. */
-        public double controlScale = 24.0;
+        /** Added to the result, in blocks. */
+        public double offset = 0.91;
 
-        /** Constant term of the control-point distance, under the square root. */
-        public double controlOffset = 25.0;
+        /** The sound each trail point plays; its pitch is what the rule reads. */
+        public String sound = "minecraft:block.note_block.harp";
 
-        /** Multiplies the control-point distance when it becomes a curve parameter. */
-        public double parameterScale = 3.0;
-
-        /** How far below the fitted landing point the burrow's block sits. */
-        public double landingDrop = 0.5;
-
-        /** How much we actually know about the four numbers above. */
-        public String certainty = Certainty.ESTIMATED.name();
+        /** Where the two numbers came from. */
+        public String certainty = Certainty.CONFIRMED.name();
 
         public Certainty resolvedCertainty() {
             try {

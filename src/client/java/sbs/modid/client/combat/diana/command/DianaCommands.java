@@ -89,7 +89,7 @@ public final class DianaCommands {
         say("§7  creatures: §f" + MythMobTracker.getInstance().status());
         String stoodDown = DianaGuard.status();
         if (!stoodDown.isEmpty()) {
-            say("§c  tracker " + stoodDown + " §7(/sbs devlog diana rearm or /sbs diana clear)");
+            say("§c  tracker " + stoodDown + " §7(/sbs diana clear)");
         }
         if (data == null) {
             say("§c  constants: not loaded - the toolkit cannot classify anything");

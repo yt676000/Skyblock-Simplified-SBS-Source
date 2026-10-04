@@ -18,6 +18,7 @@ import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.protocol.game.ClientboundCommandsPacket;
 import org.spongepowered.asm.mixin.Mixin;
 import sbs.modid.client.core.command.CommandRegistry;
+import sbs.modid.client.core.command.SBSCommands;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -71,7 +72,15 @@ public class ClientCommandsMixin {
                 }
             } else if (command.name().isEmpty()) {
                 for (String root : command.shownNames()) {
-                    this.commands.register(skyblockSimplified$node(root, command.tab(), command.argumentName()));
+                    // A root SBS gives back while its feature is off (/pv, /pf): not registered at all
+                    // then, and gated live otherwise. Skipping matters as much as the gate: Brigadier
+                    // keeps the FIRST requirement when two trees merge a name, so a /pv node of ours
+                    // that only says "not now" would hide another mod's /pv from Tab for the session.
+                    if (!SBSCommands.claimsRoot(root)) {
+                        continue;
+                    }
+                    this.commands.register(skyblockSimplified$node(root, command.tab(), command.argumentName())
+                            .requires(source -> SBSCommands.claimsRoot(root)));
                 }
             }
         }

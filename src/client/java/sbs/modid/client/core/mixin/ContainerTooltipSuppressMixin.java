@@ -76,6 +76,7 @@ public abstract class ContainerTooltipSuppressMixin {
     }
 
     private static void sbs$report(String reason, int mouseX, int mouseY) {
+        // DEV-ONLY: log only; the suppression runs either way
         if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
             return;
         }

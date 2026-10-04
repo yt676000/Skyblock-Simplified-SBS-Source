@@ -27,6 +27,7 @@ public enum RouteSource {
     MAP("map", "Map", 0xFFD54F),
     QUEST("quest", "Quest", 0x66E08A),
     OBJECTIVE("objective", "Objective", 0x4FC3F7),
+    NPC("npc", "NPC", 0x4DD0C8),
     SECRETS("secrets", "Secret", 0xFF6B6B),
     HIDEYHO("hideyho", "Hideyho", 0xFFA040),
     FAIRY_SOULS("fairysouls", "Fairy Soul", 0xF48FEF),

@@ -147,7 +147,7 @@ public final class ItemProtectionModule implements SbsModule {
                             save();
                         })
                 .anchor("item_protection_indicator_style")
-                .disabledIf(!cfg().indicator)
+                .disabledWhile(() -> !cfg().indicator)
                 .describe("A frame around the slot, a small shield in its top-left corner, or both. "
                         + "The shield sits opposite the stack count and the slot-lock padlock, so "
                         + "the three never cover each other."));
@@ -156,7 +156,7 @@ public final class ItemProtectionModule implements SbsModule {
                         () -> 0xFF000000 | SBSConfig.ItemProtectionSettings.DEFAULT_INDICATOR_COLOR,
                         ItemProtectionModule::openColorPicker)
                 .anchor("item_protection_indicator_color")
-                .disabledIf(!cfg().indicator)
+                .disabledWhile(() -> !cfg().indicator)
                 .describe("Colour of the frame and the shield. Amber by default, which no other "
                         + "slot decoration in the mod uses."));
 

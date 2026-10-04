@@ -64,5 +64,11 @@ public class ParticleProbeMixin {
         // uncovered. Returns on an empty-list check while no chest is claimed.
         sbs.modid.client.skills.mining.treasurechest.logic.TreasureChestTracker.getInstance()
                 .onParticlePacket(packet);
+        // Precision Mining: the perk's target particle on the block being broken, and the probe
+        // that logs what arrives there. A static boolean read while nothing is being mined.
+        if (sbs.modid.client.skills.mining.precision.logic.PrecisionMiningTracker.LISTENING) {
+            sbs.modid.client.skills.mining.precision.logic.PrecisionMiningTracker.getInstance()
+                    .onParticlePacket(packet);
+        }
     }
 }

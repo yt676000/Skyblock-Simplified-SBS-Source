@@ -13,6 +13,7 @@ import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.alert.AlertChannel;
 import sbs.modid.client.core.alert.AlertChannels;
 import sbs.modid.client.core.alert.Alerts;
+import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.ui.hud.logic.ServerStatsTracker;
 import sbs.modid.client.ui.screen.SBSMainScreen;
 
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Native client-side command handling – no Fabric API, no Brigadier.
@@ -42,12 +44,40 @@ public final class SBSCommands {
             Set.of("sbs", "skyblocksimplified", "sbstest", "sbsdev", "pf", "pv",
                     "sendcoords", "sbssendcoords");
 
+    /**
+     * Roots that are only ours while their feature is on. They are short, generic names another client
+     * mod or the server may own too: switched off, the feature gives the name back, and the line goes on
+     * to Fabric's client commands and then the server as if SBS were not installed. Answering it with a
+     * "disabled" reply instead would make "off" mean "broken" for whatever else answers to /pv.
+     * {@code /sbs pv} and {@code /sbs party} stay ours either way.
+     */
+    private static final Map<String, Predicate<SBSConfig>> FEATURE_ROOTS = Map.of(
+            "pv", config -> config.playerViewer.profileViewer,
+            "pf", config -> config.partyFinder.enabled);
+
     private SBSCommands() {
     }
 
     /** Logs availability. Called from client init. */
     public static void init() {
         SkyblockSimplifiedSBS.LOGGER.info("[SBS] Client commands ready: /sbs, /skyblocksimplified");
+    }
+
+    /**
+     * Whether SBS answers to the root {@code name} (lower-case, no slash) right now. A
+     * {@link #FEATURE_ROOTS feature root} is claimed only while its feature is on.
+     */
+    static boolean claimsRoot(String name, SBSConfig config) {
+        if (!ROOT_COMMANDS.contains(name)) {
+            return false;
+        }
+        Predicate<SBSConfig> feature = FEATURE_ROOTS.get(name);
+        return feature == null || feature.test(config);
+    }
+
+    /** {@link #claimsRoot(String, SBSConfig)} against the live config - asked again on every use. */
+    public static boolean claimsRoot(String name) {
+        return claimsRoot(name, sbs.modid.client.core.config.ConfigManager.getInstance().get());
     }
 
     /**
@@ -83,7 +113,7 @@ public final class SBSCommands {
                     (build.command().word() + " " + build.args()).trim());
             return true;
         }
-        if (!ROOT_COMMANDS.contains(name)) {
+        if (!claimsRoot(name)) {
             // A command shortcut typed as "/alias ..." – expand and run it locally.
             String expanded = sbs.modid.client.core.keybind.CommandShortcutManager.getInstance().expand(trimmed);
             if (!expanded.equals(trimmed)) {
@@ -100,13 +130,24 @@ public final class SBSCommands {
             return TransferCooldown.getInstance().intercept(name, trimmed);
         }
 
-        // /pf - the Party Finder shortcut (same as /sbs party without a message).
+        // Every developer command is gated here, once: DEV_ONLY in CommandRegistry and dev mode off
+        // means the input is consumed SILENTLY, exactly like /sbs developermode with a wrong password -
+        // no reply, nothing to the server. Handlers below may assume dev mode is on.
+        // DEV-ONLY: the gate that keeps dev commands dev.
+        if (!sbs.modid.client.core.dev.DevMode.ACTIVE
+                && CommandRegistry.isDevOnly(name, parts.length > 1 ? parts[1].split("\\s+", 2)[0] : "")) {
+            return true;
+        }
+
+        // /pf - the Party Finder shortcut (same as /sbs party without a message). Reached only while the
+        // Party Finder is on: off, claimsRoot has already let /pf go on to whoever else owns it.
         if (name.equals("pf")) {
             handleParty("");
             return true;
         }
 
-        // /pv [player] - the SBS profile viewer (own profile without an argument).
+        // /pv [player] - the SBS profile viewer (own profile without an argument). Reached only while
+        // the viewer is on; /sbs pv is the alias that always answers.
         if (name.equals("pv")) {
             openProfileViewer(parts.length > 1 ? parts[1].trim() : "");
             return true;
@@ -156,6 +197,7 @@ public final class SBSCommands {
                 SkyblockSimplifiedSBS.LOGGER.info("[SBS] developermode command received (password {})",
                         accepted ? "accepted" : "rejected");
                 if (accepted) {
+                    // DEV-ONLY: dev command handling
                     sbs.modid.client.core.dev.DevMode.toggle();
                 }
                 return true; // handled locally, silently
@@ -186,6 +228,7 @@ public final class SBSCommands {
             // /sbs questcapture [...] - the dev questline recorder. Dev mode only: a capture writes
             // a file and nothing else, but it is tooling, not a player feature.
             if (sub[0].equalsIgnoreCase("questcapture") || sub[0].equalsIgnoreCase("qc")) {
+                // DEV-ONLY: dev command handling
                 if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
                     return true;   // silent, like every other dev path
                 }
@@ -197,6 +240,7 @@ public final class SBSCommands {
             // /sbs perf [dump [label]|reset|slow <ms>] (dev mode) - the performance KPI overlay, a report
             // to Development_Stuff/perf/, a reset of the rolling numbers, and the slow-frame simulator.
             if (sub[0].equalsIgnoreCase("perf")) {
+                // DEV-ONLY: dev command handling
                 if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
                     return true;   // dev tooling; silent, like every other dev path
                 }
@@ -238,6 +282,13 @@ public final class SBSCommands {
                 String message = sub.length > 1
                         ? sub[1].trim().replaceAll("^\"|\"$", "") : "";
                 sbs.modid.client.social.chat.logic.IrcClient.getInstance().sendFromCommand(message);
+                return true;
+            }
+
+            // /sbs pv [player] - the profile viewer under the mod's own name. Always ours, so with the
+            // viewer off it still says where to switch it back on, which a freed /pv no longer can.
+            if (sub[0].equalsIgnoreCase("pv")) {
+                openProfileViewer(sub.length > 1 ? sub[1].trim() : "");
                 return true;
             }
 
@@ -412,6 +463,12 @@ public final class SBSCommands {
                 return true;
             }
 
+            // /sbs seymour - the Seymour Collection screen. Reads nothing but local data.
+            if (sub[0].equalsIgnoreCase("seymour")) {
+                sbs.modid.client.helper.seymour.ui.SeymourCollectionScreen.open();
+                return true;
+            }
+
             // /sbs note|avoid|trust|notes - Player Notes. Private, local: nothing reaches the server.
             if (sbs.modid.client.social.notes.logic.PlayerNotesCommands.owns(sub[0])) {
                 sbs.modid.client.social.notes.logic.PlayerNotesCommands
@@ -493,6 +550,7 @@ public final class SBSCommands {
             // land: confirm) or list the pads known on this island. Pads are otherwise learned from
             // real launches; see JumpPads.
             if (sub[0].equalsIgnoreCase("pad")) {
+                // DEV-ONLY: dev command handling
                 if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
                     return true;   // dev tooling; silent, like every other dev path
                 }
@@ -523,6 +581,7 @@ public final class SBSCommands {
             // server sends as a slot-level time series, plus the player's clicks and optionally chat,
             // action bar, scoreboard and tab list, as JSONL per session. Capture only.
             if (sub[0].equalsIgnoreCase("scan")) {
+                // DEV-ONLY: dev command handling
                 if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
                     return true;   // dev tooling; silent, like every other dev path
                 }
@@ -533,6 +592,7 @@ public final class SBSCommands {
             // /sbs logmenu (dev mode) - the open menu once, in full, into the running scan session or
             // a file of its own.
             if (sub[0].equalsIgnoreCase("logmenu")) {
+                // DEV-ONLY: dev command handling
                 if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
                     return true;   // dev tooling; silent, like every other dev path
                 }
@@ -638,6 +698,13 @@ public final class SBSCommands {
             // states and durations come from. Capture only.
             // /sbs soulprobe - log every head (block or worn) within 3 blocks with its skin URL, and
             // the nearest curated soul. Settles what a Fairy Soul actually is. Capture only.
+            // /sbs npccheck - where the NPCs around you really stand vs the NPC table. Settles the
+            // entries the table and the item repo disagree on. Dev only (the command gate).
+            if (sub[0].equalsIgnoreCase("npccheck")) {
+                sbs.modid.client.helper.npc.NpcCheck.run();
+                return true;
+            }
+
             if (sub[0].equalsIgnoreCase("soulprobe")) {
                 sbs.modid.client.helper.fairysouls.logic.FairySoulTracker.getInstance().probe();
                 return true;
@@ -699,6 +766,7 @@ public final class SBSCommands {
             // the tester's proof of the "nothing extra is sent" rule.
             if (sub[0].equalsIgnoreCase("freecam")) {
                 if (sub.length > 1 && sub[1].equalsIgnoreCase("packets")) {
+                    // DEV-ONLY: dev command handling
                     if (sbs.modid.client.core.dev.DevMode.ACTIVE) {
                         say("§b freecam packets §7- §f"
                                 + sbs.modid.client.helper.build.logic.FreecamPacketGuard.report());
@@ -1208,7 +1276,7 @@ public final class SBSCommands {
     private static void openProfileViewer(String player) {
         Minecraft minecraft = Minecraft.getInstance();
         if (!sbs.modid.client.core.config.ConfigManager.getInstance().get().playerViewer.profileViewer) {
-            sysMessage(minecraft, "[SBS] Profile Viewer is disabled (Overlays > Player Viewer).");
+            sysMessage(minecraft, "[SBS] Profile Viewer is disabled (Party & Chat > Player Viewer).");
             return;
         }
         String name = player.replaceAll("[^A-Za-z0-9_]", "");
@@ -1275,7 +1343,7 @@ public final class SBSCommands {
     private static void handleParty(String message) {
         Minecraft minecraft = Minecraft.getInstance();
         if (!sbs.modid.client.core.config.ConfigManager.getInstance().get().partyFinder.enabled) {
-            sysMessage(minecraft, "[SBS] Party Finder is disabled (Overlays > SBS Party Finder).");
+            sysMessage(minecraft, "[SBS] Party Finder is disabled (Party & Chat > SBS Party Finder).");
             return;
         }
         if (message.isEmpty()) {
@@ -1294,7 +1362,7 @@ public final class SBSCommands {
     private static void openSkycrypt(String player) {
         Minecraft minecraft = Minecraft.getInstance();
         if (!sbs.modid.client.core.config.ConfigManager.getInstance().get().playerViewer.enabled) {
-            sysMessage(minecraft, "[SBS] Player Viewer is disabled (Overlays > Player Viewer).");
+            sysMessage(minecraft, "[SBS] SkyCrypt Browser is disabled (Party & Chat > Player Viewer).");
             return;
         }
         String name = player.replaceAll("[^A-Za-z0-9_]", ""); // Minecraft-Namen sind [A-Za-z0-9_]
@@ -1317,6 +1385,7 @@ public final class SBSCommands {
     private static void handleSbsDev(String args) {
         String trimmed = args == null ? "" : args.trim();
         if (trimmed.isEmpty()) {
+            // DEV-ONLY: dev command handling
             sbs.modid.client.core.dev.DevMode.toggle();
             return;
         }
@@ -1339,6 +1408,7 @@ public final class SBSCommands {
             return;
         }
         if (!tokens[0].equalsIgnoreCase("origin")) {
+            // DEV-ONLY: dev command handling
             sbs.modid.client.core.dev.DevMode.toggle();
             return;
         }
@@ -1371,7 +1441,7 @@ public final class SBSCommands {
     }
 
     private static void sysMessage(Minecraft minecraft, String message) {
-        if (minecraft.player != null) {
+        if (minecraft != null && minecraft.player != null) {
             minecraft.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(message));
         }
     }
@@ -1382,6 +1452,7 @@ public final class SBSCommands {
      * nothing (and stays silent) unless developer mode is active.
      */
     private static void handleSbsTest(String argument) {
+        // DEV-ONLY: dev command handling
         if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
             return; // dev-only; consumed silently when off
         }

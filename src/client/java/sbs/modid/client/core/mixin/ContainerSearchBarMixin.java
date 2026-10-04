@@ -130,6 +130,12 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
             cir.setReturnValue(true);
             return;
         }
+        // The Chocolate Factory button on a filler slot of the SkyBlock Menu: a click on it sends one
+        // command and never reaches the pane underneath.
+        if (sbs.modid.client.helper.chocolate.ui.ChocolateMenuShortcut.handleClick(self, event)) {
+            cir.setReturnValue(true);
+            return;
+        }
         if (sbs.modid.client.helper.loadouts.LoadoutsOverlay.getInstance().handleClick(self, event)) {
             cir.setReturnValue(true);
             return;

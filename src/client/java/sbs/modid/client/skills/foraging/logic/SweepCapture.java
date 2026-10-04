@@ -78,6 +78,9 @@ public final class SweepCapture {
 
     /** {@code /sbs sweep capture [on|off|status]}. */
     public void handleCommand(String argument) {
+        if (!sbs.modid.client.core.dev.DevMode.ACTIVE) { // DEV-ONLY: defence in depth behind the command gate
+            return;
+        }
         String arg = argument == null ? "" : argument.trim().toLowerCase(Locale.ROOT);
         switch (arg) {
             case "off", "stop", "disarm" -> stop();

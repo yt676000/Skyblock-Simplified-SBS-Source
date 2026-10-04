@@ -57,16 +57,16 @@ public enum GuessStage {
     /** The two ends of the shaft coincide, so there is no direction to cast. */
     DEGENERATE("the fitted shaft has no direction", true, false),
 
-    /** The trail could not be fitted to a curve - usually points sitting on top of each other. */
-    FIT_FAILED("the arc could not be fitted", false, true),
+    /** The Echo trail has no direction yet - its points sit on top of each other - or no rule is loaded. */
+    FIT_FAILED("the trail has no direction yet", false, true),
 
     /**
-     * The pitch inversion produced a control distance the square root cannot follow.
+     * The Echo trail arrived but its harp notes did not rise, so there is no distance to read.
      *
-     * <p>Which means either the arc is not the shape the curve constants describe, or the constants
-     * are wrong. Both are the same message to the player and the same fix: take a capture.
+     * <p>Either the notes are not reaching the toolkit (the sound hook) or another sound was taken
+     * for them; the trail's direction alone is not a guess, because it says nothing about how far.
      */
-    CURVE_UNDEFINED("the arc does not match the curve constants", false, true),
+    NO_PITCH("the trail arrived but its notes did not rise - no distance", false, true),
 
     /** A landing point was computed and it fell outside the Hub box the document carries. */
     OUTSIDE_HUB("the answer landed outside the Hub box in the data file", true, true),

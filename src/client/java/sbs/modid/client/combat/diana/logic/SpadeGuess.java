@@ -9,7 +9,10 @@
 package sbs.modid.client.combat.diana.logic;
 
 import com.google.gson.JsonObject;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.phys.Vec3;
 import sbs.modid.client.combat.diana.model.DianaParticleData;
 import sbs.modid.client.combat.diana.model.GuessStage;
@@ -21,95 +24,115 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Where the spade's ability was pointing: the arc it draws, fitted and extrapolated to the ground.
+ * Where the spade's Echo points: the trail's direction, and the distance its notes give away.
  *
- * <h2>The signal</h2>
+ * <h2>The signal (captured 2026-10-04)</h2>
  *
- * <p>Firing the ability traces the flight of an invisible projectile with a trail of particles. The
- * trail's packets share a particle type with the treasure-burrow marker and are told apart by their
- * speed alone, which is why the signature table matches the speed and why
- * {@code SPADE_TRAIL} exists as a role rather than being folded into the treasure one.
+ * <p>Echo (right click with the spade) draws a trail of points out from the player toward a burrow,
+ * one point every two ticks. Each point is three particle packets - {@code dripping_lava} at speed
+ * -0.5, which is the {@code SPADE_TRAIL} signature this collects, plus a firework and an enchant
+ * packet - and one {@code block.note_block.harp} sound at the same place. The trail curves toward
+ * the burrow as it goes and stops after at most about forty points, often long before reaching it.
  *
- * <h2>Collection, and the two gates on it</h2>
+ * <h2>The rule</h2>
  *
- * <p>Points are only collected inside a short window after the ability was used, and each new point
- * must be within a few blocks of the previous one and not identical to it. Both gates exist for the
- * same reason: the Hub is full of other people. Another player's ability, or a treasure burrow
- * across the plaza, spliced into the middle of this arc produces a fit that is confidently wrong,
- * and a confidently wrong guess is worse than none because the player walks to it.
+ * <p>The harp's pitch starts near 0.5 and rises by a fixed step per point, and that step is
+ * inversely proportional to how far the burrow is from the trail's first point:
+ * {@code distance = scale / step + offset}, with both numbers in {@link DianaParticleData.EchoDistance}.
+ * The direction is the chord from the first trail point to the latest one, flattened. Replayed over
+ * the eleven Echoes of the capture whose burrow was then dug, the finished trail puts the guess 1-6
+ * blocks from it up to 200 blocks out, 11 and 23 blocks off at 240 and 166. The first few points
+ * curve and give a poor direction, so the guess appears after {@link #MIN_POINTS} points and keeps
+ * moving onto the burrow as the trail grows.
  *
- * <h2>The maths, and how much of it we understand</h2>
+ * <p>This replaces a cubic fit and an extrapolation whose five constants came from another client's
+ * description of the old spade ability; the same capture had the player marking its guesses wrong.
  *
- * <p>The trail is treated as a parametric curve sampled by index - first point at zero, second at
- * one - and a cubic is fitted to each axis independently. The slope at zero is the launch direction.
- * From it comes an observed pitch, which is then treated as the <i>output</i> of a fixed distortion
- * and inverted by bisection to recover the pitch that produced it. That pitch gives a control-point
- * distance, the control-point distance gives a curve parameter, and evaluating the three fitted
- * cubics there gives the landing point.
+ * <h2>The gates</h2>
  *
- * <p><b>The constants in that last paragraph are not understood.</b> They plainly encode how the
- * server draws the arc, but no derivation of them is recorded anywhere they appear. They therefore
- * live in {@link DianaParticleData.SpadeCurve} with a {@link Certainty} tag beside them rather than
- * as literals here, so a capture corrects them with a JSON edit. Until such a capture exists, this
- * whole feature is tagged {@code ESTIMATED} and says so where the player can see it.
+ * <p>Points and notes are only collected in a window after the ability fires, each point within a
+ * few blocks of the previous one, each note within a few blocks of the trail. The Hub is full of
+ * other players using the same ability, and their notes spliced into this trail would change the
+ * step - which is the distance.
  */
 public final class SpadeGuess {
 
     private static final SpadeGuess INSTANCE = new SpadeGuess();
 
-    /** How long after the ability fires the trail is still believed to belong to it. */
-    private static final long WINDOW_MS = 3_000L;
+    /** How long after the ability the trail still belongs to it. The longest captured ran 78 ticks. */
+    private static final long WINDOW_MS = 5_000L;
 
-    /** Furthest a new trail point may be from the previous one and still be the same arc. */
+    /** Furthest a new trail point may be from the previous one and still be the same trail. */
     private static final double MAX_STEP = 3.0;
 
-    /** Below this, two points are the same point and the second adds nothing but a singular fit. */
+    /** Below this, two points are the same point and add nothing. */
     private static final double MIN_STEP = 1.0E-4;
 
-    /** A cubic needs four samples. Fewer is not a worse fit, it is no fit. */
-    private static final int MIN_POINTS = 4;
+    /** Furthest a harp note may be from the latest trail point and still be this trail's. */
+    private static final double NOTE_RADIUS = 3.0;
 
-    /** Past this the arc has been drawn and the extra points are somebody else's. */
+    /** Points and notes before a guess is shown. Fewer give a direction tens of degrees off. */
+    static final int MIN_POINTS = 6;
+
+    /** Past this the trail has been drawn and extra points are somebody else's. */
     private static final int MAX_POINTS = 64;
 
-    /** Bisection steps when inverting the pitch. Far more than a double needs, and free. */
-    private static final int BISECTION_STEPS = 100;
+    /** A step this small would put the burrow thousands of blocks away; it is not a reading. */
+    private static final double MIN_PITCH_STEP = 1.0E-3;
 
-    /** Ticks between fits. The arc is drawn over about a second; a fifth of one is soon enough. */
+    /**
+     * A right click this soon after the last trail point does not start a new trail. The capture has
+     * players clicking again while a trail is still being drawn ("This ability is on cooldown");
+     * restarting there would make a mid-trail point the "first" one, and the distance is measured
+     * from the first.
+     */
+    private static final long BUSY_MS = 250L;
+
+    /** Ticks between estimates. A point arrives every two ticks. */
     private static final int FIT_EVERY_TICKS = 4;
+
+    /** How far up and down from the trail's start the ground under a guess is searched for. */
+    private static final int GROUND_SEARCH_UP = 12;
+    private static final int GROUND_SEARCH_DOWN = 30;
 
     private final List<Vec3> trail = new ArrayList<>();
 
-    /** The trail's size at the last fit, so an unchanged trail is not refitted. */
+    /** The harp pitches belonging to {@link #trail}, in arrival order. */
+    private final List<Double> notes = new ArrayList<>();
+
+    /** The trail's size at the last estimate, so an unchanged trail is not re-estimated. */
     private int fittedSize;
 
-    /** Ticks since the last fit, for {@link #FIT_EVERY_TICKS}. */
     private int ticksSinceFit;
 
     /** When the ability was last used. Zero means "not collecting". */
     private long abilityAt;
 
-    /** The last landing point worked out, or {@code null}. */
+    /** When the last trail point was kept. */
+    private long lastPointAt;
+
+    /** The live guess, or {@code null}. */
     private volatile BlockPos guess;
 
-    /** When {@link #guess} was worked out, so a stale one can be told from a live one. */
     private volatile long guessAt;
+
+    /** The distance the notes gave for {@link #guess}, for the readout. */
+    private volatile double guessDistance;
 
     /** How many digs the player has already put into the current guess, carried on promotion. */
     private int guessDigs;
 
-    /** How far the last attempt got. Reported by {@code /sbs diana} - see {@link GuessStage}. */
     private volatile GuessStage stage = GuessStage.IDLE;
 
     /**
-     * Trail particles that arrived while nothing was collecting.
-     *
-     * <p>The single most useful number here. A non-zero count with no guesses means the particles
-     * are arriving and being recognised, and what failed is the <i>arming</i> - the right-click that
-     * should have started the collection did not reach us. That is a wiring question, not a
-     * constants question, and the two have completely different fixes.
+     * Trail particles that arrived while nothing was collecting. A non-zero count with no guesses
+     * means the trail arrives but the right click that should start collecting did not reach us.
      */
     private volatile long unclaimedTrail;
+
+    /** What one estimate produced: where on the flat, and how far from the trail's start. */
+    record Estimate(double x, double z, double distance, double step) {
+    }
 
     private SpadeGuess() {
     }
@@ -130,59 +153,75 @@ public final class SpadeGuess {
     /** How sure anyone should be about {@link #guess}, given where its constants came from. */
     public Certainty certainty() {
         DianaParticleData data = DianaParticles.data();
-        return data == null ? Certainty.UNKNOWN : data.spadeCurve.resolvedCertainty();
+        return data == null || data.echo == null ? Certainty.UNKNOWN : data.echo.resolvedCertainty();
     }
 
     /**
-     * The player used the spade's ability.
-     *
-     * <p>Called from the item-use mixin. Clears the previous arc rather than adding to it: two
-     * interleaved arcs fitted as one curve produce an answer that is nowhere near either burrow,
-     * and that failure looks exactly like a working feature pointing somewhere useless.
+     * The player used the spade's ability. Starts a new trail rather than adding to the last one:
+     * two trails read as one give a step, and therefore a distance, belonging to neither.
      */
     public void onAbilityUsed() {
         if (!cfg().enabled || !cfg().spadeGuess) {
             return;
         }
+        if (collecting() && System.currentTimeMillis() - lastPointAt < BUSY_MS) {
+            return;
+        }
         trail.clear();
+        notes.clear();
         fittedSize = 0;
         abilityAt = System.currentTimeMillis();
         stage = GuessStage.COLLECTING;
         unclaimedTrail = 0L;
     }
 
-    /** One point of the arc. */
+    /** One point of the trail. */
     public void onTrailParticle(double x, double y, double z) {
         if (!cfg().enabled || !cfg().spadeGuess) {
             return;
         }
-        long now = System.currentTimeMillis();
-        if (abilityAt == 0L || now - abilityAt > WINDOW_MS) {
-            // Trail particles arriving with no ability behind them. Worth recording rather than
-            // dropping silently: it is what "the ability fired but nothing armed the collection"
-            // looks like from here, and that was a real wiring bug once already.
+        if (!collecting()) {
             unclaimedTrail++;
             return;
         }
         Vec3 point = new Vec3(x, y, z);
         if (!trail.isEmpty()) {
-            Vec3 last = trail.get(trail.size() - 1);
-            double step = last.distanceTo(point);
+            double step = trail.get(trail.size() - 1).distanceTo(point);
             if (step > MAX_STEP || step < MIN_STEP) {
                 return;
             }
         }
-        if (trail.size() >= MAX_POINTS) {
-            return;
+        if (trail.size() < MAX_POINTS) {
+            trail.add(point);
+            lastPointAt = System.currentTimeMillis();
         }
-        trail.add(point);
     }
 
     /**
-     * Once per tick: refit the arc when it has grown and the last fit is {@link #FIT_EVERY_TICKS}
-     * old. Off the packet path for the same reason as the arrow guess - a particle appends, the tick
-     * fits - even though the trail's cap keeps this fit cheap.
+     * One harp note, from the sound packet. Kept when it sits on this trail: within
+     * {@link #NOTE_RADIUS} of the latest point, or - for the note that arrives in the same tick as
+     * the first point, possibly before it - the very first note of an empty trail.
      */
+    public void onEchoNote(double x, double y, double z, float pitch) {
+        if (!cfg().enabled || !cfg().spadeGuess || !collecting() || notes.size() >= MAX_POINTS) {
+            return;
+        }
+        if (trail.isEmpty()) {
+            if (notes.isEmpty()) {
+                notes.add((double) pitch);
+            }
+            return;
+        }
+        if (trail.get(trail.size() - 1).distanceTo(new Vec3(x, y, z)) <= NOTE_RADIUS) {
+            notes.add((double) pitch);
+        }
+    }
+
+    private boolean collecting() {
+        return abilityAt != 0L && System.currentTimeMillis() - abilityAt <= WINDOW_MS;
+    }
+
+    /** Once per tick: re-estimate when the trail has grown, every {@link #FIT_EVERY_TICKS} ticks. */
     public void onClientTick() {
         ticksSinceFit++;
         if (trail.size() == fittedSize || ticksSinceFit < FIT_EVERY_TICKS
@@ -191,84 +230,38 @@ public final class SpadeGuess {
         }
         ticksSinceFit = 0;
         fittedSize = trail.size();
-        BlockPos landing = extrapolate();
+        BlockPos landing = locate();
         if (landing != null) {
+            if (!landing.equals(guess)) {
+                guessDigs = 0;
+            }
             guess = landing;
             guessAt = System.currentTimeMillis();
-            guessDigs = 0;
             stage = GuessStage.READY;
-            DianaDebug.getInstance().note("spade guess -> " + landing.getX() + " "
-                    + landing.getY() + " " + landing.getZ() + " from " + trail.size() + " point(s)");
+            DianaDebug.getInstance().note("echo guess -> " + landing.getX() + " " + landing.getY() + " "
+                    + landing.getZ() + " at " + Math.round(guessDistance) + " blocks from "
+                    + trail.size() + " point(s), " + notes.size() + " note(s)");
         }
     }
 
-    /**
-     * Fits the collected arc and extrapolates it to where the projectile lands.
-     *
-     * @return the burrow's block, or {@code null} when there is not enough to say
-     */
-    private BlockPos extrapolate() {
-        if (trail.size() < MIN_POINTS) {
+    /** The estimate turned into a block: the ground at the estimated spot, inside the Hub. */
+    private BlockPos locate() {
+        DianaParticleData data = DianaParticles.data();
+        if (data == null || data.echo == null) {
+            stage(GuessStage.FIT_FAILED);
+            return null;
+        }
+        if (trail.size() < MIN_POINTS || notes.size() < MIN_POINTS) {
             stage(GuessStage.COLLECTING);
             return null;
         }
-        DianaParticleData data = DianaParticles.data();
-        if (data == null) {
-            stage(GuessStage.FIT_FAILED);
+        Estimate estimate = estimate(trail, notes, data.echo.scale, data.echo.offset);
+        if (estimate == null) {
+            stage(pitchStep(notes) < MIN_PITCH_STEP ? GuessStage.NO_PITCH : GuessStage.FIT_FAILED);
             return null;
         }
-        DianaParticleData.SpadeCurve curve = data.spadeCurve;
-
-        int n = trail.size();
-        double[] xs = new double[n];
-        double[] ys = new double[n];
-        double[] zs = new double[n];
-        for (int i = 0; i < n; i++) {
-            Vec3 point = trail.get(i);
-            xs[i] = point.x;
-            ys[i] = point.y;
-            zs[i] = point.z;
-        }
-        double[] fitX = CubicFit.fit(xs);
-        double[] fitY = CubicFit.fit(ys);
-        double[] fitZ = CubicFit.fit(zs);
-        if (fitX == null || fitY == null || fitZ == null) {
-            stage(GuessStage.FIT_FAILED);
-            return null;
-        }
-
-        double dx = CubicFit.slopeAt(fitX, 0.0);
-        double dy = CubicFit.slopeAt(fitY, 0.0);
-        double dz = CubicFit.slopeAt(fitZ, 0.0);
-        double speed = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (speed < MIN_STEP) {
-            stage(GuessStage.FIT_FAILED);
-            return null;
-        }
-
-        double pitch = truePitch(observedPitch(dx, dy, dz), curve.pitchShift);
-        double control = curve.controlScale * Math.sin(pitch - Math.PI) + curve.controlOffset;
-        if (control < 0.0) {
-            // The inversion landed somewhere the square root cannot follow. Refusing here is the
-            // whole reason absence is the safe answer: a NaN propagated into a block position is a
-            // marker at the world origin, which is a bug report rather than a missing feature.
-            stage(GuessStage.CURVE_UNDEFINED);
-            return null;
-        }
-        double parameter = curve.parameterScale * Math.sqrt(control) / speed;
-        if (!Double.isFinite(parameter)) {
-            stage(GuessStage.CURVE_UNDEFINED);
-            return null;
-        }
-
-        double landX = CubicFit.valueAt(fitX, parameter);
-        double landY = CubicFit.valueAt(fitY, parameter) - curve.landingDrop;
-        double landZ = CubicFit.valueAt(fitZ, parameter);
-        if (!Double.isFinite(landX) || !Double.isFinite(landY) || !Double.isFinite(landZ)) {
-            stage(GuessStage.CURVE_UNDEFINED);
-            return null;
-        }
-        BlockPos landing = BlockPos.containing(landX, landY, landZ);
+        guessDistance = estimate.distance();
+        BlockPos landing = ground(estimate.x(), estimate.z(), trail.get(0).y, data);
         DianaParticleData.Bounds bounds = data.hubBounds;
         if (bounds != null && bounds.usable()
                 && !bounds.contains(landing.getX(), landing.getY(), landing.getZ())) {
@@ -278,36 +271,82 @@ public final class SpadeGuess {
         return landing;
     }
 
-    /** The launch pitch as the fitted slope reports it, in radians, positive downward. */
-    private static double observedPitch(double dx, double dy, double dz) {
-        double flat = Math.sqrt(dx * dx + dz * dz);
-        return -Math.atan2(dy, flat);
+    /**
+     * Where the burrow is on the flat, from the trail and its notes; {@code null} when the trail has
+     * no direction or the notes do not rise. Pure, so the capture can be replayed against it.
+     */
+    static Estimate estimate(List<Vec3> trail, List<Double> notes, double scale, double offset) {
+        if (trail.size() < 2 || notes.size() < 2) {
+            return null;
+        }
+        double step = pitchStep(notes);
+        if (!(step >= MIN_PITCH_STEP)) {
+            return null;
+        }
+        Vec3 first = trail.get(0);
+        Vec3 last = trail.get(trail.size() - 1);
+        double dx = last.x - first.x;
+        double dz = last.z - first.z;
+        double length = Math.hypot(dx, dz);
+        if (length < 0.5) {
+            return null;
+        }
+        double distance = scale / step + offset;
+        return new Estimate(first.x + dx / length * distance, first.z + dz / length * distance,
+                distance, step);
     }
 
     /**
-     * Recovers the pitch the projectile was actually launched at from the one the trail shows.
-     *
-     * <p>The mapping being inverted is monotonic over the half-turn a launch pitch can occupy, so a
-     * bisection over that interval converges on the answer without needing the inverse in closed
-     * form - which is just as well, because nobody has written the forward form down either.
+     * The per-note pitch step, as the least-squares slope of pitch against note index. The first
+     * notes of a trail step unevenly; the slope uses all of them rather than the two ends.
      */
-    private static double truePitch(double observed, double shift) {
-        double low = -Math.PI / 2.0;
-        double high = Math.PI / 2.0;
-        double guessPitch = observed;
-        for (int i = 0; i < BISECTION_STEPS; i++) {
-            double mapped = Math.atan2(Math.sin(guessPitch) - shift, Math.cos(guessPitch));
-            if (mapped == observed) {
-                return guessPitch;
-            }
-            if (mapped < observed) {
-                low = guessPitch;
-            } else {
-                high = guessPitch;
-            }
-            guessPitch = (low + high) / 2.0;
+    static double pitchStep(List<Double> notes) {
+        int n = notes.size();
+        if (n < 2) {
+            return 0.0;
         }
-        return guessPitch;
+        double meanIndex = (n - 1) / 2.0;
+        double meanPitch = 0.0;
+        for (double pitch : notes) {
+            meanPitch += pitch / n;
+        }
+        double covariance = 0.0;
+        double variance = 0.0;
+        for (int i = 0; i < n; i++) {
+            covariance += (i - meanIndex) * (notes.get(i) - meanPitch);
+            variance += (i - meanIndex) * (i - meanIndex);
+        }
+        return covariance / variance;
+    }
+
+    /**
+     * The burrow's block at a spot: the highest block in the column, near the trail's height, that
+     * the data allows as burrow ground with allowed cover on top. Unloaded chunks and columns with no
+     * such block answer two below the trail's start, which is where captured burrows sat.
+     */
+    private static BlockPos ground(double x, double z, double fromY, DianaParticleData data) {
+        int bx = (int) Math.floor(x);
+        int bz = (int) Math.floor(z);
+        int start = (int) Math.floor(fromY);
+        BlockPos fallback = new BlockPos(bx, start - 2, bz);
+        Minecraft minecraft = Minecraft.getInstance();
+        ClientLevel level = minecraft == null ? null : minecraft.level;
+        if (level == null || !level.hasChunkAt(fallback)) {
+            return fallback;
+        }
+        for (int y = start + GROUND_SEARCH_UP; y >= start - GROUND_SEARCH_DOWN; y--) {
+            BlockPos pos = new BlockPos(bx, y, bz);
+            String block = blockId(level, pos);
+            if (!"minecraft:air".equals(block) && data.allowedGround(block)
+                    && data.allowedAbove(blockId(level, pos.above()))) {
+                return pos;
+            }
+        }
+        return fallback;
+    }
+
+    private static String blockId(ClientLevel level, BlockPos pos) {
+        return String.valueOf(BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()));
     }
 
     /**
@@ -341,22 +380,22 @@ public final class SpadeGuess {
     /** World change, server hop, island change, or the player asking. */
     public void reset() {
         trail.clear();
+        notes.clear();
         fittedSize = 0;
         abilityAt = 0L;
+        lastPointAt = 0L;
         guess = null;
         guessAt = 0L;
+        guessDistance = 0.0;
         guessDigs = 0;
         stage = GuessStage.IDLE;
         unclaimedTrail = 0L;
     }
 
     /**
-     * One line for the debug readout.
-     *
-     * <p>Leads with the stage, and names the unclaimed-trail count whenever there is one, because
-     * those two together separate the three ways this can produce nothing: the particles never
-     * arrive (no count, IDLE), they arrive but nothing armed the collection (a count, still IDLE),
-     * or they arrive and are collected and the maths declines (a stage that says which step).
+     * One line for the debug readout. Leads with the stage, and names the unclaimed-trail count
+     * whenever there is one: no count and no guess means the trail never arrived; a count means the
+     * right click did not reach us; a stage means the trail arrived and the estimate declined.
      */
     public String status() {
         if (!cfg().spadeGuess) {
@@ -366,18 +405,18 @@ public final class SpadeGuess {
         BlockPos current = guess;
         if (current == null) {
             out.append(trail.isEmpty()
-                    ? "no arc collected - use the spade's ability"
-                    : trail.size() + " trail point(s): " + stage.explanation());
+                    ? "no trail collected - use the spade's Echo"
+                    : trail.size() + " trail point(s), " + notes.size() + " note(s): " + stage.explanation());
         } else {
             long age = (System.currentTimeMillis() - guessAt) / 1000L;
             out.append("guess at ").append(current.getX()).append(' ').append(current.getY())
                     .append(' ').append(current.getZ())
-                    .append(" (").append(age).append("s ago, ")
-                    .append(certainty().displayName()).append(" constants)");
+                    .append(", ").append(Math.round(guessDistance)).append(" blocks out (")
+                    .append(age).append("s ago, ").append(certainty().displayName()).append(" rule)");
         }
         if (unclaimedTrail > 0) {
             out.append("\n  ").append(unclaimedTrail)
-                    .append(" trail particle(s) arrived with nothing collecting - the ability's")
+                    .append(" trail particle(s) arrived with nothing collecting - the Echo")
                     .append(" right-click is not reaching us");
         }
         return out.toString();
@@ -388,17 +427,16 @@ public final class SpadeGuess {
         return stage;
     }
 
-    /**
-     * The trail, the last ability use and the current guess, for the guard's error report. The
-     * "last echo data" of the brief: when the ability fired and what its arc has collected so far.
-     */
+    /** The trail, its notes and the current guess, for the guard's error report. */
     public JsonObject snapshot() {
         JsonObject out = new JsonObject();
         out.addProperty("stage", String.valueOf(stage));
         out.addProperty("abilityAt", abilityAt);
         out.add("trail", DianaSnapshot.points(trail));
+        out.addProperty("notes", notes.toString());
         out.addProperty("guess", DianaSnapshot.pos(guess));
         out.addProperty("guessAt", guessAt);
+        out.addProperty("guessDistance", DianaSnapshot.num(guessDistance));
         out.addProperty("guessDigs", guessDigs);
         out.addProperty("unclaimedTrail", unclaimedTrail);
         return out;
@@ -411,8 +449,8 @@ public final class SpadeGuess {
         }
         stage = next;
         if (!next.working()) {
-            DianaDebug.getInstance().note("spade guess stopped: " + next.explanation()
-                    + " (" + trail.size() + " trail point(s))");
+            DianaDebug.getInstance().note("echo guess stopped: " + next.explanation()
+                    + " (" + trail.size() + " trail point(s), " + notes.size() + " note(s))");
         }
     }
 }

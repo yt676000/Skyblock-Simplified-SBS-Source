@@ -52,6 +52,9 @@ public abstract class BlockUpdateMixin {
         // cached boolean outside the Crystal Hollows.
         sbs.modid.client.skills.mining.treasurechest.logic.TreasureChestTracker.getInstance()
                 .onBlockChanged(pos, level.getBlockState(pos), state);
+        // Effective Ore Blocks: queues the position for a re-check next tick, once the level holds
+        // the new state. Returns on a boolean read while the overlay is not armed.
+        sbs.modid.client.skills.mining.logic.EffectiveBlockScanner.getInstance().onBlockChanged(pos);
         TerracottaTracker tracker = TerracottaTracker.getInstance();
         if (!tracker.armed()) {
             return;

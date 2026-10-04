@@ -10,6 +10,8 @@ package sbs.modid.client.skills.mining.metaldetector.logic;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.ConfigManager;
@@ -18,37 +20,39 @@ import sbs.modid.client.core.pathfinding.Waypoint;
 import sbs.modid.client.core.pathfinding.WaypointStore;
 import sbs.modid.client.helper.timers.ServerWorldTime;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * The game-facing half of the Metal Detector helper: readings in, a waypoint out.
  *
- * <p>{@link MetalDetectorSolver} does the maths and knows nothing about Minecraft; this collects
- * what it needs and decides when to throw it away. Those two jobs are separated because only one of
- * them can be tested - a reading needs a player in a world.
+ * <p>{@link MetalDetectorSolver} does the maths and {@link MetalDetectorHunt} decides which readings
+ * belong together; neither knows about Minecraft. This class supplies the position and the distance
+ * and decides when to throw everything away. The split is there because only the pure halves can be
+ * tested - a reading needs a player in a world.
  *
  * <h2>Keeping the sample set honest</h2>
  * Every sample is a promise that the player was <i>there</i> when the detector said <i>that</i>, and
  * three things break the promise:
  * <ul>
  *   <li><b>Moving.</b> The action bar updates on its own schedule, so a reading taken mid-sprint
- *       pairs a fresh position with a stale distance. Samples are only kept from a standstill, or
- *       at least {@link MetalDetectorSolver#MIN_SAMPLE_SPACING} blocks from the last one.</li>
- *   <li><b>A new treasure.</b> Dug one up and the readings now describe something else entirely;
- *       fitting both sets together lands a point between two treasures, which is a spot with
- *       nothing under it.</li>
+ *       pairs a fresh position with a stale distance. {@link MetalDetectorHunt#offer} only keeps
+ *       samples from a standstill, or at least {@link MetalDetectorSolver#MIN_SAMPLE_SPACING} blocks
+ *       from the last one.</li>
+ *   <li><b>A find.</b> {@code You found ... with your Metal Detector!} (CONFIRMED) means that chest
+ *       is gone and the readings now describe the next one. {@link #onFound} ends the hunt.</li>
  *   <li><b>A new lobby, or leaving the zone.</b> Same problem, with different coordinates.</li>
  * </ul>
  *
- * <h2>⚠ The action-bar wording is UNVERIFIED</h2>
- * Nothing here has seen a real Mines of Divan. {@link #TREASURE} is written against the expected
- * {@code TREASURE: 12.3m} and every action-bar line that mentions treasure but does not parse is
- * logged once under {@code [SBS][Detector]}, so the real wording can be read out of
- * {@code latest.log}. Until that lands this may never fire at all, which is why the feature ships
- * off. See {@code docs/features/metal-detector.md}.
+ * <h2>The action-bar wording is UNVERIFIED</h2>
+ * Nothing here has seen a real Mines of Divan action bar. {@link #TREASURE} is written against the
+ * expected {@code TREASURE: 12.3m}. Three log lines under {@code [SBS][Detector]} are the probe that
+ * settles it: every bar that mentions treasure but does not parse (once per distinct text), the first
+ * parsed reading of each hunt with the player position, and every find with the last reading, where
+ * it was taken and the block under the crosshair - which is what says whether the distance is 3D or
+ * horizontal. See {@code docs/features/metal-detector.md}.
  */
 public final class MetalDetectorTracker {
 
@@ -61,7 +65,7 @@ public final class MetalDetectorTracker {
     private static final String WAYPOINT_SOURCE = "metal_detector";
 
     /**
-     * ⚠ UNVERIFIED. Expected: {@code TREASURE: 12.3m}. Deliberately loose about the label and the
+     * UNVERIFIED. Expected: {@code TREASURE: 12.3m}. Deliberately loose about the label and the
      * separator, because the one thing worth being strict about is that a number followed by
      * {@code m} is present.
      */
@@ -71,11 +75,8 @@ public final class MetalDetectorTracker {
     /** Anything on the bar that says "treasure" at all, for the diagnostic below. */
     private static final Pattern MENTIONS_TREASURE = Pattern.compile("(?i)treasure");
 
-    private final List<MetalDetectorSolver.Sample> samples = new ArrayList<>();
+    private final MetalDetectorHunt hunt = new MetalDetectorHunt();
     private String lobby = "";
-    private double lastX = Double.NaN;
-    private double lastY = Double.NaN;
-    private double lastZ = Double.NaN;
     private volatile MetalDetectorSolver.Fix fix;
     private String unparsedSeen = "";
 
@@ -97,7 +98,7 @@ public final class MetalDetectorTracker {
 
     /** How many readings are in the current set - what the HUD counts up. */
     public int sampleCount() {
-        return samples.size();
+        return hunt.samples().size();
     }
 
     /** Whether the helper should be doing anything at all right now. */
@@ -114,7 +115,7 @@ public final class MetalDetectorTracker {
             return;
         }
         if (!active()) {
-            if (!samples.isEmpty()) {
+            if (!hunt.isEmpty()) {
                 reset("left the zone");
             }
             return;
@@ -130,54 +131,33 @@ public final class MetalDetectorTracker {
         } catch (NumberFormatException e) {
             return;
         }
-        addSample(distance);
+        addSample(text, distance);
     }
 
-    /**
-     * Records the reading against where the player is standing, when that pairing can be trusted.
-     *
-     * <p>A player in motion is the case to refuse: the bar and the position update independently, so
-     * a sample taken at a run pairs a distance from a moment ago with a position from now, and the
-     * error goes straight into the fit as if it were signal.
-     */
-    private void addSample(double distance) {
+    /** Records the reading against where the player is standing, when that pairing can be trusted. */
+    private void addSample(String text, double distance) {
         var player = Minecraft.getInstance().player;
         if (player == null) {
             return;
         }
         String server = ServerWorldTime.serverName();
-        if (!server.equals(lobby)) {
+        if (server != null && !server.equals(lobby)) {
             reset("lobby changed");
             lobby = server;
         }
         Vec3 pos = player.position();
-        if (!Double.isNaN(lastX)) {
-            double dx = pos.x - lastX;
-            double dy = pos.y - lastY;
-            double dz = pos.z - lastZ;
-            double moved = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            boolean standingStill = player.getDeltaMovement().lengthSqr() < 1.0E-4;
-            if (!standingStill && moved < MetalDetectorSolver.MIN_SAMPLE_SPACING) {
-                return;   // mid-stride, and not far enough from the last reading to be worth it
-            }
-            if (moved < 0.05) {
-                return;   // standing on the same block: a duplicate sphere adds nothing
-            }
+        if (hunt.noteReading(pos.x, pos.y, pos.z, distance)) {
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Detector] first reading of this hunt: \"{}\" "
+                    + "-> {} m, player feet at {}", text, distance, fmt(pos));
         }
-        lastX = pos.x;
-        lastY = pos.y;
-        lastZ = pos.z;
-        samples.add(new MetalDetectorSolver.Sample(pos.x, pos.y, pos.z, distance));
-        // A set that has grown far past what it needs is mostly old readings, and old readings are
-        // the ones most likely to belong to a treasure that has already been dug up.
-        while (samples.size() > 12) {
-            samples.remove(0);
+        boolean standingStill = player.getDeltaMovement().lengthSqr() < 1.0E-4;
+        if (hunt.offer(pos.x, pos.y, pos.z, distance, standingStill)) {
+            recompute();
         }
-        recompute();
     }
 
     private void recompute() {
-        fix = MetalDetectorSolver.solve(samples);
+        fix = MetalDetectorSolver.solve(hunt.samples());
         publishWaypoint();
     }
 
@@ -201,29 +181,69 @@ public final class MetalDetectorTracker {
                 new Waypoint(label, pos, WaypointStore.currentDimension(), WAYPOINT_SOURCE)));
     }
 
-    /** New target: the readings so far describe something that is no longer there. */
-    public void onTreasureFound() {
-        reset("treasure found");
+    /**
+     * A {@code You found ... with your Metal Detector!} line, from {@link DivanTracker}. Logs the probe
+     * line while the solver is on, then ends the hunt: that chest is gone, and the next readings
+     * describe another one.
+     */
+    public void onFound(DivanChat.Event event, String line) {
+        if (enabled()) {
+            logFind(line);
+        }
+        if (hunt.onChat(event)) {
+            fix = null;
+            WaypointStore.clearTransient(WAYPOINT_SOURCE);
+        }
+    }
+
+    /**
+     * The find, with everything needed to tell a 3D distance from a horizontal one: the last reading
+     * and where it was taken, the player, and the block under the crosshair (the block just dug, or
+     * the one behind it). Both distances from the reading spot to that block are printed, so the
+     * comparison is a glance at the log rather than arithmetic.
+     */
+    private void logFind(String line) {
+        Minecraft minecraft = Minecraft.getInstance();
+        var player = minecraft.player;
+        if (player == null) {
+            return;
+        }
+        MetalDetectorHunt.Reading last = hunt.lastReading();
+        String target = "none";
+        String compare = "";
+        if (minecraft.hitResult instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK) {
+            BlockPos block = hit.getBlockPos();
+            target = block.toShortString();
+            if (last != null) {
+                double dx = block.getX() + 0.5 - last.x();
+                double dy = block.getY() + 0.5 - last.y();
+                double dz = block.getZ() + 0.5 - last.z();
+                compare = String.format(Locale.ROOT, "; reading spot to crosshair block centre: "
+                                + "3D %.2f, horizontal %.2f, dy %.2f",
+                        Math.sqrt(dx * dx + dy * dy + dz * dz), Math.sqrt(dx * dx + dz * dz), dy);
+            }
+        }
+        String reading = last == null ? "none"
+                : String.format(Locale.ROOT, "%.1f m taken at (%.2f, %.2f, %.2f)",
+                        last.distance(), last.x(), last.y(), last.z());
+        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Detector] find: \"{}\" - player feet at {}, last "
+                + "reading {}, crosshair block {}{}", line, fmt(player.position()), reading, target, compare);
     }
 
     /** Drops every reading and the fix with them. */
     public void reset(String why) {
-        if (!samples.isEmpty() || fix != null) {
+        if (!hunt.isEmpty() || fix != null) {
             SkyblockSimplifiedSBS.LOGGER.debug("[SBS][Detector] reset ({}): {} sample(s) dropped",
-                    why, samples.size());
+                    why, hunt.samples().size());
         }
-        samples.clear();
+        hunt.clear();
         fix = null;
-        lastX = Double.NaN;
-        lastY = Double.NaN;
-        lastZ = Double.NaN;
         WaypointStore.clearTransient(WAYPOINT_SOURCE);
     }
 
     /**
-     * One log line per distinct unreadable bar that mentions treasure. This is the whole of the
-     * probe for the action-bar wording: walk a mine for a few seconds and the real text is in
-     * {@code latest.log}, whatever it turns out to say.
+     * One log line per distinct unreadable bar that mentions treasure. Walk a mine for a few seconds
+     * and the real text is in {@code latest.log}, whatever it turns out to say.
      */
     private void noteUnparsed(String text) {
         if (!MENTIONS_TREASURE.matcher(text).find() || text.equals(unparsedSeen)) {
@@ -233,5 +253,9 @@ public final class MetalDetectorTracker {
         SkyblockSimplifiedSBS.LOGGER.info(
                 "[SBS][Detector] action bar mentions treasure but did not parse - the expected "
                         + "wording is unverified. Seen: \"{}\"", text);
+    }
+
+    private static String fmt(Vec3 pos) {
+        return String.format(Locale.ROOT, "(%.2f, %.2f, %.2f)", pos.x, pos.y, pos.z);
     }
 }

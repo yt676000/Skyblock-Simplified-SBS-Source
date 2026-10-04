@@ -12,6 +12,7 @@
     "EndBlockShadeFabricMixin",
     "EndBlockShadeMixin",
     "EntityRenderStateMixin",
+    "EntityHitboxesMixin",
     "EntityScaleMixin",
     "InventoryPaperdollOpaqueMixin",
     "OwnPlayerTransparencyMixin",

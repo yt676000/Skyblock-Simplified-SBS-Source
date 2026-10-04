@@ -94,6 +94,7 @@ public final class BazaarPrerender {
 
     /** Both switches. Everything in this class returns immediately when this is false. */
     public static boolean enabled() {
+        // DEV-ONLY: measurement phase, renders nothing
         return DevMode.ACTIVE && ENABLED;
     }
 

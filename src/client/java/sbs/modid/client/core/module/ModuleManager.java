@@ -402,6 +402,7 @@ public final class ModuleManager {
 
     /** Drops categories that should not be visible right now (currently just the dev card when off). */
     private static void filterHidden(List<ModuleCategory> list) {
+        // DEV-ONLY: hides the Developer card
         if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
             list.removeIf(c -> c.id().equals(DEVELOPER_ID));
         }

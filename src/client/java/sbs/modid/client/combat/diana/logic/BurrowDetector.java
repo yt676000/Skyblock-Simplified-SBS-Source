@@ -13,9 +13,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.resources.Identifier;
 import sbs.modid.client.combat.diana.model.BurrowKind;
 import sbs.modid.client.combat.diana.model.BurrowRecord;
+import sbs.modid.client.combat.diana.model.DianaParticleData;
 import sbs.modid.client.combat.diana.model.SignatureRole;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
@@ -207,18 +209,38 @@ public final class BurrowDetector {
     }
 
     /**
-     * The player dug a block. Called from the interaction mixin, not from a packet.
+     * One sound packet. Only the Echo trail's note matters here - its pitch is how far away the
+     * burrow is (see {@link SpadeGuess}) - and only while armed; everything else returns after one id
+     * comparison. Main-thread invocation, after the packet handler's thread hop.
+     */
+    public void onSoundPacket(ClientboundSoundPacket packet) {
+        if (packet == null || !armed()) {
+            return;
+        }
+        DianaParticleData data = DianaParticles.data();
+        if (data == null || data.echo == null || data.echo.sound == null) {
+            return;
+        }
+        String id = String.valueOf(packet.getSound().value().location());
+        if (data.echo.sound.equals(id)) {
+            SpadeGuess.getInstance().onEchoNote(packet.getX(), packet.getY(), packet.getZ(), packet.getPitch());
+        }
+    }
+
+    /**
+     * The player left-clicked a block with a spade. Called from the attack mixin, not from a packet.
      *
-     * <p>Records the position so the chat lines that follow - which never carry coordinates - can
-     * be attached to the burrow they are about, and tells the arrow guess where its next arrow will
-     * be drawn from.
+     * <p>A click, not yet a dig: the chat line that follows decides which block was dug (see
+     * {@link BurrowChat#dugBurrow}), and only a confirmed dig restarts the arrow guess. Here the
+     * click is remembered for that decision, and for the arrow guess's "air is ground if the player
+     * just broke it" rule.
      */
     public void onBlockDug(BlockPos pos) {
         if (!armed() || pos == null) {
             return;
         }
         BurrowChat.getInstance().onBlockDug(pos);
-        ArrowGuess.getInstance().onBlockDug(pos);
+        ArrowGuess.getInstance().onBlockClicked(pos);
     }
 
     /** World change, server hop, island change, or the player asking. */

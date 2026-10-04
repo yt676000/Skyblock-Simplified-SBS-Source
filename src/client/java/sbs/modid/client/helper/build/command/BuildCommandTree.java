@@ -88,7 +88,7 @@ public final class BuildCommandTree {
             case SEL -> node.then(literal("clear"));
             case ROTATE -> node.then(literal("90")).then(literal("180")).then(literal("270"));
             case FLIP -> node.then(literal("x")).then(literal("y")).then(literal("z"));
-            case HOLOGRAM -> node.then(literal("on")).then(literal("off")).then(literal("clear"));
+            case HOLOGRAM -> node.then(literal("on")).then(literal("off")).then(literal("clear")).then(literal("debug"));
             case GUIDE -> node.then(literal("on")).then(literal("off"));
             case SELECT -> node.then(BuildCommandTree.<S>literal("connected").then(literal("family")).then(literal("any")));
             case MATERIALS -> node.then(literal("hologram")).then(literal("clipboard")).then(literal("selection"));

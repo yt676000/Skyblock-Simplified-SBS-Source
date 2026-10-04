@@ -90,6 +90,9 @@ public final class ChatProbe {
 
     /** {@code /sbs chatprobe [arm|off|status]} - the bare form reports status rather than guessing. */
     public void handleCommand(String argument) {
+        if (!DevMode.ACTIVE) { // DEV-ONLY: defence in depth behind the command gate
+            return;
+        }
         String arg = argument == null ? "" : argument.trim().toLowerCase(Locale.ROOT);
         switch (arg) {
             case "arm", "on", "watch" -> arm();

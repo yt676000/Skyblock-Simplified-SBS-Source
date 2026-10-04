@@ -23,7 +23,7 @@ import java.util.List;
  *
  * <p>Drawn in HUD space through {@link WorldRender} (26.2 has no line-box world API). The block
  * <i>inside</i> the box is drawn separately and in real world space by {@link GhostModels}; the flat
- * fill here is the fallback for cells that get no model, or when the model hook is not firing.
+ * fill here is the fallback for every cell that pass did not draw this frame.
  */
 public final class HologramRenderer {
 
@@ -45,7 +45,6 @@ public final class HologramRenderer {
         Vec3 camPos = camera.position();
         Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
         int thickness = Math.max(1, Math.min(4, style.lineWidth()));
-        boolean hookAlive = GhostModels.hookAlive();
 
         // Farthest first, so nearer translucent cubes layer on top (a painter's order that reads as
         // solid instead of showing the far side through).
@@ -53,14 +52,7 @@ public final class HologramRenderer {
         for (int i = ghosts.size() - 1; i >= 0; i--) {
             GhostCollector.Ghost ghost = ghosts.get(i);
             int rgb = style.colorFor(ghost.status());
-            // The flat fill stands in for a real ghost block; where the model is drawn instead it
-            // would only muddy it, so it is dropped there - unless the model hook is not firing, in
-            // which case the model never appears and the fill stays as the fallback.
-            // A block the model pass cannot draw (chest, sign, banner, ...) keeps the fill, so it is
-            // never just an empty outline.
-            boolean modelShown = GhostModels.showsModel(ghost.status(), style) && hookAlive
-                    && GhostModels.drawable(ghost.wanted());
-            if (style.fill() && !modelShown) {
+            if (keepsFill(style.fill(), GhostModels.drewModel(ghost.x(), ghost.y(), ghost.z()))) {
                 WorldRender.fillBox(g, viewProjection, camPos,
                         ghost.x(), ghost.y(), ghost.z(),
                         ghost.x() + 1, ghost.y() + 1, ghost.z() + 1,
@@ -71,5 +63,16 @@ public final class HologramRenderer {
                     ghost.x() + 1, ghost.y() + 1, ghost.z() + 1,
                     (style.edgeAlpha() << 24) | rgb, thickness);
         }
+    }
+
+    /**
+     * Whether a cell gets the flat fill. It stands in for a real ghost block, so it is dropped only
+     * where the level pass actually drew one this frame ({@link GhostModels#drewModel}) - never on
+     * what kind of block it is. A liquid, head or chest the model pass skipped or could not draw,
+     * models switched off, or a hook that is not firing all keep the fill, so no cell is ever just
+     * an empty outline.
+     */
+    static boolean keepsFill(boolean fillEnabled, boolean modelDrawn) {
+        return fillEnabled && !modelDrawn;
     }
 }

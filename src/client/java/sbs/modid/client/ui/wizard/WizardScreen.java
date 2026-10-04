@@ -277,6 +277,7 @@ public final class WizardScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
+        rowList.syncAvailability();
         super.extractRenderState(g, mouseX, mouseY, partialTick);
         rowList.renderDropdownOverlay(g, mouseX, mouseY);
     }

@@ -74,6 +74,7 @@ public class SkyblockSimplifiedSBSClient implements ClientModInitializer {
         CommandKeybindManager.getInstance();
 
         // Restore persisted developer mode (and generate the hidden dev structure if it was left on).
+        // DEV-ONLY: loads the dev flag
         sbs.modid.client.core.dev.DevMode.init();
 
         // NB: the config option index is deliberately NOT built here. This entrypoint runs from
@@ -207,6 +208,9 @@ public class SkyblockSimplifiedSBSClient implements ClientModInitializer {
 
         // Borderless window: re-apply the persisted toggle once the window exists.
         sbs.modid.client.helper.visual.logic.BorderlessWindow.init();
+
+        // Dungeon secrets: the one collected-secret record both waypoint renderers hide by.
+        sbs.modid.client.dungeons.run.logic.CollectedSecrets.init();
 
         // Custom title bar: same deal - the caption colours go on as soon as there is a window to
         // put them on (the theme refresh above ran before it existed).
