@@ -519,6 +519,27 @@ public final class SBSCommands {
                 return true;
             }
 
+            // /sbs scan [start|stop|status] [channels] (dev mode) - Server Scanner: every menu the
+            // server sends as a slot-level time series, plus the player's clicks and optionally chat,
+            // action bar, scoreboard and tab list, as JSONL per session. Capture only.
+            if (sub[0].equalsIgnoreCase("scan")) {
+                if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
+                    return true;   // dev tooling; silent, like every other dev path
+                }
+                sbs.modid.client.core.dev.scanner.ServerScanner.handleCommand(sub.length > 1 ? sub[1] : "");
+                return true;
+            }
+
+            // /sbs logmenu (dev mode) - the open menu once, in full, into the running scan session or
+            // a file of its own.
+            if (sub[0].equalsIgnoreCase("logmenu")) {
+                if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
+                    return true;   // dev tooling; silent, like every other dev path
+                }
+                sbs.modid.client.core.dev.scanner.ServerScanner.logMenu();
+                return true;
+            }
+
             // /sbs priceprobe - for the item under the cursor: its NBT, its lore, its stack size, the
             // exact keys our resolver produces and what every price cache answers for each of them.
             // The command that separates "this item has no price" from "nothing has fetched the

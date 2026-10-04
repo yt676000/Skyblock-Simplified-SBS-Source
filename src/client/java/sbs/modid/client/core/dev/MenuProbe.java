@@ -20,14 +20,12 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.RegistryOps;
-import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.component.DyedItemColor;
-import net.minecraft.world.item.component.ItemLore;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.api.GuiStateManager;
 import sbs.modid.client.core.config.SBSFiles;
@@ -258,11 +256,11 @@ public final class MenuProbe {
 
         out.append("screen    : ").append(container.getClass().getName()).append('\n');
         out.append("menu      : ").append(menu.getClass().getName()).append('\n');
-        out.append("menu type : ").append(menuType(menu)).append('\n');
+        out.append("menu type : ").append(MenuReads.menuType(menu)).append('\n');
         out.append("containerId: ").append(menu.containerId).append('\n');
         out.append("stateId   : ").append(menu.getStateId()).append('\n');
         out.append("slots     : ").append(menu.slots.size()).append(" total, ")
-                .append(containerSlots(menu)).append(" belong to the menu (")
+                .append(MenuReads.containerSlots(menu)).append(" belong to the menu (")
                 .append(INVENTORY_NOTE).append(")\n");
         out.append("title json: ").append(json(title(container), ops)).append('\n');
         out.append("title text: ").append(plain(title(container))).append('\n');
@@ -273,7 +271,7 @@ public final class MenuProbe {
         out.append("page layout readable (which indices are chrome, where the arrows sit).\n");
 
         for (Slot slot : menu.slots) {
-            if (slot.container instanceof Inventory) {
+            if (!MenuReads.isMenuSlot(slot)) {
                 continue;
             }
             out.append("\n------------------------------------------------------------\n");
@@ -292,7 +290,7 @@ public final class MenuProbe {
 
     private void dumpStack(StringBuilder out, ItemStack stack, Minecraft minecraft,
                            RegistryOps<JsonElement> ops) {
-        out.append("  item      : ").append(BuiltInRegistries.ITEM.getKey(stack.getItem())).append('\n');
+        out.append("  item      : ").append(MenuReads.itemKey(stack)).append('\n');
         // Its own line, and spelled out: whether the yellow number on a slot is the stack count is an
         // open question, and no data component in 26.2 overrides what gets drawn - so this field is
         // the whole answer. Vanilla draws nothing at all for a count of 1, which is exactly why a
@@ -319,7 +317,7 @@ public final class MenuProbe {
                     .append(encode(component, ops)).append('\n');
         }
 
-        List<Component> lore = loreLines(stack);
+        List<Component> lore = MenuReads.loreLines(stack);
         out.append("  LORE (the raw component - this is the parse target): ")
                 .append(lore.size()).append(" line(s)\n");
         for (int i = 0; i < lore.size(); i++) {
@@ -382,11 +380,6 @@ public final class MenuProbe {
     // Small readers
     // ------------------------------------------------------------------
 
-    private static List<Component> loreLines(ItemStack stack) {
-        ItemLore lore = stack.get(DataComponents.LORE);
-        return lore == null ? List.of() : lore.lines();
-    }
-
     private static List<Component> tooltipLines(ItemStack stack, Minecraft minecraft) {
         try {
             return stack.getTooltipLines(Item.TooltipContext.of(minecraft.level),
@@ -410,28 +403,6 @@ public final class MenuProbe {
     private static Component title(AbstractContainerScreen<?> container) {
         Component title = container.getTitle();
         return title == null ? Component.empty() : title;
-    }
-
-    private static String menuType(AbstractContainerMenu menu) {
-        try {
-            var type = menu.getType();
-            var key = BuiltInRegistries.MENU.getKey(type);
-            return key == null ? String.valueOf(type) : key.toString();
-        } catch (Throwable t) {
-            // The player-inventory menu has no type and throws rather than returning null.
-            return "(none)";
-        }
-    }
-
-    /** How many of the menu's slots are the menu's own, by the same reckoning the features use. */
-    private static int containerSlots(AbstractContainerMenu menu) {
-        int count = 0;
-        for (Slot slot : menu.slots) {
-            if (!(slot.container instanceof Inventory)) {
-                count++;
-            }
-        }
-        return count;
     }
 
     /** The component as the game would serialize it - styles kept as structure, not flattened. */
@@ -463,7 +434,7 @@ public final class MenuProbe {
      * struck-through half of a "was X, now Y" line is only visible there.
      */
     private static String plain(Component component) {
-        return component.getString().replaceAll("§.", "");
+        return MenuReads.plain(component);
     }
 
     /** Each styled run of a line as {@code "text"[styles]}, so formatting survives in plain text. */

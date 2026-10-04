@@ -468,6 +468,11 @@ public final class SBSFiles {
         return developmentDir().resolve("Waypoints.json");
     }
 
+    /** Path getter only - the Server Scanner's sessions, one sub-folder each. */
+    public static Path scannerDir() {
+        return developmentDir().resolve("scanner");
+    }
+
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------

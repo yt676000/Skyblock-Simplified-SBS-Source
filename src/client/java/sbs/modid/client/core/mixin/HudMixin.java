@@ -1011,6 +1011,8 @@ public class HudMixin {
                 HypixelHudState.getInstance().parseActionBar(message.getString());
                 // Layout Recorder (dev, default off): the action bar's shape.
                 sbs.modid.client.core.dev.LayoutRecorder.getInstance().onActionBar(message.getString());
+                // Server Scanner (dev): action-bar changes while its channel is on.
+                sbs.modid.client.core.dev.scanner.ServerScanner.onActionBar(message);
                 // Glacite Cold: capture log + reading (which HUD line carries it is unverified).
                 sbs.modid.client.skills.mining.logic.ColdTracker.getInstance().onActionBar(message.getString());
                 // Crop Analyzer capture (research, off by default).

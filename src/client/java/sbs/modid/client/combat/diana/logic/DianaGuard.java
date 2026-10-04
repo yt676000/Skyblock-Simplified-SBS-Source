@@ -20,7 +20,7 @@ import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.combat.diana.devlog.DevLogEvent;
 import sbs.modid.client.combat.diana.devlog.DevLogEvents;
-import sbs.modid.client.combat.diana.devlog.DevLogText;
+import sbs.modid.client.core.dev.DevLogText;
 import sbs.modid.client.combat.diana.devlog.DianaDevLog;
 import sbs.modid.client.combat.diana.render.BurrowMarkers;
 import sbs.modid.client.core.async.SbsExecutors;

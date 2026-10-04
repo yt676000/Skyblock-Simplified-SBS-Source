@@ -375,6 +375,17 @@ public final class Waypoint {
         return SOURCE_TEMPLE_CHEESE.equals(source);
     }
 
+    /** Whether this is the Crystal Hollows map's picked target. */
+    public boolean isHollowsTarget() {
+        return SOURCE_CH_MAP.equals(source);
+    }
+
+    /** Whether this is one of the Diana toolkit's markers: a burrow, a guess or a creature. */
+    public boolean isDiana() {
+        return SOURCE_DIANA_BURROW.equals(source) || SOURCE_DIANA_GUESS.equals(source)
+                || SOURCE_DIANA_CREATURE.equals(source);
+    }
+
     /** Whether this is a temporary marker dropped with the ping keybind. */
     public boolean isPing() {
         return SOURCE_PING.equals(source);

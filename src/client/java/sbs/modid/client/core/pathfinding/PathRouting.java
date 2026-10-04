@@ -127,7 +127,22 @@ public final class PathRouting {
                 || WaypointStore.hasSource(Waypoint.SOURCE_TEMPLE_CHEESE)
                 // The Crystal Hollows map's target: published exactly while the player has one
                 // picked, and only on the Hollows.
-                || WaypointStore.hasSource(Waypoint.SOURCE_CH_MAP);
+                || WaypointStore.hasSource(Waypoint.SOURCE_CH_MAP)
+                // Diana's three sets: published only while the toolkit is on, in the Hub, with the
+                // ritual awake - and cleared the moment any of that stops being true.
+                || WaypointStore.hasSource(Waypoint.SOURCE_DIANA_BURROW)
+                || WaypointStore.hasSource(Waypoint.SOURCE_DIANA_GUESS)
+                || WaypointStore.hasSource(Waypoint.SOURCE_DIANA_CREATURE);
+    }
+
+    /**
+     * Whether {@code waypoint} comes from a publisher-owned set that is drawn outside dev mode with no
+     * further condition - publishing IS the gate (see {@link #publishedMarking()}).
+     */
+    static boolean publisherOwned(Waypoint waypoint) {
+        return waypoint.isPreset() || waypoint.isGemzie() || waypoint.isPing()
+                || waypoint.isHideyho() || waypoint.isTempleCheese()
+                || waypoint.isHollowsTarget() || waypoint.isDiana();
     }
 
     /** Whether the NPC module wants its objective marker shown. */
@@ -216,8 +231,7 @@ public final class PathRouting {
                     // Re-testing a toggle here would be a second gate that can disagree with the
                     // first - and this list being an allowlist by source is exactly why they were
                     // published and then silently dropped before.
-                    || waypoint.isPreset() || waypoint.isGemzie() || waypoint.isPing()
-                    || waypoint.isHideyho() || waypoint.isTempleCheese()
+                    || publisherOwned(waypoint)
                     || showCommission(waypoint, commissions, onlyRouted, routedCommission)) {
                 shown.add(waypoint);
             }

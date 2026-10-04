@@ -34,6 +34,9 @@ public abstract class SbsBadgeMixin {
             at = @At("TAIL"))
     private void skyblockSimplified$sbsBadge(Avatar entity, AvatarRenderState state, float partialTick,
                                              CallbackInfo ci) {
+        if (sbs.modid.client.helper.loadouts.PreviewEntities.isPreview(entity)) {
+            return;   // GUI preview model: never badged, noted or rewritten
+        }
         if (!ConfigManager.getInstance().get().sbsPlayers.enabled || state.nameTag == null) {
             return;
         }

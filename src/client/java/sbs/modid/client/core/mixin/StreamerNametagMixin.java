@@ -40,6 +40,9 @@ public abstract class StreamerNametagMixin {
             at = @At("TAIL"))
     private void skyblockSimplified$redactNameTag(Entity entity, EntityRenderState state,
                                                   float partialTick, CallbackInfo ci) {
+        if (sbs.modid.client.helper.loadouts.PreviewEntities.isPreview(entity)) {
+            return;   // GUI preview model: never badged, noted or rewritten
+        }
         StreamerNames streamer = StreamerNames.getInstance();
         if (!streamer.active()) {
             return;

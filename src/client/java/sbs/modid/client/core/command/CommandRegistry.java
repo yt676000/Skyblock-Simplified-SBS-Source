@@ -322,6 +322,9 @@ public final class CommandRegistry {
         dev(l, "sbs", "priceprobe", List.of(), "", "Shows every price lookup for the item under the cursor.");
         dev(l, "sbs", "sharddump", List.of(), "[arm|off]", "Dumps how the last shard menu was read.");
         dev(l, "sbs", "chatprobe", List.of(), "[arm|off|status]", "Writes every chat line to a file.");
+        dev(l, "sbs", "scan", List.of(), "[start|stop|status] [chat|actionbar|scoreboard|tablist|all]",
+                "Server Scanner: records every menu, slot change and click (and optional text channels) as JSONL.");
+        dev(l, "sbs", "logmenu", List.of(), "", "Logs the open menu once, in full, into the scan session or its own file.");
         dev(l, "sbs", "particleprobe", List.of(), "[arm|off|status]", "Writes every particle packet to a file.");
         dev(l, "sbs", "soundprobe", List.of(), "[arm|off|status]", "Writes every nearby sound to a file.");
         dev(l, "sbs", "m7probe", List.of(), "[arm|off|status]", "Captures the M7 dragon phase for a whole fight.");

@@ -23,14 +23,18 @@ import java.util.List;
  * 0-3 and 5 are lane-coloured panes, row 4 is lane-coloured terracotta, and a note is lane-coloured
  * wool in place of a pane. Notes were seen in rows 0, 1, 2, 3 and 5, never in row 4.
  *
- * <p><b>UNVERIFIED:</b> which row a click counts in, and the step time. The default hit row is 4
- * (the terracotta, the only row Hypixel marks), and the step is measured, never assumed: until two
- * steps have been seen there is no prediction at all.
+ * <p><b>The hit row (CONFIRMED, in game 2026-10-04).</b> A click counts in the terracotta row, index 4
+ * (the 5th row from the top) - {@link #HIT_ROW}.
+ *
+ * <p><b>UNVERIFIED:</b> the step time. It is measured, never assumed: until two steps have been seen
+ * there is no prediction at all.
  */
 public final class HarpModel {
 
     public static final int ROWS = 6;
     public static final int LANES = 7;
+    /** The row a click counts in, 0 = top: the terracotta row (CONFIRMED in game). */
+    public static final int HIT_ROW = 4;
     public static final char WOOL = 'W';
     public static final char TERRACOTTA = 'T';
     public static final char PANE = '.';

@@ -505,6 +505,50 @@ public final class ModuleSettings {
                                 + "again within 5 seconds to confirm."));
     }
 
+    /** The Server Scanner's rows on the Developer page, below the Layout Recorder. */
+    private static List<SettingRow> serverScannerRows() {
+        return List.of(
+                SettingRow.label("— Server Scanner —"),
+                SettingRow.toggle("Server Scanner", sbs.modid.client.core.dev.scanner.ServerScanner::isRunning,
+                                sbs.modid.client.core.dev.scanner.ServerScanner::toggle)
+                        .describe("Starts or stops a scan session, like /sbs scan start / stop. While it "
+                                + "runs, every menu the server opens is written to "
+                                + "Development_Stuff/scanner/<session>/ as a time series: the full "
+                                + "contents, every slot change as old -> new with timestamps, your own "
+                                + "clicks and the close. Only reads - nothing is clicked, cancelled or "
+                                + "sent. Not saved: a session ends with the game."),
+                SettingRow.toggle("Scan Chat", () -> cfg().dev.scannerChat,
+                                () -> { cfg().dev.scannerChat = !cfg().dev.scannerChat; save(); })
+                        .describe("A session started without channel words also writes every chat line "
+                                + "(raw and plain) to chat.jsonl. Other players' names are replaced."),
+                SettingRow.toggle("Scan Action Bar", () -> cfg().dev.scannerActionBar,
+                                () -> { cfg().dev.scannerActionBar = !cfg().dev.scannerActionBar; save(); })
+                        .describe("Also writes the action bar to actionbar.jsonl, one line per change."),
+                SettingRow.toggle("Scan Scoreboard", () -> cfg().dev.scannerScoreboard,
+                                () -> { cfg().dev.scannerScoreboard = !cfg().dev.scannerScoreboard; save(); })
+                        .describe("Also writes the sidebar to scoreboard.jsonl whenever a line changes. "
+                                + "Other players' names are replaced."),
+                SettingRow.toggle("Scan Tab List", () -> cfg().dev.scannerTablist,
+                                () -> { cfg().dev.scannerTablist = !cfg().dev.scannerTablist; save(); })
+                        .describe("Also writes the tab list and its footer to tablist.jsonl whenever they "
+                                + "change. Other players' names are replaced."),
+                SettingRow.intField("Session Size Cap", 1, 10_000, () -> cfg().dev.scannerMaxMb,
+                                value -> { cfg().dev.scannerMaxMb = value; save(); }, "MB")
+                        .describe("A session stops by itself, with a chat message, once its files pass "
+                                + "this size. Default: 200 MB."),
+                SettingRow.button("Open Scanner Folder", () -> {
+                            java.nio.file.Path dir = sbs.modid.client.core.config.SBSFiles.scannerDir();
+                            try {
+                                java.nio.file.Files.createDirectories(dir);
+                                net.minecraft.util.Util.getPlatform().openPath(dir);
+                            } catch (Exception e) {
+                                sbs.modid.SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Scanner] could not open {}: {}",
+                                        dir, e.toString());
+                            }
+                        })
+                        .describe("Opens Development_Stuff/scanner in your file browser."));
+    }
+
     /** Guards "Reset All Screen Opacity" - it drops every per-screen value at once. */
     private static final ConfirmClick SCREEN_OPACITY_RESET = new ConfirmClick();
 
@@ -1788,7 +1832,31 @@ public final class ModuleSettings {
                             () -> { cfg().thirdPerson.crosshair = !cfg().thirdPerson.crosshair; save(); })
                             .describe("Keeps the crosshair on screen in third person, where "
                                     + "vanilla hides it."),
-                    SettingRow.label("Keep the crosshair visible in third person too"));
+                    SettingRow.label("Keep the crosshair visible in third person too"),
+                    SettingRow.toggle("Own Player Transparency", () -> cfg().thirdPerson.ownTransparency,
+                            () -> { cfg().thirdPerson.ownTransparency = !cfg().thirdPerson.ownTransparency; save(); })
+                            .describe("Draws your own player see-through, so you can see what is "
+                                    + "behind you in third person. Body, armour, cape, elytra and "
+                                    + "held items fade together; your nametag stays as it is. Only "
+                                    + "your own player in the world - the inventory model and the "
+                                    + "Loadout previews stay solid, and nobody else sees a "
+                                    + "difference. Default: off."),
+                    SettingRow.rangeSlider("Opacity", sbs.modid.client.helper.visual.transparency
+                                    .OwnPlayerTransparency.MIN_PERCENT,
+                            sbs.modid.client.helper.visual.transparency.OwnPlayerTransparency.MAX_PERCENT,
+                            () -> cfg().thirdPerson.ownOpacity,
+                            v -> { cfg().thirdPerson.ownOpacity = sbs.modid.client.helper.visual.transparency
+                                    .OwnPlayerTransparency.snapPercent(v); save(); }, "%")
+                            .describe("How solid your own player is drawn, in steps of 5 %: 10 % is "
+                                    + "barely there, 100 % looks exactly like the toggle being off. "
+                                    + "Enchanted armour loses its glint while faded. Default: 50 %."),
+                    SettingRow.toggle("Only In Third Person", () -> cfg().thirdPerson.ownTransparencyThirdPersonOnly,
+                            () -> { cfg().thirdPerson.ownTransparencyThirdPersonOnly =
+                                    !cfg().thirdPerson.ownTransparencyThirdPersonOnly; save(); })
+                            .describe("Fades your player only while the camera is in third person. "
+                                    + "In first person you only see your hand, which stays solid "
+                                    + "either way. Default: on."),
+                    SettingRow.label("See-through own player, adjustable in %"));
 
             case ModuleManager.MOB_HIGHLIGHT_ID -> List.of(
                     SettingRow.toggle("Enable Mob Highlight", () -> cfg().mobHighlight.enabled,
@@ -2815,7 +2883,7 @@ public final class ModuleSettings {
                                     + "them for Hypixel, which is case-sensitive there."),
                     SettingRow.label("Your own shortcuts always win over a built-in of the same name"));
 
-            case ModuleManager.DEVELOPER_ID -> concat(layoutRecorderRows(), List.of(
+            case ModuleManager.DEVELOPER_ID -> concat(layoutRecorderRows(), serverScannerRows(), List.of(
                     SettingRow.button("Scanned Rooms...", () -> open(
                             new sbs.modid.client.core.dev.ScannedRoomsScreen(
                                     sbs.modid.client.core.api.GuiStateManager.getInstance().getCurrentScreen())))

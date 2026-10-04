@@ -170,6 +170,9 @@ public class GuiTrackingMixin {
         sbs.modid.client.core.dev.MenuProbe.getInstance().tick(minecraft);
         // Layout Recorder (dev, default off): one boolean check when off.
         sbs.modid.client.core.dev.LayoutRecorder.getInstance().tick(minecraft);
+        // Server Scanner (dev): flushes its batched writes and polls scoreboard / tab while a session
+        // runs; one boolean check otherwise.
+        sbs.modid.client.core.dev.scanner.ServerScanner.tick(minecraft);
         // Shard dump: snapshots a recognised shard menu (or any container, once armed) so
         // /sbs sharddump can print what the resolver made of every slot after it is closed - chat
         // cannot be opened inside the menus it exists to capture.

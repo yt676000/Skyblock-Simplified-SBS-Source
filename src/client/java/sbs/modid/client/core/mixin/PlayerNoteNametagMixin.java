@@ -38,6 +38,9 @@ public abstract class PlayerNoteNametagMixin {
             at = @At("TAIL"))
     private void skyblockSimplified$playerNoteMarker(Avatar entity, AvatarRenderState state,
                                                      float partialTick, CallbackInfo ci) {
+        if (sbs.modid.client.helper.loadouts.PreviewEntities.isPreview(entity)) {
+            return;   // GUI preview model: never badged, noted or rewritten
+        }
         SBSConfig.PlayerNotesSettings cfg = ConfigManager.getInstance().get().playerNotes;
         // Streamer Mode hides it: on a stream the marker would publish your opinion of the player.
         if (!cfg.enabled || !cfg.nametagMarker || state.nameTag == null

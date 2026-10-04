@@ -158,6 +158,8 @@ public final class ChatProbe {
      * @param message the full component, for the styling and hover text {@code text} discards
      */
     public void onChat(String text, Component message) {
+        // The Server Scanner's chat channel shares this hook; one boolean read while dev mode is off.
+        sbs.modid.client.core.dev.scanner.ServerScanner.onChat(text, message);
         if (!armed) {
             return;
         }

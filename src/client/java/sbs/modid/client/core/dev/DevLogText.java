@@ -6,7 +6,7 @@
  * project root for license terms and the Minecraft linking exception.
  */
 
-package sbs.modid.client.combat.diana.devlog;
+package sbs.modid.client.core.dev;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -27,7 +27,7 @@ import java.util.Optional;
 public final class DevLogText {
 
     /** Longest string kept from one value, so one oversized component cannot bloat a line. */
-    static final int MAX_LENGTH = 2048;
+    public static final int MAX_LENGTH = 2048;
 
     private DevLogText() {
     }

@@ -486,9 +486,23 @@ public final class SBSConfig {
         @Shareable(Kind.BOOL)
         public boolean superpairs = true;
 
-        /** Block out-of-order clicks in Chronomatron / Ultrasequencer (never Superpairs). */
+        /**
+         * Block out-of-order clicks in Chronomatron / Ultrasequencer (never Superpairs). Default off:
+         * it is the only part of the helper that takes a click away. Fails open (MisclickValve).
+         */
         @Shareable(Kind.BOOL)
-        public boolean blockMisclicks = true;
+        public boolean blockMisclicks = false;
+
+        /** Chronomatron highlight of the 1st button still to click, ARGB (default green). */
+        public int chronomatronColor1 = 0xFF55FF55;
+        /** Chronomatron highlight of the 2nd button still to click, ARGB (default yellow). */
+        public int chronomatronColor2 = 0xFFFFFF55;
+        /** Chronomatron highlight of the 3rd and every later button, ARGB (default red). */
+        public int chronomatronColor3 = 0xFFFF5555;
+
+        /** Chronomatron / Ultrasequencer: "GO" + a board flash the moment input starts. */
+        @Shareable(Kind.BOOL)
+        public boolean startCue = true;
 
         /** Warn in chat when the table is opened without a Guardian pet equipped. */
         @Shareable(Kind.BOOL)
@@ -504,8 +518,7 @@ public final class SBSConfig {
         public int harpManualPingMs = 80;
         /** Reaction time added to the lead, in ms. 250 = a young adult's average (ESTIMATED). */
         public int harpReactionMs = 250;
-        /** The row a click counts in, 0 = top. 4 (the terracotta) is UNVERIFIED. */
-        public int harpHitRow = 4;
+        // harpHitRow was removed: the hit row is fixed (HarpModel.HIT_ROW). Gson skips the old key.
         /** Cue and preview colour, RRGGBB. */
         public String harpColorHex = "5DE0A0";
         /** Write "NOW" on the lit hit slot. */
@@ -7310,6 +7323,18 @@ public static final class CaseOpeningSettings {
         /** Show the crosshair in third person too (vanilla only draws it in first person). */
         @Shareable(Kind.BOOL)
         public boolean crosshair = false;
+
+        /** Own Player Transparency: draw your own model see-through in the world. */
+        @Shareable(Kind.BOOL)
+        public boolean ownTransparency = false;
+
+        /** Own Player Transparency: opacity in percent, 10-100 in steps of 5. */
+        @Shareable(value = Kind.INT, min = 10, max = 100)
+        public int ownOpacity = 50;
+
+        /** Own Player Transparency: only while the camera is in third person. */
+        @Shareable(Kind.BOOL)
+        public boolean ownTransparencyThirdPersonOnly = true;
     }
 
     public static final class TexturePackSettings {
@@ -8347,6 +8372,21 @@ public static final class CaseOpeningSettings {
 
         /** Layout Recorder: total size of the layouts folder, in MB, past which nothing new is written. */
         public int layoutMaxMb = 50;
+
+        /** Server Scanner: record chat lines in a session started without channel words. */
+        public boolean scannerChat = false;
+
+        /** Server Scanner: record action-bar changes. */
+        public boolean scannerActionBar = false;
+
+        /** Server Scanner: record scoreboard sidebar changes. */
+        public boolean scannerScoreboard = false;
+
+        /** Server Scanner: record tab-list and footer changes. */
+        public boolean scannerTablist = false;
+
+        /** Server Scanner: a session stops by itself once its files pass this size, in MB. */
+        public int scannerMaxMb = 200;
 
         /** Numpad 9 – opens the name GUI, then scans the room. */
         public int scanRoomKey = 329;

@@ -85,11 +85,33 @@ public final class ExperimentationModule implements SbsModule {
                                 + "highlights which tile to click next, in order."),
                 SettingRow.label("Remembers the flashed colour sequence and highlights it back in order"),
 
+                chronoColorRow("Chronomatron 1st Colour", 1, () -> cfg().chronomatronColor1,
+                        v -> cfg().chronomatronColor1 = v, 0xFF55FF55)
+                        .describe("Outline colour of the button to click next (and, during the "
+                                + "show, of the first flash). Default green."),
+                chronoColorRow("Chronomatron 2nd Colour", 2, () -> cfg().chronomatronColor2,
+                        v -> cfg().chronomatronColor2 = v, 0xFFFFFF55)
+                        .describe("Outline colour of the button after the next one. Default yellow."),
+                chronoColorRow("Chronomatron 3rd+ Colour", 3, () -> cfg().chronomatronColor3,
+                        v -> cfg().chronomatronColor3 = v, 0xFFFF5555)
+                        .describe("Outline colour of the third button and every one after it. "
+                                + "Default red."),
+
                 SettingRow.toggle("Ultrasequencer Helper", () -> cfg().ultrasequencer,
                         () -> { cfg().ultrasequencer = !cfg().ultrasequencer; save(); })
-                        .describe("Numbers the Ultrasequencer tiles in the order they appeared "
-                                + "and highlights the one to click next."),
-                SettingRow.label("Numbers the tiles in the order they appeared and highlights the next one"),
+                        .describe("Remembers the number on every Ultrasequencer tile while the "
+                                + "round is shown, keeps it on the tile after the board hides it, "
+                                + "and highlights the tiles in number order, the next one bright."),
+                SettingRow.label("Keeps each tile's number after it is hidden and highlights the next one"),
+
+                SettingRow.toggle("Start Cue", () -> cfg().startCue,
+                        () -> { cfg().startCue = !cfg().startCue; save(); })
+                        .describe("Chronomatron and Ultrasequencer show their hints only once you "
+                                + "can click - while the game is still showing the pattern there is "
+                                + "nothing to press. With this on, the moment the timer clock appears "
+                                + "a \"GO\" shows in the title row and the board's frame flashes "
+                                + "briefly. Default: on."),
+                SettingRow.label("\"GO\" and a board flash when you can start clicking"),
 
                 SettingRow.toggle("Ultra: Order Brightness", () -> cfg().ultrasequencerOrderGradient,
                         () -> { cfg().ultrasequencerOrderGradient = !cfg().ultrasequencerOrderGradient; save(); })
@@ -100,10 +122,13 @@ public final class ExperimentationModule implements SbsModule {
 
                 SettingRow.toggle("Superpairs Helper", () -> cfg().superpairs,
                         () -> { cfg().superpairs = !cfg().superpairs; save(); })
-                        .describe("Keeps showing the icons you have already revealed in "
-                                + "Superpairs after they flip back over, so matching pairs is "
-                                + "memory-free."),
-                SettingRow.label("Keeps revealed icons shown after they flip back over"),
+                        .describe("Remembers every Superpairs card you have turned and shows it "
+                                + "again after it flips back. Outlines in green the card that "
+                                + "matches the one you just turned, or a pair you already know "
+                                + "both halves of. Cards that share a name but differ (a different "
+                                + "dye, another enchant) are never paired. Shows \"wait\" while "
+                                + "the board is resetting after a miss. Never blocks a click."),
+                SettingRow.label("Shows turned cards again and outlines known pairs"),
 
                 SettingRow.toggle("Block Misclicks", () -> cfg().blockMisclicks,
                         () -> { cfg().blockMisclicks = !cfg().blockMisclicks; save(); })
@@ -112,7 +137,7 @@ public final class ExperimentationModule implements SbsModule {
                                 + "It stands down the moment it is unsure: two refused clicks in "
                                 + "a row, or a board it has lost track of, and it stops blocking "
                                 + "for the rest of the round so you can always finish by hand. "
-                                + "Never active in Superpairs."),
+                                + "Never active in Superpairs. Default: off."),
                 SettingRow.label("Stops out-of-order clicks in Chronomatron / Ultrasequencer (never Superpairs)"),
                 SettingRow.label("Gives up after two refusals in a row - it never blocks you out"),
 
@@ -147,11 +172,6 @@ public final class ExperimentationModule implements SbsModule {
                 .describe("Added to the ping to get the lead. 250 ms is about the average simple "
                         + "visual reaction time of a young adult - an ESTIMATE, not measured on "
                         + "you. Lower it if the cue feels late, raise it if early."));
-        rows.add(SettingRow.segmented("Hit Row", List.of("Row 4", "Row 5", "Row 6"),
-                        () -> Math.max(0, Math.min(2, cfg().harpHitRow - 3)),
-                        i -> { cfg().harpHitRow = i + 3; save(); })
-                .describe("Which row of the board a click counts in, counted from the top. Row 5 "
-                        + "(the terracotta row) is the default but has not been confirmed in game."));
         rows.add(SettingRow.color("Harp Highlight Colour", () -> cfg().harpColorHex, () -> 0xFF5DE0A0,
                         () -> openPicker())
                 .describe("The colour of the cue and of the incoming notes' outlines."));
@@ -159,6 +179,38 @@ public final class ExperimentationModule implements SbsModule {
                         () -> { cfg().harpFlash = !cfg().harpFlash; save(); })
                 .describe("Writes NOW on the lit slot while the cue is on."));
         return rows;
+    }
+
+    /**
+     * A colour row over an ARGB int field: the shared colour row and picker speak RRGGBB hex, so
+     * the int is shown as hex and a picked hex is stored opaque; clearing it restores the default.
+     */
+    private static SettingRow chronoColorRow(String label, int position, java.util.function.IntSupplier get,
+                                             java.util.function.IntConsumer set, int fallback) {
+        java.util.function.Supplier<String> hex =
+                () -> String.format(java.util.Locale.ROOT, "%06X", get.getAsInt() & 0xFFFFFF);
+        return SettingRow.color(label, hex, () -> fallback, () -> {
+            net.minecraft.client.gui.screens.Screen previous =
+                    sbs.modid.client.core.api.GuiStateManager.getInstance().getCurrentScreen();
+            net.minecraft.client.Minecraft.getInstance().setScreenAndShow(
+                    new sbs.modid.client.ui.theme.ThemeColorPickerScreen("Chronomatron  •  " + position
+                            + (position >= 3 ? "+" : "") + ". button", hex.get(), value -> {
+                                set.accept(parseArgb(value, fallback));
+                                save();
+                            }, previous));
+        });
+    }
+
+    /** RRGGBB (optionally with a leading '#') to opaque ARGB, or {@code fallback} when blank/invalid. */
+    static int parseArgb(String hex, int fallback) {
+        if (hex == null) {
+            return fallback;
+        }
+        String s = hex.trim().replace("#", "");
+        if (!s.matches("[0-9A-Fa-f]{6}")) {
+            return fallback;
+        }
+        return 0xFF000000 | Integer.parseInt(s, 16);
     }
 
     private static void openPicker() {

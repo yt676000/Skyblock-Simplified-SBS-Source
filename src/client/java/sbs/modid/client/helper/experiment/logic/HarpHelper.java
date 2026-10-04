@@ -155,7 +155,7 @@ public final class HarpHelper {
         int left = bounds.skyblockSimplified$leftPos();
         int top = bounds.skyblockSimplified$topPos();
         int color = color();
-        int hitRow = Math.max(0, Math.min(HarpModel.ROWS - 1, cfg().harpHitRow));
+        int hitRow = HarpModel.HIT_ROW;
         int ping = pingMs();
         int reaction = cfg().harpReactionMs;
         long lead = HarpModel.leadMs(Math.max(0, ping), reaction);

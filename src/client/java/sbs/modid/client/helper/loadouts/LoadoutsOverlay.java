@@ -2601,7 +2601,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
     }
 
     /** Client-only fake entity id: never-spawned entities have none, but the renderer reads it. */
-    private static final int PREVIEW_ID = -0x5B5D;
+    private static final int PREVIEW_ID = PreviewEntities.LOADOUT_PLAYER_ID;
 
     /** (Re)creates the preview player: your profile (= your skin), silent, never added to the level. */
     private void ensurePreview(Minecraft minecraft) {

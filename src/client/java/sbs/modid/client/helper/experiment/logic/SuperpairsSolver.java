@@ -8,122 +8,81 @@
 
 package sbs.modid.client.helper.experiment.logic;
 
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * Superpairs (memory / pairs) helper.
+ * Superpairs, the Minecraft side: feeds {@link SuperpairsModel} and draws its answer. The model
+ * decides what is under each card, which are matched and what to turn next; see it for the
+ * confirmed board encoding.
  *
- * <p><b>Mechanic.</b> A grid of covered tiles; clicking one reveals a reward, and two matching reveals
- * stay up while a mismatch flips both back to the cover. The cover is the same item in almost every
- * tile, so the "cover" is simply the most common tile on the board; anything else is a revealed reward.
- *
- * <p><b>Approach.</b> Every reward seen at a slot is remembered, and while that slot is covered again the
- * remembered icon is ghosted back onto it - so once you have peeked a tile you keep seeing what is under
- * it and can find its pair. There is deliberately no misclick guard here (the user asked to leave it out
- * of Superpairs).
+ * <p>Every card seen is ghosted back onto its cover (faint outline), the card(s) to turn next get a
+ * bright outline, and during the "?" pause a "wait" label shows. Highlight only - no click is
+ * ever blocked here.
  */
 final class SuperpairsSolver {
 
-    private static final Pattern ROUND = Pattern.compile("\\((?:Round\\s*)?([0-9]+)");
+    private static final int REMEMBERED = 0x66FFE24B;
+    private static final int TURN_NEXT = 0xFF55FF55;
 
-    /** Slot -> the reward last revealed there. */
-    private final Map<Integer, ItemStack> revealed = new HashMap<>();
+    private final SuperpairsModel model = new SuperpairsModel();
 
-    private int round;
-    /** Registry path of the cover tile (the board's most common item). */
-    private String coverKey = "";
+    /** Slot -> a copy of the card last seen there, and the live stack it was copied from. */
+    private final Map<Integer, ItemStack> icons = new HashMap<>();
+    private final Map<Integer, ItemStack> iconSources = new HashMap<>();
 
     void reset() {
-        revealed.clear();
-        round = 0;
-        coverKey = "";
+        model.reset();
+        icons.clear();
+        iconSources.clear();
     }
 
-    void scan(AbstractContainerMenu menu, int upper, String title) {
-        int newRound = parseRound(title);
-        if (newRound > 0 && newRound != round) {
-            round = newRound;
-            revealed.clear();
-        }
-        coverKey = modalItem(menu, upper);
-        if (coverKey.isEmpty()) {
-            return;
-        }
-        for (int i = 0; i < upper; i++) {
-            ItemStack stack = menu.getSlot(i).getItem();
-            if (stack == null || stack.isEmpty() || ExperimentationTable.isFiller(stack)) {
+    void scan(AbstractContainerMenu menu, PlainItem[] board) {
+        model.onFrame(board);
+        for (int slot : model.memory().keySet()) {
+            if (!model.isRevealed(slot) || slot >= menu.slots.size()) {
                 continue;
             }
-            if (!key(stack).equals(coverKey)) {
-                revealed.put(i, stack.copyWithCount(1));   // a revealed reward (or a matched pair)
+            ItemStack live = menu.getSlot(slot).getItem();
+            if (iconSources.get(slot) != live) {
+                iconSources.put(slot, live);
+                icons.put(slot, live.copyWithCount(1));
             }
         }
     }
 
     void render(GuiGraphicsExtractor g, Font font, AbstractContainerMenu menu, int left, int top) {
-        if (coverKey.isEmpty()) {
-            return;
-        }
-        for (Map.Entry<Integer, ItemStack> entry : revealed.entrySet()) {
-            int idx = entry.getKey();
-            if (idx < 0 || idx >= menu.slots.size()) {
-                continue;
+        for (Map.Entry<Integer, ItemStack> entry : icons.entrySet()) {
+            int slot = entry.getKey();
+            if (slot >= menu.slots.size() || !model.board().contains(slot) || model.isRevealed(slot)
+                    || model.isMatched(slot)) {
+                continue;   // only ghost onto a card that is face down again
             }
-            ItemStack live = menu.getSlot(idx).getItem();
-            // Only ghost the memory back while the slot is covered again; a still-revealed / matched
-            // tile shows its real icon already.
-            if (live == null || live.isEmpty() || !key(live).equals(coverKey)) {
-                continue;
-            }
-            Slot slot = menu.getSlot(idx);
-            int x = left + slot.x;
-            int y = top + slot.y;
-            g.item(entry.getValue(), x, y);
-            ExperimentationTable.outline(g, x, y, 0x66FFE24B);   // faint marker: this is a remembered peek
+            Slot s = menu.getSlot(slot);
+            ExperimentationTable.ghost(g, entry.getValue(), left + s.x, top + s.y);
+            ExperimentationTable.outline(g, left + s.x, top + s.y, REMEMBERED);
         }
-    }
-
-    /** The most common item's registry path among the playable, non-filler tiles. */
-    private static String modalItem(AbstractContainerMenu menu, int upper) {
-        Map<String, Integer> counts = new HashMap<>();
-        for (int i = 0; i < upper; i++) {
-            ItemStack stack = menu.getSlot(i).getItem();
-            if (stack == null || stack.isEmpty() || ExperimentationTable.isFiller(stack)) {
-                continue;
-            }
-            counts.merge(key(stack), 1, Integer::sum);
-        }
-        String best = "";
-        int bestCount = 0;
-        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
-            if (entry.getValue() > bestCount) {
-                bestCount = entry.getValue();
-                best = entry.getKey();
+        for (int slot : model.suggestion()) {
+            if (slot < menu.slots.size()) {
+                Slot s = menu.getSlot(slot);
+                ExperimentationTable.outline(g, left + s.x, top + s.y, TURN_NEXT);
             }
         }
-        return best;
+        if (model.phase() == SuperpairsModel.Phase.WAIT) {
+            ExperimentationTable.titleLabel(g, font, left, top, "wait", 0xFFFFE24B);
+        } else if (model.phase() == SuperpairsModel.Phase.INSTANT) {
+            ExperimentationTable.titleLabel(g, font, left, top, "instant", 0xFF55FFFF);
+        }
     }
 
     String debug() {
-        return "round=" + round + " cover=" + coverKey + " revealed=" + revealed.size();
-    }
-
-    private static String key(ItemStack stack) {
-        return BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
-    }
-
-    private static int parseRound(String title) {
-        Matcher m = ROUND.matcher(title);
-        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+        return model.debug();
     }
 }

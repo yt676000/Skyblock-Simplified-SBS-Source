@@ -450,7 +450,7 @@ public final class ArmorSetsOverlay implements sbs.modid.client.core.config.Prof
     }
 
     /** Client-only fake entity id: the renderer reads one, and a never-spawned stand has none. */
-    private static final int PREVIEW_STAND_ID = -0x5B5E;
+    private static final int PREVIEW_STAND_ID = sbs.modid.client.helper.loadouts.PreviewEntities.ARMOR_STAND_ID;
 
     private void ensureStand(Minecraft minecraft) {
         if (minecraft.level == null) {

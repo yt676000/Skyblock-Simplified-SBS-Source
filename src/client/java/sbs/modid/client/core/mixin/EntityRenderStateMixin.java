@@ -19,7 +19,22 @@ import sbs.modid.client.helper.visual.model.EntityScaleKind;
  * here during extraction and reads it back when applying the per-axis entity scale.
  */
 @Mixin(EntityRenderState.class)
-public abstract class EntityRenderStateMixin implements EntityScaleKind {
+public abstract class EntityRenderStateMixin implements EntityScaleKind,
+        sbs.modid.client.helper.visual.transparency.OwnPlayerAlpha {
+
+    /** Own Player Transparency: the fade decided at extraction (255 = untouched). */
+    @Unique
+    private int sbs$ownAlpha = 255;
+
+    @Override
+    public int sbs$ownAlpha() {
+        return sbs$ownAlpha;
+    }
+
+    @Override
+    public void sbs$setOwnAlpha(int alpha) {
+        this.sbs$ownAlpha = alpha;
+    }
 
     @Unique
     private int sbs$scaleKind = KIND_OTHER_ENTITY;

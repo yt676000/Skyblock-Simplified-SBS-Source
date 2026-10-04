@@ -14,10 +14,14 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemLore;
+import sbs.modid.client.core.perf.Perf;
 import sbs.modid.client.social.chat.logic.SBSChat;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
@@ -25,25 +29,29 @@ import sbs.modid.client.core.api.GuiStateManager;
 import sbs.modid.client.ui.hud.logic.PetTracker;
 import sbs.modid.client.core.mixin.AbstractContainerScreenAccessor;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /**
  * Coordinator for the three Experimentation Table minigame helpers (Enchanting area):
  * <ul>
  *   <li><b>Chronomatron</b> - remembers the flashed colour sequence and highlights it back in order;
- *   <li><b>Ultrasequencer</b> - records the order the tiles were revealed in and counts them back;
- *   <li><b>Superpairs</b> - keeps revealed icons visible after they flip back over.
+ *   <li><b>Ultrasequencer</b> - remembers each dealt tile's number and highlights them back by number;
+ *   <li><b>Superpairs</b> - remembers every card seen, ghosts it back, and outlines known pairs.
  * </ul>
  *
- * <p>It is <b>read-only</b> against the real menu: it scans the open container each client tick (never
- * in render), draws its overlay through the shared {@code GuiGraphicsExtractor}, and - for Chronomatron
- * and Ultrasequencer only - can veto an out-of-order click so a slip never breaks the round. The logic
- * reads the board straight from the menu (the flashed slot carries the enchant glint; a sequencer tile
- * counts from the moment it is uncovered; a revealed pair is any non-cover item).
+ * <p>It is <b>read-only</b> against the real menu: once per client tick (never in render) the open
+ * container is reduced to plain {@link PlainItem}s and handed to one pure model per game
+ * ({@link ChronomatronModel}, {@link UltrasequencerModel}, {@link SuperpairsModel}); the solvers are
+ * thin adapters that draw the model's answer. The board is derived from the item pattern, never
+ * from slot ranges, since the tiers differ in board size. Nothing is ever clicked; the optional
+ * misclick guard (Chronomatron / Ultrasequencer only, default off) fails open.
  *
- * <p>The exact board encoding can only be confirmed in-game, so a throttled diagnostic line
- * ({@code [SBS][Experiment] ...}) reports what each solver currently sees - read the instance log if a
- * helper looks off.
+ * <p>The board encoding was confirmed from a Server Scanner recording (Metaphysical, 2026-10-04);
+ * the models' class comments carry the details, and the JSONL fixtures under
+ * {@code src/test/resources/experiment/} drive their tests. A throttled
+ * {@code [SBS][Experiment] ...} line reports what the active model currently holds.
  */
 public final class ExperimentationTable {
 
@@ -58,6 +66,7 @@ public final class ExperimentationTable {
 
     private Game game = Game.NONE;
     private Object lastScreen;
+    private final ExperimentSession session = new ExperimentSession();
     private long lastAlertAt;
     private long lastDebugAt;
 
@@ -81,8 +90,12 @@ public final class ExperimentationTable {
      * Hypixel spaces them inconsistently ("Ultra Sequencer", "Super Pairs"), so the title is reduced
      * to bare letters before matching.
      */
-    private static Game gameOf(String title) {
+    static Game gameOf(String title) {
         String norm = title.toLowerCase(Locale.ROOT).replaceAll("[^a-z]", "");
+        // "<Game> ➜ Stakes" and "Superpairs Rewards" name a game but are not its board.
+        if (norm.contains("stakes") || norm.contains("rewards")) {
+            return Game.NONE;
+        }
         if (norm.contains("chronomatron")) {
             return Game.CHRONOMATRON;
         }
@@ -115,16 +128,20 @@ public final class ExperimentationTable {
     }
 
     // ------------------------------------------------------------------
-    // Screen change: reset + the Guardian-pet alert
+    // Screen change: the title log + the Guardian-pet alert (never a reset - see ExperimentSession)
     // ------------------------------------------------------------------
 
-    /** Reset the solvers + fire the Guardian alert whenever the active screen changes. */
-    private void onScreenChanged(Screen screen) {
-        lastScreen = screen;
+    /** Drops every solver's memory, logging why once - the cause a future report needs. */
+    private void resetSolvers(String reason) {
         chronomatron.reset();
         ultrasequencer.reset();
         superpairs.reset();
-        game = Game.NONE;
+        sbs.modid.SkyblockSimplifiedSBS.LOGGER.info("[SBS][Experiment] reset reason={}", reason);
+    }
+
+    /** Fires the title log and the Guardian alert when the active screen object changes. */
+    private void onScreenChanged(Screen screen) {
+        lastScreen = screen;
         String title = titleOf(screen);
         if (screen != null && looksExperimentish(title)) {
             // Surface the exact title once per open - if a helper still does nothing, this line in
@@ -146,7 +163,7 @@ public final class ExperimentationTable {
         boolean guardian = pet.hasPet() && pet.name().toLowerCase(Locale.ROOT).contains("guardian");
         if (!guardian) {
             lastAlertAt = now;
-            SBSChat.send(net.minecraft.network.chat.Component.literal(
+            SBSChat.send(Component.literal(
                             " No Guardian pet equipped - Experimentation XP is much lower without it.")
                     .withColor(0xFFE0605F));
         }
@@ -160,6 +177,10 @@ public final class ExperimentationTable {
         if (minecraft == null || !cfg().enabled) {
             game = Game.NONE;
             lastScreen = null;   // so toggling the module back on re-detects the open screen
+            String reason = session.tick(-1, Game.NONE, "", Long.MAX_VALUE / 2);
+            if (reason != null) {
+                resetSolvers(reason);
+            }
             return;
         }
         Screen screen = GuiStateManager.getInstance().getCurrentScreen();
@@ -168,31 +189,33 @@ public final class ExperimentationTable {
         if (screen != lastScreen) {
             onScreenChanged(screen);
         }
-        if (!(screen instanceof AbstractContainerScreen<?> container)) {
-            game = Game.NONE;
+        long now = System.currentTimeMillis();
+        String title = titleOf(screen);
+        game = screen instanceof AbstractContainerScreen<?> ? gameOf(title) : Game.NONE;
+        AbstractContainerMenu menu = screen instanceof AbstractContainerScreen<?> container ? container.getMenu() : null;
+        String reason = session.tick(menu == null ? -1 : menu.containerId, game, ExperimentSession.tierOf(title), now);
+        if (reason != null) {
+            resetSolvers(reason);
+        }
+        if (menu == null || game == Game.NONE) {
             return;
         }
-        String title = titleOf(screen);
-        game = gameOf(title);
-        AbstractContainerMenu menu = container.getMenu();
-        int upper = Math.max(0, menu.getItems().size() - 36);
-        switch (game) {
-            case CHRONOMATRON -> {
-                if (cfg().chronomatron) {
-                    chronomatron.scan(menu, upper, title);
+        boolean active = switch (game) {
+            case CHRONOMATRON -> cfg().chronomatron;
+            case ULTRASEQUENCER -> cfg().ultrasequencer;
+            case SUPERPAIRS -> cfg().superpairs;
+            default -> false;
+        };
+        if (active) {
+            try (Perf.Section perf = Perf.tick("experiment.scan")) {
+                PlainItem[] board = board(menu);
+                switch (game) {
+                    case CHRONOMATRON -> chronomatron.scan(board, now);
+                    case ULTRASEQUENCER -> ultrasequencer.scan(menu, board);
+                    case SUPERPAIRS -> superpairs.scan(menu, board);
+                    default -> { }
                 }
             }
-            case ULTRASEQUENCER -> {
-                if (cfg().ultrasequencer) {
-                    ultrasequencer.scan(menu, upper, title);
-                }
-            }
-            case SUPERPAIRS -> {
-                if (cfg().superpairs) {
-                    superpairs.scan(menu, upper, title);
-                }
-            }
-            default -> { }
         }
         diagnostic();
     }
@@ -229,6 +252,9 @@ public final class ExperimentationTable {
         int top = bounds.skyblockSimplified$topPos();
         Font font = Minecraft.getInstance().font;
         AbstractContainerMenu menu = screen.getMenu();
+        // Lift the overlay above the slots' own items: in the same stratum a ghost item can land
+        // UNDER the cover item it is drawn over, leaving only its outline visible.
+        g.nextStratum();
         switch (game) {
             case CHRONOMATRON -> {
                 if (cfg().chronomatron) {
@@ -277,21 +303,52 @@ public final class ExperimentationTable {
         if (index < 0 || index >= upper) {
             return false;   // player inventory / outside the board is always free
         }
-        boolean allowed = chrono ? chronomatron.allowsClick(index) : ultrasequencer.allowsClick(index);
-        if (allowed) {
-            if (chrono) {
-                chronomatron.onClick(index);
-            } else {
-                ultrasequencer.onClick(index);
-            }
-            return false;   // correct click: let it through
+        // With the guard off the models only track the click: no veto, no valve, no stand-down.
+        if (cfg().blockMisclicks
+                && !(chrono ? chronomatron.allowsClick(index) : ultrasequencer.allowsClick(index))) {
+            return true;    // wrong slot, guard on: veto (the valve lets the second refusal through)
         }
-        return cfg().blockMisclicks;   // wrong slot: veto only when the guard is on
+        if (chrono) {
+            chronomatron.onClick(index);
+        } else {
+            ultrasequencer.onClick(index);
+        }
+        return false;
     }
 
     // ------------------------------------------------------------------
     // Shared helpers for the solvers
     // ------------------------------------------------------------------
+
+    /** The menu's own slots (the player inventory excluded) as plain items, {@code null} = empty. */
+    static PlainItem[] board(AbstractContainerMenu menu) {
+        int size = Math.max(0, Math.min(menu.slots.size(), menu.getItems().size() - 36));
+        PlainItem[] board = new PlainItem[size];
+        for (int i = 0; i < size; i++) {
+            board[i] = plain(menu.getSlot(i).getItem());
+        }
+        return board;
+    }
+
+    /** One stack as a {@link PlainItem}, or {@code null} for an empty slot. */
+    static PlainItem plain(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        ItemLore lore = stack.get(DataComponents.LORE);
+        List<String> lines = new ArrayList<>();
+        if (lore != null) {
+            for (Component line : lore.lines()) {
+                lines.add(strip(line.getString()));
+            }
+        }
+        return new PlainItem(BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath(),
+                strip(stack.getHoverName().getString()), stack.getCount(), stack.hasFoil(), lines);
+    }
+
+    private static String strip(String text) {
+        return text == null ? "" : text.replaceAll("§.", "").trim();
+    }
 
     /** Border chrome that is never a playable tile: glass panes and empty slots. */
     static boolean isFiller(ItemStack stack) {
@@ -299,6 +356,69 @@ public final class ExperimentationTable {
             return true;
         }
         return BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath().contains("glass_pane");
+    }
+
+    /**
+     * A remembered item drawn over its cover: a dark backing first, so it reads as "remembered",
+     * not as a real face-up card. Relies on the stratum lift in {@link #render}.
+     */
+    static void ghost(GuiGraphicsExtractor g, ItemStack icon, int x, int y) {
+        g.fill(x, y, x + 16, y + 16, 0xD0101018);
+        g.item(icon, x, y);
+    }
+
+    /** The chest screen's width, for labels at the right end of the title row. */
+    static final int SCREEN_WIDTH = 176;
+
+    /** A short label at the right end of the title row ("GO", "wait"). */
+    static void titleLabel(GuiGraphicsExtractor g, Font font, int left, int top, String text, int color) {
+        Component label = Component.literal(text);
+        g.text(font, label, left + SCREEN_WIDTH - 8 - font.width(label), top + 6, color);
+    }
+
+    /** A 2px frame around the given slots (the board), for the start cue's flash. */
+    static void frameAround(GuiGraphicsExtractor g, AbstractContainerMenu menu, Iterable<Integer> slots,
+                            int left, int top, int color) {
+        int x0 = Integer.MAX_VALUE;
+        int y0 = Integer.MAX_VALUE;
+        int x1 = Integer.MIN_VALUE;
+        int y1 = Integer.MIN_VALUE;
+        for (int index : slots) {
+            if (index < 0 || index >= menu.slots.size()) {
+                continue;
+            }
+            Slot s = menu.getSlot(index);
+            x0 = Math.min(x0, s.x);
+            y0 = Math.min(y0, s.y);
+            x1 = Math.max(x1, s.x + 16);
+            y1 = Math.max(y1, s.y + 16);
+        }
+        if (x0 > x1) {
+            return;
+        }
+        x0 += left - 2;
+        y0 += top - 2;
+        x1 += left + 2;
+        y1 += top + 2;
+        g.fill(x0, y0, x1, y0 + 2, color);
+        g.fill(x0, y1 - 2, x1, y1, color);
+        g.fill(x0, y0, x0 + 2, y1, color);
+        g.fill(x1 - 2, y0, x1, y1, color);
+    }
+
+    /** Draws the start cue while it runs: "GO" in the title row and, briefly, a flash of the board frame. */
+    static void startCue(GuiGraphicsExtractor g, Font font, AbstractContainerMenu menu, Iterable<Integer> board,
+                         StartCue cue, int left, int top) {
+        if (!cfg().startCue) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (cue.labelShowing(now)) {
+            titleLabel(g, font, left, top, "GO", 0xFF55FF55);
+        }
+        if (cue.flashShowing(now)) {
+            frameAround(g, menu, board, left, top, 0xFF55FF55);
+        }
     }
 
     /** Screen-space rectangle helper: draws a 2px accent outline hugging a 16px slot. */

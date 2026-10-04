@@ -144,6 +144,52 @@ public final class LayoutSignature {
         return replacePlayers(stripCodes(text), players);
     }
 
+    /**
+     * {@link #redactPlayers} for text that keeps its {@code §} codes: the same names become
+     * {@link #PLAYER}, the codes around them stay. Names are the given players plus every name the
+     * rank rule finds in the plain text. A whole tab player row becomes {@link #PLAYER}, as there.
+     *
+     * <p>A name can be split by a code ({@code §bNa§cme}) and then survives a plain replace. When any
+     * collected name is still in the result once its codes are stripped, the plain redacted text is
+     * returned instead: the codes are lost, the name never leaks.
+     */
+    public static String redactPlayersKeepCodes(String text, Collection<String> players) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        String plain = stripCodes(text);
+        if (LEVELLED_NAME.matcher(plain.trim()).matches()) {
+            return PLAYER;
+        }
+        Set<String> names = new java.util.LinkedHashSet<>();
+        if (players != null) {
+            for (String name : players) {
+                if (name != null && name.length() >= 2) {
+                    names.add(name);
+                }
+            }
+        }
+        Matcher ranked = RANKED_NAME.matcher(plain);
+        while (ranked.find()) {
+            String match = ranked.group();
+            names.add(match.substring(match.lastIndexOf(' ') + 1));
+        }
+        String out = text;
+        for (String name : names) {
+            // The letter of a code right before a name ("§aName") is not part of a longer word.
+            out = out.replaceAll("(?i)(?<!(?<!§)[A-Za-z0-9_])" + Pattern.quote(name) + "(?![A-Za-z0-9_])",
+                    Matcher.quoteReplacement(PLAYER));
+        }
+        String check = stripCodes(out);
+        for (String name : names) {
+            if (Pattern.compile("(?i)(?<![A-Za-z0-9_])" + Pattern.quote(name) + "(?![A-Za-z0-9_])")
+                    .matcher(check).find()) {
+                return redactPlayers(text, players);
+            }
+        }
+        return out;
+    }
+
     private static String replacePlayers(String s, Collection<String> players) {
         if (LEVELLED_NAME.matcher(s).matches()) {
             return PLAYER;   // a whole tab player row: level, name, emblems - all of it is the player

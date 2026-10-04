@@ -99,6 +99,15 @@ public final class LayoutRecorder {
         return text == null ? "" : LayoutSignature.redactPlayers(text, INSTANCE.players());
     }
 
+    /**
+     * The names {@link #redactText} replaces - tab-list players plus your own - refreshed at most
+     * every few seconds. Shared with the Server Scanner so both captures redact the same names.
+     * Client thread only.
+     */
+    public static Set<String> knownPlayers() {
+        return INSTANCE.players();
+    }
+
     private LayoutStore store() {
         if (store == null) {
             store = new LayoutStore();

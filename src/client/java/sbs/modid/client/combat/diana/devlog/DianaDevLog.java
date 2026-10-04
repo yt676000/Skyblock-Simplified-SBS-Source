@@ -45,6 +45,7 @@ import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import sbs.modid.SkyblockSimplifiedSBS;
+import sbs.modid.client.core.dev.DevLogText;
 import sbs.modid.client.combat.diana.devlog.DevLogEvent.Pos;
 import sbs.modid.client.combat.diana.devlog.DevLogEvents.DataEntry;
 import sbs.modid.client.combat.diana.devlog.DevLogEvents.EquipmentEntry;
