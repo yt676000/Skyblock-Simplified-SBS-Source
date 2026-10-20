@@ -17,8 +17,10 @@ SBS only displays information and improves menus and UI. It never automates game
 - The backend is closed source; this repository contains the full client source.
 
 ## Building
+```
 ./gradlew build
-The built jar is located in build/libs.
+```
+The built jar is located in `build/libs`.
 
 ## License
 GPL-3.0 with an additional permission to link with Minecraft and Minecraft mods. See LICENSE.
