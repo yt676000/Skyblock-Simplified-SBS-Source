@@ -9,11 +9,16 @@ SBS only displays information and improves menus and UI. It never automates game
 - Website: https://skyblocksimplified.de
 - Discord: support, sneak peeks and the Mod Tester Program
 
+## Free and premium features
+- Free forever: all client-side features and selected server features, including the profile viewer (from v1.0.0-beta.13).
+- Optional premium tier (planned, not available yet): flip calculations and price analytics based on our own historical price index, plus purely visual supporter cosmetics.
+
 ## Architecture & Hypixel API usage
-- The mod itself never contains or uses a Hypixel API key, and players never enter their own key.
-- Features that need the API (e.g. the profile viewer) talk to our own backend, which is the only place the key is used. The backend serves processed data to SBS only and is not a public proxy.
-- Profile lookups are cached for 5 minutes on our server and on the client.
-- Auction and Bazaar data comes from Hypixel's public, keyless endpoints and is fetched once per API update.
+- The mod never contains or uses a Hypixel API key, and players never enter one.
+- Users authenticate with SBS licence tokens issued by us. These tokens only work against our own backend and are not Hypixel keys.
+- Features that need the Hypixel API (profile viewer, party finder requirement checks) talk to our backend, which is the only place our Hypixel key is used. The backend returns processed data to SBS only, with per-token rate limits, and is not a public proxy.
+- Profile lookups are cached for 15 minutes on our server, name lookups for 6 hours.
+- Auction, Bazaar and resource data comes from Hypixel's public, keyless endpoints and is fetched once per API update.
 - The backend is closed source; this repository contains the full client source.
 
 ## Building
@@ -23,8 +28,10 @@ SBS only displays information and improves menus and UI. It never automates game
 The built jar is located in `build/libs`.
 
 ## License
+Copyright (C) 2026 CodeCreative GbR
+
 GPL-3.0 with an additional permission to link with Minecraft and Minecraft mods. See LICENSE.
 
 ## Disclaimer
 Skyblock Simplified is not affiliated with or endorsed by Hypixel Inc., Mojang or Microsoft.
-Developed by CodeCreative (IGN: Panikstrange).
+Developed by CodeCreative GbR (IGN: Panikstrange).
