@@ -8,10 +8,8 @@
 
 package sbs.modid.client.economy.pricehistory.logic;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
+import sbs.modid.client.core.item.ItemAnalysis;
 import sbs.modid.client.core.item.SkyblockItem;
 
 import java.util.ArrayList;
@@ -36,41 +34,12 @@ public final class PriceLookup {
     private PriceLookup() {
     }
 
-    /** Ordered, de-duplicated API-id candidates for the stack (empty for empty stacks). */
+    /**
+     * Ordered, de-duplicated API-id candidates for the stack (empty for empty stacks). Immutable;
+     * computed once per item by {@link ItemAnalysis}, which owns the pet, book and rune forms.
+     */
     public static List<String> candidatesFor(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return List.of();
-        }
-        LinkedHashSet<String> candidates = new LinkedHashSet<>();
-        CompoundTag extra = extraAttributes(stack);
-        String id = extra.getStringOr("id", "").toUpperCase(Locale.ROOT);
-        switch (id) {
-            case "PET" -> {
-                String type = petType(extra);
-                if (type == null || type.isEmpty()) {
-                    type = SkyblockItem.normalizeName(stack.getHoverName().getString());
-                }
-                if (!type.isEmpty()) {
-                    candidates.add("PET_" + type.toUpperCase(Locale.ROOT));
-                }
-            }
-            case "ENCHANTED_BOOK" -> {
-                String book = singleEntryId(extra.getCompoundOrEmpty("enchantments"), "ENCHANTED_BOOK_");
-                if (book != null) {
-                    candidates.add(book);
-                }
-            }
-            case "RUNE", "UNIQUE_RUNE" -> {
-                String rune = singleEntryId(extra.getCompoundOrEmpty("runes"), "RUNE_");
-                if (rune != null) {
-                    candidates.add(rune);
-                }
-            }
-            default -> {
-            }
-        }
-        candidates.addAll(SkyblockItem.priceLookupCandidates(stack));
-        return new ArrayList<>(candidates);
+        return ItemAnalysis.of(stack).priceKeys();
     }
 
     /** API-id candidates for a Recipe Viewer item reference (catalogue id first, then its name). */
@@ -88,38 +57,5 @@ public final class PriceLookup {
             candidates.add(normalized);
         }
         return new ArrayList<>(candidates);
-    }
-
-    /** Delegates to the shared reader, which also understands the modern flattened custom data. */
-    private static CompoundTag extraAttributes(ItemStack stack) {
-        return SkyblockItem.extraAttributes(stack);
-    }
-
-    /** The {@code "type"} of the {@code petInfo} JSON string ("ENDER_DRAGON"), or {@code null}. */
-    private static String petType(CompoundTag extra) {
-        String petInfo = extra.getStringOr("petInfo", "");
-        if (petInfo.isEmpty()) {
-            return null;
-        }
-        try {
-            JsonObject info = JsonParser.parseString(petInfo).getAsJsonObject();
-            return info.has("type") ? info.get("type").getAsString() : null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * Composes {@code prefix + NAME + "_" + level} from a one-entry compound like
-     * {@code enchantments: {ultimate_legion: 5}} / {@code runes: {MUSIC: 3}}, or {@code null}.
-     */
-    private static String singleEntryId(CompoundTag compound, String prefix) {
-        for (String key : compound.keySet()) {
-            int level = compound.getIntOr(key, 0);
-            if (level > 0) {
-                return prefix + key.toUpperCase(Locale.ROOT) + "_" + level;
-            }
-        }
-        return null;
     }
 }

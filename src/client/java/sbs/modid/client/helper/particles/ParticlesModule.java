@@ -111,6 +111,45 @@ public final class ParticlesModule implements SbsModule {
                         () -> ParticlePresets.apply(ParticlePreset.ALL))
                         .describe("Clears the whole selection - every particle type renders again. "
                                 + "The same as picking the All preset, so your hand-made list is "
-                                + "parked rather than lost: Custom brings it back."));
+                                + "parked rather than lost: Custom brings it back."),
+                SettingRow.toggle("Limit particle spam", () -> cfg().limitSpam,
+                        () -> { cfg().limitSpam = !cfg().limitSpam; saveLimiter(); })
+                        .describe("Caps how many particles of the noisiest types may spawn per tick "
+                                + "(Hyperion explosions, crit storms, fireworks, block-break dust). "
+                                + "Particles SBS features read - Diana burrows, spade trail and "
+                                + "arrows, treasure chest lockpicks, Precision Mining - are never "
+                                + "capped. Independent of the Particles switch above."),
+                SettingRow.rangeSlider("Explosions per tick", 0, 64, () -> cfg().capExplosion,
+                        v -> { cfg().capExplosion = v; saveLimiter(); }, ""),
+                SettingRow.rangeSlider("Crits per tick", 0, 200, () -> cfg().capCrit,
+                        v -> { cfg().capCrit = v; saveLimiter(); }, ""),
+                SettingRow.rangeSlider("Fireworks per tick", 0, 200, () -> cfg().capFirework,
+                        v -> { cfg().capFirework = v; saveLimiter(); }, ""),
+                SettingRow.rangeSlider("Block breaks per tick", 0, 32, () -> cfg().capBlockBreak,
+                        v -> { cfg().capBlockBreak = v; saveLimiter(); }, "")
+                        .describe("Broken blocks whose dust burst is drawn per tick; the rest break "
+                                + "without dust."),
+                SettingRow.text("Never limit", "crit, firework", 200,
+                        () -> String.join(", ", cfg().neverLimit),
+                        ParticlesModule::setNeverLimit)
+                        .describe("Comma-separated particle ids the limiter must never cap, e.g. "
+                                + "\"crit, explosion\". \"block\" exempts block-break dust."));
+    }
+
+    private static void saveLimiter() {
+        ConfigManager.getInstance().save();
+        ParticleLimiter.invalidate();
+    }
+
+    private static void setNeverLimit(String text) {
+        java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+        for (String part : text.split(",")) {
+            String id = part.trim().toLowerCase(java.util.Locale.ROOT);
+            if (!id.isEmpty()) {
+                ids.add(id);
+            }
+        }
+        cfg().neverLimit = ids;
+        saveLimiter();
     }
 }

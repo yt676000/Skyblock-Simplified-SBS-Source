@@ -14,6 +14,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import sbs.modid.client.core.entity.NameClass;
 import sbs.modid.client.core.util.PlainText;
 import sbs.modid.client.helper.map.logic.MapDatabase;
 import sbs.modid.client.helper.map.model.IslandMap;
@@ -23,6 +24,7 @@ import sbs.modid.client.skills.mining.model.CommissionTarget;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Turns a commission's name into somewhere to walk.
@@ -45,6 +47,11 @@ import java.util.Locale;
  * position is whatever was nearest on the last scan and is expected to change.
  */
 public final class CommissionTargets {
+
+    private static final Pattern NON_WORD_CHARS = Pattern.compile("[^a-z0-9 ]");
+    /** The ownerless pet label's level prefix, {@code [Lvl 100]}, as logged 135 times in one session. */
+    private static final Pattern PET_LABEL = Pattern.compile("\\s*\\[Lvl \\d+]");
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
     /** How far to look for a named mob. Beyond this the answer is "none nearby", not "no such mob". */
     private static final double MOB_RADIUS = 64.0;
@@ -187,10 +194,23 @@ public final class CommissionTargets {
      * talking about. Falling back to the vanilla type name would match a commission naming a real mob
      * against every ordinary zombie in the tunnel, which is a confident wrong answer rather than a
      * missing one.
+     *
+     * <p><b>Pets are not mobs.</b> A pet's label shares words with material commissions, so
+     * "Mithril Miner" would route to the nearest Mithril Golem pet. {@link NameClass#PET} covers the
+     * owned form ("[Lv100] Someone's Golden Dragon"); the ownerless {@code [Lvl 100] Mithril Golem}
+     * seen in player logs classifies as PLAIN there, so it is caught by its {@code [Lvl N]} prefix.
      */
     private static String displayName(Entity entity) {
-        return entity.hasCustomName() && entity.getCustomName() != null
-                ? normalise(entity.getCustomName().getString()) : "";
+        if (!entity.hasCustomName() || entity.getCustomName() == null) {
+            return "";
+        }
+        String raw = PlainText.strip(entity.getCustomName().getString());
+        return isPetLabel(raw) ? "" : normalise(raw);
+    }
+
+    /** Whether a plain nametag is a pet's label rather than a mob's. */
+    static boolean isPetLabel(String plain) {
+        return NameClass.classify(plain) == NameClass.PET || PET_LABEL.matcher(plain).lookingAt();
     }
 
     // ------------------------------------------------------------------ materials
@@ -285,10 +305,10 @@ public final class CommissionTargets {
 
     /** Lower case, punctuation dropped, single-spaced - the form both sides of a match are in. */
     private static String normalise(String raw) {
-        return PlainText.strip(raw == null ? "" : raw)
-                .toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9 ]", " ")
-                .replaceAll("\\s+", " ")
+        String lower = PlainText.strip(raw == null ? "" : raw)
+                .toLowerCase(Locale.ROOT);
+        String spaced = NON_WORD_CHARS.matcher(lower).replaceAll(" ");
+        return WHITESPACE.matcher(spaced).replaceAll(" ")
                 .trim();
     }
 }

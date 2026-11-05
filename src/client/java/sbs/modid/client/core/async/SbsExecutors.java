@@ -9,6 +9,8 @@
 package sbs.modid.client.core.async;
 
 import sbs.modid.SkyblockSimplifiedSBS;
+import sbs.modid.client.core.perf.Perf;
+import sbs.modid.client.core.world.WorldTransitions;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -18,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -105,6 +108,33 @@ public final class SbsExecutors {
             }
             main.execute(() -> apply.accept(result));
         });
+    }
+
+    /**
+     * Runs {@code apply} only if no world transition happened since {@code generation} was captured
+     * from {@link WorldTransitions#generation()} - the guard for a result that belongs to one world
+     * (markers, trackers, HUD data, an edit planned against the level). A stale result is dropped,
+     * counted ({@link Perf#staleDrops()}) and logged. Call it on the main thread, inside the callback
+     * that applies the result. Pure caches (prices, the item catalogue) do not need it.
+     *
+     * @param what names the work in the drop log line
+     * @return whether {@code apply} ran
+     */
+    public static boolean applyIfCurrent(long generation, String what, Runnable apply) {
+        return applyIfCurrent(generation, what, apply, WorldTransitions::generation);
+    }
+
+    /** {@link #applyIfCurrent} with the current generation given - the testable form. */
+    static boolean applyIfCurrent(long generation, String what, Runnable apply, LongSupplier current) {
+        long now = current.getAsLong();
+        if (now != generation) {
+            Perf.countStaleDrop();
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Async] dropped stale {} (world generation {} -> {})",
+                    what, generation, now);
+            return false;
+        }
+        apply.run();
+        return true;
     }
 
     private static ThreadFactory factory(String name, int priority) {

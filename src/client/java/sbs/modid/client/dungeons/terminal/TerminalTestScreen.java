@@ -17,6 +17,8 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import sbs.modid.client.dungeons.terminal.TerminalSolutions.Hint;
+import sbs.modid.client.ui.render.ActionMarks;
+import sbs.modid.client.ui.render.MarkKind;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
 
@@ -203,14 +205,19 @@ public final class TerminalTestScreen extends Screen {
                 }
             }
             for (Map.Entry<Integer, Hint> entry : result.hints().entrySet()) {
-                mark(g, font, x, y, entry.getKey(), entry.getValue().color(), entry.getValue().label());
+                int slot = entry.getKey();
+                int sx = x + (slot % COLUMNS) * CELL;
+                int sy = y + (slot / COLUMNS) * CELL;
+                MarkKind kind = TerminalMarks.kindOf(entry.getValue());
+                ActionMarks.cell(g, sx - 1, sy - 1, 18, kind);
+                ActionMarks.badge(g, font, sx - 1, sy - 1, 18, 18, entry.getValue().label(), kind);
             }
             for (Integer slot : result.expected().keySet()) {
                 if (!result.hints().containsKey(slot)) {
                     mark(g, font, x, y, slot, MISSED, "?");   // expected, but the solver said nothing
                 }
             }
-            g.text(font, Component.literal("§8green = solver · red = missed"),
+            g.text(font, Component.literal("§8filled / ring = solver · red ? = missed"),
                     x, y + rows * CELL + 2, SBSTheme.TEXT_MUTED);
         }
 
@@ -218,7 +225,7 @@ public final class TerminalTestScreen extends Screen {
                           int color, String label) {
             int sx = originX + (slot % COLUMNS) * CELL;
             int sy = originY + (slot / COLUMNS) * CELL;
-            TerminalSolver.outline(g, sx, sy, color);
+            SciFiRender.ring(g, sx - 1, sy - 1, 18, 18, 3, color);
             if (label != null && !label.isEmpty()) {
                 g.text(font, Component.literal(label), sx + 15 - font.width(label), sy + 8, color);
             }

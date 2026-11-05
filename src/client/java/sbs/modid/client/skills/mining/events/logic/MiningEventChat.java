@@ -130,6 +130,11 @@ public final class MiningEventChat {
         return null;
     }
 
+    /** Whether a header is waiting for its subtitle - then the next line matters, matching or not. */
+    public boolean hasPending() {
+        return pendingName != null || pendingType != null;
+    }
+
     /** Forgets a header waiting for its subtitle - on a world change. */
     public void reset() {
         pendingName = null;

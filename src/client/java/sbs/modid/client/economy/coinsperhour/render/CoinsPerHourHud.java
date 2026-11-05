@@ -11,7 +11,6 @@ package sbs.modid.client.economy.coinsperhour.render;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.network.chat.Component;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig.CoinsPerHourSettings;
 import sbs.modid.client.core.util.NumberDisplay;
@@ -40,6 +39,19 @@ public final class CoinsPerHourHud {
     private static final int GAIN = 0xFF57D977;
     private static final int LOSS = 0xFFFF6060;
 
+    /**
+     * The card as last built. Rebuilt only when its key below moves: a booked figure, the active /
+     * idle flag, a setting, or the one-second clock the active time and the hourly rate read.
+     * Render thread only.
+     */
+    private static HudCard.Snapshot card;
+    private static int builtLedger = -1;
+    private static long builtSecond = -1;
+    private static boolean builtActive;
+    private static boolean builtBazaarClaims;
+    private static boolean builtAuctionClaims;
+    private static boolean builtBreakdown;
+
     private CoinsPerHourHud() {
     }
 
@@ -56,9 +68,44 @@ public final class CoinsPerHourHud {
             return;
         }
         long now = System.currentTimeMillis();
+        int version = ledger.version();
+        long second = now / 1000L;
+        boolean active = ledger.active(now, tracker.idleMs());
+        if (card == null || version != builtLedger || second != builtSecond || active != builtActive
+                || cfg.bazaarClaimsEarn != builtBazaarClaims || cfg.auctionClaimsEarn != builtAuctionClaims
+                || cfg.showBreakdown != builtBreakdown) {
+            builtLedger = version;
+            builtSecond = second;
+            builtActive = active;
+            builtBazaarClaims = cfg.bazaarClaimsEarn;
+            builtAuctionClaims = cfg.auctionClaimsEarn;
+            builtBreakdown = cfg.showBreakdown;
+            card = build(ledger, cfg, active);
+        }
+        HudCard.Snapshot current = card;
+
+        Font font = Minecraft.getInstance().font;
+        int lineH = font.lineHeight + 2;
+        HudElement.Bounds b = HudElement.COINS_PER_HOUR.defaultBounds(g.guiWidth(), g.guiHeight());
+        int x = Math.round(b.x());
+        int y = Math.round(b.y());
+        HudLayout.measure(HudElement.COINS_PER_HOUR, x, y, current.width(), current.height());
+
+        HudLayout.begin(g, HudElement.COINS_PER_HOUR);
+        HudCard.draw(g, x, y, current.width(), current.height());
+        int ix = x + PAD;
+        int right = x + current.width() - PAD;
+        int iy = y + PAD;
+        for (HudCard.Line line : current.rows()) {
+            HudCard.drawLine(g, font, line, ix, right, iy);
+            iy += lineH;
+        }
+        HudLayout.end(g);
+    }
+
+    private static HudCard.Snapshot build(CoinLedger ledger, CoinsPerHourSettings cfg, boolean active) {
         long earned = ledger.earned(cfg.bazaarClaimsEarn, cfg.auctionClaimsEarn);
         long rate = ledger.perHour(earned);
-        boolean active = ledger.active(now, tracker.idleMs());
 
         List<Row> rows = new ArrayList<>();
         rows.add(new Row("Per hour", rate > 0 ? NumberDisplay.format(rate) : "-", GAIN));
@@ -85,32 +132,17 @@ public final class CoinsPerHourHud {
 
         Font font = Minecraft.getInstance().font;
         int lineH = font.lineHeight + 2;
-        String header = "Coins per Hour";
-        int contentW = font.width(header);
+        List<HudCard.Line> lines = new ArrayList<>(rows.size() + 1);
+        lines.add(HudCard.Line.of(font, "Coins per Hour", SBSTheme.ACCENT_BRIGHT));
+        int contentW = lines.get(0).leftWidth();
         for (Row row : rows) {
-            contentW = Math.max(contentW, font.width(row.label()) + 12 + font.width(row.value()));
+            HudCard.Line line = HudCard.Line.of(font, row.label(), SBSTheme.TEXT_MUTED, row.value(), row.colour());
+            lines.add(line);
+            contentW = Math.max(contentW, line.width(12));
         }
         int width = Math.max(MIN_WIDTH, contentW + PAD * 2);
-        int height = PAD * 2 + lineH * (1 + rows.size()) - 2;
-        HudElement.Bounds b = HudElement.COINS_PER_HOUR.defaultBounds(g.guiWidth(), g.guiHeight());
-        int x = Math.round(b.x());
-        int y = Math.round(b.y());
-        HudLayout.measure(HudElement.COINS_PER_HOUR, x, y, width, height);
-
-        HudLayout.begin(g, HudElement.COINS_PER_HOUR);
-        HudCard.draw(g, x, y, width, height);
-        int ix = x + PAD;
-        int right = x + width - PAD;
-        int iy = y + PAD;
-        g.text(font, Component.literal(header), ix, iy, SBSTheme.ACCENT_BRIGHT);
-        iy += lineH;
-        for (Row row : rows) {
-            g.text(font, Component.literal(row.label()), ix, iy, SBSTheme.TEXT_MUTED);
-            g.text(font, Component.literal(row.value()), right - font.width(row.value()), iy,
-                    row.colour());
-            iy += lineH;
-        }
-        HudLayout.end(g);
+        int height = PAD * 2 + lineH * lines.size() - 2;
+        return new HudCard.Snapshot(List.copyOf(lines), width, height, null);
     }
 
     private record Row(String label, String value, int colour) {

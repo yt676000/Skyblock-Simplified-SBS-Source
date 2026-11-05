@@ -8,6 +8,9 @@
 
 package sbs.modid.client.social.presence;
 
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
@@ -219,6 +222,12 @@ public final class SbsPresence {
      * the next audit. Taking the uuid as a parameter rather than reading it from
      * {@link Minecraft} is what lets that test run without a game.
      */
+    /** The body as JSON text once it has passed its outgoing schema. */
+    private static String checked(JsonObject body) throws java.io.IOException {
+        MessageSchemas.checkOutgoing(MessageTypes.OUT_PRESENCE, body);
+        return body.toString();
+    }
+
     static JsonObject heartbeatBody(UUID self) {
         JsonObject body = new JsonObject();
         body.addProperty("uuid", self.toString());
@@ -280,14 +289,14 @@ public final class SbsPresence {
                             HttpRequest.newBuilder(URI.create(SbsApi.base() + "/api/presence/sync"))
                                     .timeout(Duration.ofSeconds(10))
                                     .header("Content-Type", "application/json"))
-                    .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body), StandardCharsets.UTF_8))
+                    .POST(HttpRequest.BodyPublishers.ofString(checked(body), StandardCharsets.UTF_8))
                     .build();
             // The response is not read. Until the roster route exists there is nothing in it for us:
             // the old reply was the matched subset of the uuids we no longer send.
-            SbsApi.send(ConsentScope.BADGE_PUBLIC, http, request,
+            SbsApi.send(ConsentScope.BADGE_PUBLIC, MessageTypes.PRESENCE_ACK, request,
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (Throwable t) {
-            SkyblockSimplifiedSBS.LOGGER.debug("[SBS][Presence] heartbeat failed: {}", t.toString());
+            sbs.modid.client.core.api.ApiFailure.logBackground("[SBS][Presence]", "heartbeat", t);
         }
     }
 }

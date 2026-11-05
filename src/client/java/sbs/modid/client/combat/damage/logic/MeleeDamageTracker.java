@@ -43,6 +43,13 @@ public final class MeleeDamageTracker {
     /** Newest first. Guarded by {@code this} – written from the client tick, read while rendering. */
     private final Deque<Hit> hits = new ArrayDeque<>();
 
+    /** Bumped on every recorded hit and on clear - the card rebuilds only when it moves. */
+    private volatile int version;
+
+    public int version() {
+        return version;
+    }
+
     private MeleeDamageTracker() {
     }
 
@@ -65,6 +72,7 @@ public final class MeleeDamageTracker {
         }
         synchronized (this) {
             hits.addFirst(new Hit(value, crit, System.currentTimeMillis()));
+            version++;
             while (hits.size() > MAX_RETAINED) {
                 hits.removeLast();
             }
@@ -99,5 +107,6 @@ public final class MeleeDamageTracker {
     /** Drops the window (turning the card off / leaving a fight behind). */
     public synchronized void clear() {
         hits.clear();
+        version++;
     }
 }

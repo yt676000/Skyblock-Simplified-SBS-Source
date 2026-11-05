@@ -9,6 +9,7 @@
 package sbs.modid.client.combat.abilitytimers;
 
 import sbs.modid.client.combat.abilitytimers.logic.AbilityCooldownTracker;
+import sbs.modid.client.combat.abilitytimers.logic.TacTimerTracker;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.module.ModuleGroup;
@@ -25,6 +26,9 @@ import java.util.List;
  * {@code META-INF/services/sbs.modid.client.core.module.SbsModule}.
  */
 public final class AbilityTimersModule implements SbsModule {
+
+    /** Indices are the stored {@code tacDisplay} values. */
+    private static final List<String> TAC_DISPLAY_OPTIONS = List.of("Card", "Crosshair", "Both");
 
     /** ServiceLoader needs a public no-arg constructor. */
     public AbilityTimersModule() {
@@ -47,7 +51,8 @@ public final class AbilityTimersModule implements SbsModule {
 
     @Override
     public String description() {
-        return "Cooldown card for Bonzo's Mask, Spirit Mask and the Phoenix pet";
+        return "Cooldown card for Bonzo's Mask, Spirit Mask and the Phoenix pet, and the "
+                + "Tactical Insertion's 3 s return countdown";
     }
 
     @Override
@@ -104,7 +109,25 @@ public final class AbilityTimersModule implements SbsModule {
                                 + "update retunes the pet."),
                 SettingRow.label("§8Correct these if a balance patch retunes an item - defaults are the live values"),
 
-                SettingRow.button("Reset Timers", () -> AbilityCooldownTracker.getInstance().reset())
+                SettingRow.toggle("Tactical Insertion Timer", () -> cfg().tacTimer,
+                        () -> { cfg().tacTimer = !cfg().tacTimer; save(); })
+                        .describe("Counts down the 3 seconds after you use Gorilla Tactics until "
+                                + "you are teleported back. Works on its own, even with the "
+                                + "death-save timers above turned off."),
+                SettingRow.segmented("Tac Timer Position", TAC_DISPLAY_OPTIONS,
+                        () -> cfg().tacDisplay,
+                        value -> { cfg().tacDisplay = value; save(); })
+                        .describe("Where the countdown is drawn: as a row on the timer card, "
+                                + "small under the crosshair, or both."),
+                SettingRow.toggle("Show Tac Hits", () -> cfg().tacShowHits,
+                        () -> { cfg().tacShowHits = !cfg().tacShowHits; save(); })
+                        .describe("After the teleport back, shows how many enemies the return "
+                                + "hit for 2 seconds."),
+
+                SettingRow.button("Reset Timers", () -> {
+                            AbilityCooldownTracker.getInstance().reset();
+                            TacTimerTracker.getInstance().reset();
+                        })
                         .describe("Clears all running clocks, e.g. after a run ended and the "
                                 + "cooldowns no longer matter."),
                 SettingRow.button("Edit Timer GUI", () -> open(new HudEditorScreen(

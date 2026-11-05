@@ -40,14 +40,16 @@ import sbs.modid.client.core.sound.SoundControl;
 @Mixin(SoundEngine.class)
 public abstract class SoundControlMixin {
 
-    /** Drops a muted sound before the engine does any work for it. */
+    /** Drops a muted sound, or one copy too many of a burst, before the engine does any work for it. */
     @Inject(method = "play", at = @At("HEAD"), cancellable = true)
     private void skyblockSimplified$muteSound(SoundInstance instance,
                                               CallbackInfoReturnable<SoundEngine.PlayResult> cir) {
         if (!SoundControl.enabled() || instance == null) {
             return;
         }
-        if (!SoundControl.allowed(instance.getIdentifier())) {
+        if (!SoundControl.allowed(instance.getIdentifier())
+                || SoundControl.spamLimited(instance.getIdentifier(),
+                        instance.getX(), instance.getY(), instance.getZ())) {
             cir.setReturnValue(SoundEngine.PlayResult.NOT_STARTED);
         }
     }
@@ -59,6 +61,9 @@ public abstract class SoundControlMixin {
     private float skyblockSimplified$scaleVolume(SoundInstance instance,
                                                  Operation<Float> original) {
         float volume = original.call(instance);
+        // Spring Boots probe: the sound is resolved here, so pitch and volume are readable. One
+        // branch unless a charge is running.
+        sbs.modid.client.helper.springboots.logic.SpringBootsTracker.getInstance().onSound(instance, volume);
         if (!SoundControl.enabled() || instance == null) {
             return volume;
         }

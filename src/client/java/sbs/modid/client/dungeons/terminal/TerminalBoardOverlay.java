@@ -22,7 +22,10 @@ import org.joml.Matrix3x2fStack;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.dungeons.terminal.TerminalSolutions.Hint;
+import sbs.modid.client.ui.render.ActionMarks;
+import sbs.modid.client.ui.render.MarkKind;
 import sbs.modid.client.ui.render.SciFiRender;
+import sbs.modid.client.ui.theme.MarkPalette;
 import sbs.modid.client.ui.theme.SBSTheme;
 
 import java.util.Map;
@@ -52,6 +55,9 @@ import java.util.Map;
  * 16px texture; everything else (the item terminals' swords, dyes and heads) draws its real icon,
  * since there the item's identity <i>is</i> the puzzle. Anything already selected is dimmed and
  * ticked rather than removed, so the board keeps the shape the player memorised.
+ *
+ * <p>Marks, ticks and the melody column band are the shared mark language ({@link ActionMarks});
+ * every colour on the board is a theme token or derived from one ({@link MarkPalette}).
  */
 public final class TerminalBoardOverlay {
 
@@ -63,25 +69,27 @@ public final class TerminalBoardOverlay {
     /** Cell edge at 100%, in pixels - roughly twice a vanilla slot. */
     private static final int BASE_CELL = 34;
 
+    /** Smallest cell the board shrinks to before it lets the viewport clip it. */
+    private static final int MIN_CELL = 14;
+
     private static final int GAP = 3;
     private static final int PAD = 10;
-    private static final int HEADER = 24;
-    private static final int FOOTER = 14;
+    /** Space between the title line and the instruction line. */
+    private static final int LINE_GAP = 3;
 
-    /** How far the screen behind is darkened, so the vanilla menu cannot read through the board. */
-    private static final int BACKDROP = 0xE6060B14;
-
-    private static final int CELL_EMPTY = 0x33101820;
-    private static final int CELL_ITEM = 0x66101820;
-    /** Laid over a cell whose item is already selected (has the glint). */
-    private static final int DONE_VEIL = 0xA00A0F16;
+    private static final String COMPLETE = "Terminal complete";
 
     /** Geometry of the last frame, which is what {@link #slotAt} hit-tests against. */
     private int boardX;
     private int boardY;
+    private int headerH;
     private int cell;
     private int stride;
     private int rows;
+
+    /** "4/10", rebuilt only when the packed progress changes. */
+    private long progressKey = -1L;
+    private String progressText = "";
 
     private TerminalBoardOverlay() {
     }
@@ -120,100 +128,150 @@ public final class TerminalBoardOverlay {
     // Render
     // ------------------------------------------------------------------
 
+    /**
+     * The board: a centred SBS card with the terminal's name and progress, a one-line instruction,
+     * and the grid. Sized from the viewport - the configured scale is the preferred cell size, and
+     * the card shrinks below it rather than hang off a small screen at a large GUI scale.
+     */
     public void renderTopMost(AbstractContainerScreen<?> screen, GuiGraphicsExtractor g,
                               int mouseX, int mouseY) {
         if (!isActive(screen)) {
             return;
         }
         AbstractContainerMenu menu = screen.getMenu();
+        TerminalSolver solver = TerminalSolver.getInstance();
+        TerminalType type = solver.type();
+        Font font = Minecraft.getInstance().font;
+        MarkPalette palette = ActionMarks.palette();
+
         rows = boardRows(menu);
-        cell = Math.max(18, BASE_CELL * clamp(cfg().terminalGuiScale, 60, 200) / 100);
+        headerH = PAD + font.lineHeight + LINE_GAP + font.lineHeight + PAD;
+        int availW = Math.max(1, g.guiWidth() - SBSTheme.SCREEN_MARGIN);
+        int availH = Math.max(1, g.guiHeight() - SBSTheme.SCREEN_MARGIN);
+        int preferred = BASE_CELL * clamp(cfg().terminalGuiScale, 60, 200) / 100;
+        int fitW = (availW - PAD * 2 + GAP) / COLUMNS - GAP;
+        int fitH = (availH - headerH - PAD + GAP) / rows - GAP;
+        cell = Math.max(MIN_CELL, Math.min(preferred, Math.min(fitW, fitH)));
         stride = cell + GAP;
 
         int gridW = COLUMNS * stride - GAP;
         int gridH = rows * stride - GAP;
         int boardW = gridW + PAD * 2;
-        int boardH = gridH + PAD * 2 + HEADER + FOOTER;
+        int boardH = headerH + gridH + PAD;
         boardX = (g.guiWidth() - boardW) / 2;
         boardY = (g.guiHeight() - boardH) / 2;
 
-        Font font = Minecraft.getInstance().font;
-        g.fill(0, 0, g.guiWidth(), g.guiHeight(), BACKDROP);
+        g.fill(0, 0, g.guiWidth(), g.guiHeight(), palette.backdrop);
         SciFiRender.glow(g, boardX, boardY, boardW, boardH, SBSTheme.PANEL_CORNER, SBSTheme.PANEL_GLOW, 2);
         SciFiRender.roundedRect(g, boardX, boardY, boardW, boardH, SBSTheme.PANEL_CORNER, SBSTheme.PANEL_BORDER);
         SciFiRender.roundedRectGradient(g, boardX + 1, boardY + 1, boardW - 2, boardH - 2,
                 SBSTheme.PANEL_CORNER - 1, SBSTheme.PANEL_FILL_TOP, SBSTheme.PANEL_FILL_BOTTOM);
 
-        String title = screen.getTitle() == null ? "" : screen.getTitle().getString().replaceAll("§.", "").trim();
-        g.centeredText(font, Component.literal(title), boardX + boardW / 2,
-                boardY + (HEADER - font.lineHeight) / 2, SBSTheme.ACCENT_BRIGHT);
+        long progress = solver.progress();
+        boolean complete = TerminalMarks.complete(progress);
+        drawHeader(g, font, type, progress, boardW);
 
         Map<Integer, Hint> hints = TerminalSolver.getInstance().hints();
-        int gridTop = boardY + HEADER + PAD;
+        int gridTop = boardY + headerH;
         int gridLeft = boardX + PAD;
+        int column = solver.melodyColumn();
+        if (type == TerminalType.MELODY && column >= 0 && column < COLUMNS) {
+            ActionMarks.band(g, gridLeft + column * stride - 1, gridTop - 1, cell + 2, gridH + 2);
+        }
         for (int index = 0; index < rows * COLUMNS; index++) {
             int x = gridLeft + (index % COLUMNS) * stride;
             int y = gridTop + (index / COLUMNS) * stride;
-            drawCell(g, font, TerminalSolutions.item(menu, index), hints.get(index), x, y);
+            drawCell(g, font, palette, type, TerminalSolutions.item(menu, index),
+                    complete ? null : hints.get(index), x, y);
         }
-
-        String footer = footer();
-        g.centeredText(font, Component.literal(footer), boardX + boardW / 2,
-                gridTop + gridH + PAD - 2, SBSTheme.TEXT_MUTED);
+        if (complete) {
+            drawComplete(g, font, palette, gridLeft, gridTop, gridW, gridH);
+        }
     }
 
-    /** The one-line reminder under the grid - what this terminal wants, in our own words. */
-    private static String footer() {
-        return switch (TerminalSolver.getInstance().type()) {
-            case ORDER -> "Click the numbers in order - dim ring is next";
-            case COLOR, STARTS_WITH, ITEM_NAME -> "Click every marked item";
-            case PANES -> "Flip every marked pane";
-            case RUBIX -> "Left-click green, right-click orange, as often as it says";
-            case MELODY -> "Blue is your button - press it when it turns green";
-            case NONE -> "";
-        };
+    /** Title left, progress right, instruction under both - each measured against the card. */
+    private void drawHeader(GuiGraphicsExtractor g, Font font, TerminalType type, long progress, int boardW) {
+        int inner = boardW - PAD * 2;
+        int x = boardX + PAD;
+        int y = boardY + PAD;
+        String count = progressText(progress);
+        int countW = count.isEmpty() ? 0 : font.width(count);
+        if (countW > 0) {
+            g.text(font, Component.literal(count), x + inner - countW, y,
+                    TerminalMarks.complete(progress) ? ActionMarks.edgeColor(MarkKind.DO) : SBSTheme.ACCENT, false);
+        }
+        int titleRoom = Math.max(0, inner - (countW > 0 ? countW + 8 : 0));
+        g.text(font, Component.literal(fit(font, TerminalMarks.nameOf(type), titleRoom)), x, y,
+                SBSTheme.ACCENT_BRIGHT, false);
+        g.text(font, Component.literal(fit(font, TerminalMarks.instructionOf(type), inner)), x,
+                y + font.lineHeight + LINE_GAP, SBSTheme.TEXT_MUTED, false);
+    }
+
+    private String progressText(long progress) {
+        if (progress != progressKey) {
+            progressKey = progress;
+            int total = TerminalMarks.total(progress);
+            progressText = total <= 0 ? "" : TerminalMarks.done(progress) + "/" + total;
+        }
+        return progressText;
+    }
+
+    /** Ellipsises {@code text} to {@code width}; the strings here are constants, so this rarely cuts. */
+    private static String fit(Font font, String text, int width) {
+        if (font.width(text) <= width) {
+            return text;
+        }
+        int dots = font.width("...");
+        return width <= dots ? "" : font.plainSubstrByWidth(text, width - dots) + "...";
+    }
+
+    /** The finished board: every cell veiled, and the word for it in the middle. */
+    private static void drawComplete(GuiGraphicsExtractor g, Font font, MarkPalette palette,
+                                     int x, int y, int w, int h) {
+        SciFiRender.roundedRectRaw(g, x, y, w, h, SBSTheme.PANEL_CORNER, palette.doneVeil);
+        int textW = font.width(COMPLETE) + 16;
+        int pillH = font.lineHeight + 8;
+        int px = x + (w - textW) / 2;
+        int py = y + (h - pillH) / 2;
+        SciFiRender.roundedRectRaw(g, px - 1, py - 1, textW + 2, pillH + 2, 5, palette.doEdge);
+        SciFiRender.roundedRectRaw(g, px, py, textW, pillH, 4, palette.badgeFill);
+        g.centeredText(font, Component.literal(COMPLETE), x + w / 2, py + 4, palette.doEdge);
     }
 
     /**
      * One cell: its background, its content, whether it is already done, and the solver's mark.
      *
-     * <p>The mark is drawn <b>over</b> the content on purpose - a ring behind a full-bleed colour
-     * cell would be invisible, and the ring is the one thing on this board that must never be missed.
+     * <p>The mark is drawn <b>over</b> the content on purpose - a mark behind a full-bleed colour
+     * cell would be invisible, and the mark is the one thing on this board that must never be missed.
      */
-    private void drawCell(GuiGraphicsExtractor g, Font font, ItemStack stack, Hint hint, int x, int y) {
-        int radius = Math.max(2, cell / 8);
+    private void drawCell(GuiGraphicsExtractor g, Font font, MarkPalette palette, TerminalType type,
+                          ItemStack stack, Hint hint, int x, int y) {
+        int radius = Math.max(2, cell / 6);
         if (stack.isEmpty()) {
-            SciFiRender.roundedRect(g, x, y, cell, cell, radius, CELL_EMPTY);
+            SciFiRender.roundedRectRaw(g, x, y, cell, cell, radius, palette.cellEmpty);
             return;
         }
         int dye = dyeColor(stack);
         if (dye != 0) {
-            SciFiRender.roundedRect(g, x, y, cell, cell, radius, 0xFF000000 | dye);
+            SciFiRender.roundedRectRaw(g, x, y, cell, cell, radius, 0xFF000000 | dye);
         } else {
-            SciFiRender.roundedRect(g, x, y, cell, cell, radius, CELL_ITEM);
+            SciFiRender.roundedRectRaw(g, x, y, cell, cell, radius, palette.cellItem);
             drawItem(g, stack, x, y);
         }
         if (stack.hasFoil()) {
-            SciFiRender.roundedRect(g, x, y, cell, cell, radius, DONE_VEIL);
-            g.centeredText(font, Component.literal("✔"), x + cell / 2,
-                    y + (cell - font.lineHeight) / 2, 0xFF6FE08A);
+            ActionMarks.done(g, font, x, y, cell, cell);
         }
-        if (TerminalSolver.getInstance().type() == TerminalType.ORDER && dye != 0) {
+        if (hint != null) {
+            MarkKind kind = TerminalMarks.kindOf(hint);
+            ActionMarks.cell(g, x, y, cell, kind);
+            ActionMarks.badge(g, font, x, y, cell, cell, TerminalMarks.badgeOf(type, hint), kind);
+        }
+        if (type == TerminalType.ORDER && dye != 0) {
             // The number IS the item here (it is the stack count), and nothing else on the cell
-            // carries it once the pane is drawn as a colour block.
-            String number = String.valueOf(stack.getCount());
-            g.centeredText(font, Component.literal(number), x + cell / 2,
-                    y + (cell - font.lineHeight) / 2, 0xFF0B1420);
-        }
-        if (hint == null) {
-            return;
-        }
-        ring(g, x, y, hint.color(), hint.preview() ? 1 : Math.max(2, cell / 12));
-        String label = hint.label();
-        if (label != null && !label.isEmpty()) {
-            int labelX = x + cell - 2 - font.width(label);
-            g.text(font, Component.literal(label), labelX, y + cell - 2 - font.lineHeight,
-                    hint.color(), true);
+            // carries it once the pane is drawn as a colour block. Drawn after the mark, shadowed,
+            // so the due number is never hidden by its own fill.
+            g.centeredText(font, Component.literal(String.valueOf(stack.getCount())), x + cell / 2,
+                    y + (cell - font.lineHeight) / 2 + 1, SBSTheme.TEXT);
         }
     }
 
@@ -226,14 +284,6 @@ public final class TerminalBoardOverlay {
         pose.scale(scale);
         g.item(stack, -8, -8);
         pose.popMatrix();
-    }
-
-    /** A ring of {@code thickness} px just inside the cell. */
-    private void ring(GuiGraphicsExtractor g, int x, int y, int color, int thickness) {
-        g.fill(x, y, x + cell, y + thickness, color);
-        g.fill(x, y + cell - thickness, x + cell, y + cell, color);
-        g.fill(x, y, x + thickness, y + cell, color);
-        g.fill(x + cell - thickness, y, x + cell, y + cell, color);
     }
 
     /**
@@ -282,7 +332,7 @@ public final class TerminalBoardOverlay {
             return -1;
         }
         int gridLeft = boardX + PAD;
-        int gridTop = boardY + HEADER + PAD;
+        int gridTop = boardY + headerH;
         int column = (int) Math.floor((mouseX - gridLeft) / stride);
         int row = (int) Math.floor((mouseY - gridTop) / stride);
         if (column < 0 || column >= COLUMNS || row < 0 || row >= rows) {

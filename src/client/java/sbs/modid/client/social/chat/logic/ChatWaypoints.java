@@ -15,7 +15,8 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.ui.theme.SBSTheme;
@@ -48,6 +49,9 @@ import java.util.regex.Pattern;
  * {@code /sbs waypoint clear} removes them by hand.
  */
 public final class ChatWaypoints {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
+    private static final int[] SCREEN_B = new int[2];
 
     private static final ChatWaypoints INSTANCE = new ChatWaypoints();
 
@@ -77,6 +81,12 @@ public final class ChatWaypoints {
 
     /** The IGN inside a chat prefix, once rank / guild-rank brackets are stripped. */
     private static final Pattern IGN = Pattern.compile("[A-Za-z0-9_]{2,16}");
+
+    /** A § and whatever follows it. */
+    private static final Pattern FORMATTING = Pattern.compile("§.");
+
+    /** A bracketed rank / guild-rank tag. */
+    private static final Pattern BRACKET_TAG = Pattern.compile("\\[[^\\]]*\\]");
 
     /** One shared coordinate. */
     public record Waypoint(BlockPos pos, String sender, long createdAt) {
@@ -210,7 +220,7 @@ public final class ChatWaypoints {
      * player in every Hypixel channel format ("Party > [MVP+] Steve", "From [MVP++] Notch").
      */
     static String senderOf(String prefix) {
-        String stripped = prefix.replaceAll("§.", "").replaceAll("\\[[^\\]]*\\]", "");
+        String stripped = BRACKET_TAG.matcher(FORMATTING.matcher(prefix).replaceAll("")).replaceAll("");
         Matcher matcher = IGN.matcher(stripped);
         String last = "";
         while (matcher.find()) {
@@ -308,7 +318,7 @@ public final class ChatWaypoints {
 
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f vp = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc vp = FrameCamera.viewProjection();
         Font font = minecraft.font;
         int gw = g.guiWidth();
         int gh = g.guiHeight();
@@ -319,16 +329,18 @@ public final class ChatWaypoints {
             WorldRender.boxEdges(g, vp, camPos, pos.getX(), pos.getY(), pos.getZ(),
                     pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1, color, 2);
             // Beam: one line straight up, so the spot is findable from across the island.
-            int[] bottom = WorldRender.projectToScreen(vp, camPos,
-                    new Vec3(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5), gw, gh);
-            int[] top = WorldRender.projectToScreen(vp, camPos,
-                    new Vec3(pos.getX() + 0.5, pos.getY() + BEAM_HEIGHT, pos.getZ() + 0.5), gw, gh);
-            if (bottom != null && top != null) {
+            int[] bottom = SCREEN;
+            int[] top = SCREEN_B;
+            boolean bottomOk = WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                    pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, gw, gh, bottom);
+            boolean topOk = WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                    pos.getX() + 0.5, pos.getY() + BEAM_HEIGHT, pos.getZ() + 0.5, gw, gh, top);
+            if (bottomOk && topOk) {
                 WorldRender.line(g, bottom[0], bottom[1], top[0], top[1], color, 2);
             }
-            int[] labelAt = WorldRender.projectToScreen(vp, camPos,
-                    new Vec3(pos.getX() + 0.5, pos.getY() + 1.6, pos.getZ() + 0.5), gw, gh);
-            if (labelAt != null) {
+            int[] labelAt = SCREEN;
+            if (WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                    pos.getX() + 0.5, pos.getY() + 1.6, pos.getZ() + 0.5, gw, gh, labelAt)) {
                 int distance = (int) Math.round(playerPos.distanceTo(Vec3.atCenterOf(pos)));
                 String label = waypoint.sender() + " §7" + distance + "m";
                 g.text(font, Component.literal(label),

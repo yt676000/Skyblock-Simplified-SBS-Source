@@ -237,6 +237,11 @@ public final class SBSFiles {
         return economyDir().resolve("bazaar_prices.json");
     }
 
+    /** Last known prices (economy/prices/BackupPrices). Global: prices are not per profile. */
+    public static Path backupPricesFile() {
+        return root().resolve("prices").resolve("backup_prices.json");
+    }
+
     // ------------------------------------------------------------------
     // gui/ – editor layouts
     // ------------------------------------------------------------------

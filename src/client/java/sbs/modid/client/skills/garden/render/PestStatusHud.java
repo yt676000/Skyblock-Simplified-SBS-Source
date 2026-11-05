@@ -11,7 +11,6 @@ package sbs.modid.client.skills.garden.render;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.network.chat.Component;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.skills.farming.model.FarmingText;
@@ -43,6 +42,17 @@ public final class PestStatusHud {
 
     private static final int PAD = 5;
 
+    /**
+     * The card as last built, or {@code null} while it has no rows. Rebuilt only when its key moves:
+     * the tracker's version, a row toggle or cooldown setting, or the one-second clock the cooldown
+     * and Phillip countdowns read. Render thread only.
+     */
+    private static HudCard.Snapshot card;
+    private static int builtTracker = -1;
+    private static long builtSecond = -1;
+    private static int builtToggles = -1;
+    private static int builtCooldownConfig = -1;
+
     private PestStatusHud() {
     }
 
@@ -61,7 +71,47 @@ public final class PestStatusHud {
             return;
         }
 
-        List<String[]> rows = new ArrayList<>(4);
+        int tracker = pests.version();
+        long second = System.currentTimeMillis() / 1000L;
+        int toggles = (cfg.showSpray ? 1 : 0) | (cfg.showRepellent ? 2 : 0) | (cfg.showBonus ? 4 : 0)
+                | (cfg.showCooldown ? 8 : 0) | (cfg.showPhillip ? 16 : 0);
+        int cooldownConfig = pests.cooldownConfigKey();
+        if (tracker != builtTracker || second != builtSecond || toggles != builtToggles
+                || cooldownConfig != builtCooldownConfig) {
+            builtTracker = tracker;
+            builtSecond = second;
+            builtToggles = toggles;
+            builtCooldownConfig = cooldownConfig;
+            card = build(pests, cfg);
+        }
+        HudCard.Snapshot current = card;
+        if (current == null) {
+            return;
+        }
+
+        Font font = Minecraft.getInstance().font;
+        int lineH = font.lineHeight + 2;
+        HudElement.Bounds b = HudElement.PEST_STATUS.defaultBounds(g.guiWidth(), g.guiHeight());
+        int x = Math.round(b.x());
+        int y = Math.round(b.y());
+        HudLayout.measure(HudElement.PEST_STATUS, x, y, current.width(), current.height());
+
+        HudLayout.begin(g, HudElement.PEST_STATUS);
+        HudCard.draw(g, x, y, current.width(), current.height());
+
+        int ix = x + PAD;
+        int right = x + current.width() - PAD;
+        int iy = y + PAD;
+        for (HudCard.Line line : current.rows()) {
+            HudCard.drawLine(g, font, line, ix, right, iy);
+            iy += lineH;
+        }
+        HudLayout.end(g);
+    }
+
+    /** The card's rows, header first, or {@code null} when every row is off or empty. */
+    private static HudCard.Snapshot build(PestTracker pests, SBSConfig.PestStatusSettings cfg) {
+        List<String[]> rows = new ArrayList<>(5);
         addRow(rows, pests, cfg.showSpray, "spray", "Spray");
         addRow(rows, pests, cfg.showRepellent, "repellent", "Repellent");
         addRow(rows, pests, cfg.showBonus, "bonus", "Bonus");
@@ -72,38 +122,22 @@ public final class PestStatusHud {
         }
         addPhillipRow(rows, pests, cfg.showPhillip);
         if (rows.isEmpty()) {
-            return;
+            return null;
         }
 
         Font font = Minecraft.getInstance().font;
         int lineH = font.lineHeight + 2;
-        String header = "Pest Status";
-        int contentW = font.width(header);
+        List<HudCard.Line> lines = new ArrayList<>(rows.size() + 1);
+        lines.add(HudCard.Line.of(font, "Pest Status", SBSTheme.ACCENT_BRIGHT));
+        int contentW = lines.get(0).leftWidth();
         for (String[] row : rows) {
-            contentW = Math.max(contentW, font.width(row[0]) + 12 + font.width(row[1]));
+            HudCard.Line line = HudCard.Line.of(font, row[0], SBSTheme.TEXT_MUTED, row[1], valueColor(row[1]));
+            lines.add(line);
+            contentW = Math.max(contentW, line.width(12));
         }
         int width = Math.max(120, contentW + PAD * 2);
-        int height = PAD * 2 + lineH * (1 + rows.size()) - 2;
-
-        HudElement.Bounds b = HudElement.PEST_STATUS.defaultBounds(g.guiWidth(), g.guiHeight());
-        int x = Math.round(b.x());
-        int y = Math.round(b.y());
-        HudLayout.measure(HudElement.PEST_STATUS, x, y, width, height);
-
-        HudLayout.begin(g, HudElement.PEST_STATUS);
-        HudCard.draw(g, x, y, width, height);
-
-        int ix = x + PAD;
-        int right = x + width - PAD;
-        int iy = y + PAD;
-        g.text(font, Component.literal(header), ix, iy, SBSTheme.ACCENT_BRIGHT);
-        iy += lineH;
-        for (String[] row : rows) {
-            g.text(font, Component.literal(row[0]), ix, iy, SBSTheme.TEXT_MUTED);
-            g.text(font, Component.literal(row[1]), right - font.width(row[1]), iy, valueColor(row[1]));
-            iy += lineH;
-        }
-        HudLayout.end(g);
+        int height = PAD * 2 + lineH * lines.size() - 2;
+        return new HudCard.Snapshot(List.copyOf(lines), width, height, null);
     }
 
     private static void addRow(List<String[]> rows, PestTracker pests, boolean on,

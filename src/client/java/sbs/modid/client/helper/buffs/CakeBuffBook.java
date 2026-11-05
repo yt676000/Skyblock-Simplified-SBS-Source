@@ -46,15 +46,32 @@ public final class CakeBuffBook {
     /** The expiry the "runs out soon" alert last fired for, so it fires once per expiry, restarts included. */
     public long warnedForExpiry;
 
+    /**
+     * Bumped whenever the set of buffs changes (an eat, a refresh, a prune that dropped one) and on
+     * nothing else; the cake card keys its cached rows on it. Not saved: a book read from disk is a
+     * new object, and the card keys on the book's identity as well.
+     */
+    private transient volatile int revision;
+
+    /** See {@link #revision}; compare for change, never for order. */
+    public int revision() {
+        return revision;
+    }
+
     /** Books an eat or refresh line: the expiry restarts from {@code now}. */
     public void apply(CakeBuffParser.Eat eat, long now) {
         long expiresAt = now + eat.hours() * 3_600_000L;
         buffs.put(eat.stat(), new Buff(eat.stat(), eat.amount(), expiresAt));
+        revision++;
     }
 
     /** Drops every buff that has run out. Returns whether anything was dropped. */
     public boolean prune(long now) {
-        return buffs.values().removeIf(buff -> buff.expiresAt <= now);
+        boolean dropped = buffs.values().removeIf(buff -> buff.expiresAt <= now);
+        if (dropped) {
+            revision++;
+        }
+        return dropped;
     }
 
     /** The active buffs, soonest to expire first. */

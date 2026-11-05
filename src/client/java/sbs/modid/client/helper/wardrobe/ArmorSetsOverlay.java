@@ -136,6 +136,17 @@ public final class ArmorSetsOverlay implements sbs.modid.client.core.config.Prof
 
     /** Ends "Show Hypixel menu" once no Armor Sets page is open (a server refresh keeps it on). */
     public void onClientTick() {
+        // The page drawn since the last tick is "seen now"; a throttled save waiting since the last
+        // read goes out here rather than inside the render pass.
+        int open = drawnPage;
+        drawnPage = 0;
+        if (open > 0) {
+            long now = System.currentTimeMillis();
+            pageSeenAt.put(open, now);
+            if (saveThrottle.pending(now) && writeCache()) {
+                saveThrottle.written(now);
+            }
+        }
         if (!editMode) {
             return;
         }
@@ -197,8 +208,6 @@ public final class ArmorSetsOverlay implements sbs.modid.client.core.config.Prof
         pageSeenAt.put(page, System.currentTimeMillis());
         if (changed) {
             saveCache(true);
-        } else if (saveThrottle.pending(System.currentTimeMillis()) && writeCache()) {
-            saveThrottle.written(System.currentTimeMillis());
         }
     }
 
@@ -229,8 +238,18 @@ public final class ArmorSetsOverlay implements sbs.modid.client.core.config.Prof
     private int buttonsY;
     private int buttonW;
     private int buttonGap;
-    private String[] buttonLabels = {"Back", "Close", "Show Hypixel menu"};
+    private static final String[] LABELS_LONG = {"Back", "Close", "Show Hypixel menu"};
+    private static final String[] LABELS_SHORT = {"Back", "Close", "Hypixel menu"};
+    private String[] buttonLabels = LABELS_LONG;
     private List<Component> tooltip;
+
+    /** The page drawn since the last tick (0 = none); the tick stamps it as seen. */
+    private int drawnPage;
+
+    /** What the last readPage read: screen, slot-packet revision and page. */
+    private AbstractContainerScreen<?> readScreen;
+    private int readRevision;
+    private int readPageNumber = -1;
 
     public void renderTopMost(AbstractContainerScreen<?> screen, GuiGraphicsExtractor g, int mouseX, int mouseY) {
         if (!enabled() || !(screen instanceof ContainerScreen)) {
@@ -240,7 +259,15 @@ public final class ArmorSetsOverlay implements sbs.modid.client.core.config.Prof
         if (page == null) {
             return;
         }
-        readPage(screen, page[0], page[1]);
+        // Re-read only after a slot packet or on another screen/page: otherwise the slots are as read.
+        int revision = sbs.modid.client.core.tick.InventoryChanges.revision();
+        if (screen != readScreen || revision != readRevision || page[0] != readPageNumber) {
+            readScreen = screen;
+            readRevision = revision;
+            readPageNumber = page[0];
+            readPage(screen, page[0], page[1]);
+        }
+        drawnPage = page[0];
         if (editMode || sets.isEmpty()) {
             return;
         }
@@ -272,10 +299,10 @@ public final class ArmorSetsOverlay implements sbs.modid.client.core.config.Prof
 
         // Footer buttons, sized from their labels; the long one shortens before anything overlaps.
         buttonGap = 6;
-        buttonLabels = new String[] {"Back", "Close", "Show Hypixel menu"};
+        buttonLabels = LABELS_LONG;
         buttonW = buttonWidth(font, buttonLabels);
         if (buttonW * 3 + buttonGap * 2 > panelW - 16) {
-            buttonLabels[2] = "Hypixel menu";
+            buttonLabels = LABELS_SHORT;
             buttonW = Math.min(buttonWidth(font, buttonLabels), (panelW - 16 - buttonGap * 2) / 3);
         }
         buttonsY = y + panelH - SBSTheme.SEARCH_HEIGHT - 6;
@@ -566,6 +593,7 @@ public final class ArmorSetsOverlay implements sbs.modid.client.core.config.Prof
             pages = 0;
             hintSet = -1;
             cacheLoaded = false;
+            readScreen = null;   // the open page is read again into the fresh profile
         }
         loadCache();
     }

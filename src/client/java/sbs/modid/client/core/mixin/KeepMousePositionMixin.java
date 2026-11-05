@@ -63,6 +63,7 @@ public abstract class KeepMousePositionMixin {
         if (!this.mouseGrabbed) {
             String reason = MouseKeeper.teleportReason(x, y);
             if (reason != null) {
+                MouseKeeper.debug("swallowed", x, y, reason);
                 snapBack(windowHandle, reason);
                 ci.cancel();
                 return;
@@ -80,6 +81,17 @@ public abstract class KeepMousePositionMixin {
     @Inject(method = "releaseMouse", at = @At("HEAD"), cancellable = true)
     private void sbs$releaseToKeptPosition(CallbackInfo ci) {
         var window = Minecraft.getInstance().getWindow();
+        MouseKeeper.debug("release", this.xpos, this.ypos,
+                "grabbed=" + this.mouseGrabbed + " pendingGrab=" + MouseKeeper.grabPending());
+        // A menu followed the server close: the held-back grab is moot, the cursor never moved.
+        MouseKeeper.clearPendingGrab();
+        // Grabbed = opened from gameplay, not a page switch (those stay released, see grabMouse).
+        // Vanilla's release centres the cursor; record the centre as kept and let it run.
+        if (this.mouseGrabbed && MouseKeeper.centerOnFirstOpen()) {
+            MouseKeeper.keepCentre(window.getScreenWidth() / 2, window.getScreenHeight() / 2);
+            MouseKeeper.debug("first-open-centre", window.getScreenWidth() / 2, window.getScreenHeight() / 2, "");
+            return;
+        }
         MouseKeeper.armGuard(window.getScreenWidth() / 2, window.getScreenHeight() / 2);
         if (!this.mouseGrabbed || !MouseKeeper.hasKept()) {
             return;
@@ -93,12 +105,38 @@ public abstract class KeepMousePositionMixin {
     }
 
     /**
+     * Holds back the grab a server close triggers (see {@code MouseKeeper.DEFERRED_GRAB_MS}): on
+     * Hypixel that close is almost always followed by the next menu in the same tick, and the grab
+     * is what centres the cursor. Cancelled at HEAD, so vanilla's {@code setScreen(null)} inside it
+     * does not run either - the close itself already set the screen to null.
+     */
+    @Inject(method = "grabMouse", at = @At("HEAD"), cancellable = true)
+    private void sbs$deferServerCloseGrab(CallbackInfo ci) {
+        boolean defer = MouseKeeper.deferGrab();
+        MouseKeeper.debug("grab", this.xpos, this.ypos,
+                "grabbed=" + this.mouseGrabbed + (defer ? " deferred" : ""));
+        if (defer) {
+            ci.cancel();
+        }
+    }
+
+    /**
      * The per-frame backstop: read where the cursor REALLY is and un-centre it. The transition's
      * own cursor moves are set programmatically, and GLFW suppresses its callback for those – so a
      * centred cursor can sit there without {@code onMove} ever having said so.
      */
     @Inject(method = "handleAccumulatedMovement", at = @At("HEAD"))
     private void sbs$guardFrame(CallbackInfo ci) {
+        if (MouseKeeper.grabPending()) {
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.gui.screen() != null) {
+                MouseKeeper.clearPendingGrab();   // something opened without a release - nothing to grab
+            } else if (MouseKeeper.grabDue()) {
+                // A genuine close: no menu followed, so grab now (the close flag is long cleared).
+                MouseKeeper.clearPendingGrab();
+                ((MouseHandler) (Object) this).grabMouse();
+            }
+        }
         if (this.mouseGrabbed) {
             return;
         }
@@ -153,6 +191,7 @@ public abstract class KeepMousePositionMixin {
         this.xpos = MouseKeeper.keptX();
         this.ypos = MouseKeeper.keptY();
         GLFW.glfwSetCursorPos(windowHandle, MouseKeeper.keptX(), MouseKeeper.keptY());
+        MouseKeeper.debug("snap-back", MouseKeeper.keptX(), MouseKeeper.keptY(), reason);
         // Stays at debug: this is the feature working, once per menu open, and a Hypixel menu opens
         // on every click. The line worth having at info is the one in sbs$guardFrame, for the case
         // where this never ran.

@@ -64,14 +64,15 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
             cir.setReturnValue(true);
             return;
         }
-        // Melody's Harp timing log: records the click, never consumes it.
-        sbs.modid.client.helper.experiment.logic.HarpHelper.getInstance().onClick(self, event);
-        // Experimentation Table misclick guard: veto an out-of-order click on the board (never sends
-        // it to the server), otherwise let it fall through to the game as normal.
-        if (sbs.modid.client.helper.experiment.logic.ExperimentationTable.getInstance().handleClick(self, event)) {
+        // Craft Helper card: drawn after the floating windows (ScreenForeground), so it is asked before them.
+        if (sbs.modid.client.economy.crafthelper.ui.CraftHelperHud.getInstance().handleClick(self, event)) {
             cir.setReturnValue(true);
             return;
         }
+        // Melody's Harp timing log: records the click, never consumes it.
+        sbs.modid.client.helper.experiment.logic.HarpHelper.getInstance().onClick(self, event);
+        // (The Experimentation Table misclick guard is NOT here: it sits on handleContainerInput in
+        // SlotLockGuardMixin, which every click type passes through, not only a left mouse click.)
         // The big terminal board covers the menu whole, so it takes every click first and forwards
         // the ones that land on a cell to the real slot behind it (guard applied on the way).
         if (sbs.modid.client.dungeons.terminal.TerminalBoardOverlay.getInstance().handleClick(self, event)) {
@@ -235,6 +236,11 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
     private void skyblockSimplified$overlayDrag(MouseButtonEvent event, double dragX, double dragY,
                                                 CallbackInfoReturnable<Boolean> cir) {
         AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
+        // Craft Helper scrollbar thumb.
+        if (sbs.modid.client.economy.crafthelper.ui.CraftHelperHud.getInstance().handleDrag(event.y())) {
+            cir.setReturnValue(true);
+            return;
+        }
         // The storage workspace swallows drags: item moves complete on the press, and a vanilla
         // quick-craft drag under our backdrop would scatter the carried item into wrong real slots.
         if (sbs.modid.client.helper.storage.StorageOverviewOverlay.getInstance().handleDrag()) {
@@ -298,6 +304,10 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
 
     @Inject(method = "mouseReleased", at = @At("HEAD"), cancellable = true)
     private void skyblockSimplified$overlayRelease(MouseButtonEvent event, CallbackInfoReturnable<Boolean> cir) {
+        if (sbs.modid.client.economy.crafthelper.ui.CraftHelperHud.getInstance().handleRelease()) {
+            cir.setReturnValue(true);
+            return;
+        }
         // The storage workspace swallows the release: our PICKUP already ran on the press, and the
         // vanilla release would drop the carried item outside (slot -999) since its own GUI is hidden.
         if (sbs.modid.client.helper.storage.StorageOverviewOverlay.getInstance().handleRelease()) {
@@ -379,6 +389,11 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
         // container's - asking the container first is what made the Ender Chest rows stop scrolling
         // as soon as the menu had been clicked once: the raised container claimed the wheel for its
         // whole rectangle, overlay on top or not.
+        // The Craft Helper card scrolls only under the cursor.
+        if (sbs.modid.client.economy.crafthelper.ui.CraftHelperHud.getInstance().handleScroll(mouseX, mouseY, scrollY)) {
+            cir.setReturnValue(true);
+            return;
+        }
         if (sbs.modid.client.helper.wardrobe.ArmorSetsOverlay.getInstance().handleScroll(self)) {
             cir.setReturnValue(true);
             return;
@@ -460,6 +475,11 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
 
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
     private void skyblockSimplified$searchBarKeys(KeyEvent event, CallbackInfoReturnable<Boolean> cir) {
+        // Escape closes the Craft Helper recipe list before it closes the screen.
+        if (event.key() == KEY_ESCAPE && sbs.modid.client.economy.crafthelper.ui.CraftHelperHud.getInstance().handleEscape()) {
+            cir.setReturnValue(true);
+            return;
+        }
         // The price overlay windows (browser page or fallback search) consume every key while focused.
         if (PriceBrowserManager.getInstance().handleKey(event)) {
             cir.setReturnValue(true);

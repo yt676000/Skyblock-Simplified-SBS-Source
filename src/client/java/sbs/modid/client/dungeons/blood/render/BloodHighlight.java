@@ -15,7 +15,8 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.render.WorldRender;
@@ -38,6 +39,8 @@ import sbs.modid.client.dungeons.blood.logic.BloodRoomTracker;
  * is drawn thicker than the rest so one glance answers "where do I swing".
  */
 public final class BloodHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     private static final int COLOR_MASTER = 0xFFFF4040; // red
     private static final int COLOR_NORMAL = 0xFF60C0FF; // calm blue
@@ -71,7 +74,7 @@ public final class BloodHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
         // Matched by entity id, not by instance: the two snapshots are published a moment apart and a
         // frame that straddles them would otherwise lose the target highlight for that frame.
@@ -103,7 +106,7 @@ public final class BloodHighlight {
         }
     }
 
-    private static void draw(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void draw(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                              SBSConfig.BloodSettings cfg, BloodRoomTracker.BloodMob mob,
                              boolean isTarget) {
         AABB box = mob.entity().getBoundingBox();
@@ -141,7 +144,7 @@ public final class BloodHighlight {
      * <p>Only the thrown ones reach this method. The room's own skulls hang there as decoration and
      * boxing them said nothing at all, so the tracker keeps the ones that came in through the air.
      */
-    private static void mark(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void mark(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                              SBSConfig.BloodSettings cfg, BloodRoomTracker.BloodMark mark) {
         if (!mark.entity().isAlive()) {
             return;
@@ -172,7 +175,7 @@ public final class BloodHighlight {
      * the entity's own bounding box, translated to the drop point. Where its outline ends is where
      * the shot stops connecting.
      */
-    private static void arc(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void arc(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                             BloodRoomTracker.BloodDrop drop) {
         // The mob's own hitbox, moved to where it is going to be hanging - so what is drawn is the
         // size of the thing the shot has to hit, at the height it will be at. The marker used to be
@@ -197,9 +200,10 @@ public final class BloodHighlight {
     }
 
     /** A small screen-space cross on the point to put the crosshair on. */
-    private static void crosshair(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos, Vec3 at) {
-        int[] screen = WorldRender.projectToScreen(vp, camPos, at, g.guiWidth(), g.guiHeight());
-        if (screen == null) {
+    private static void crosshair(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos, Vec3 at) {
+        int[] screen = SCREEN;
+        if (!WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                at.x, at.y, at.z, g.guiWidth(), g.guiHeight(), screen)) {
             return;
         }
         int x = screen[0];
@@ -208,11 +212,12 @@ public final class BloodHighlight {
         WorldRender.line(g, x, y - AIM_CROSS, x, y + AIM_CROSS, COLOR_ARC, 1);
     }
 
-    private static void label(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void label(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                               AABB box, String text, int color) {
-        Vec3 top = new Vec3((box.minX + box.maxX) / 2, box.maxY + 0.5, (box.minZ + box.maxZ) / 2);
-        int[] screen = WorldRender.projectToScreen(vp, camPos, top, g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                (box.minX + box.maxX) / 2, box.maxY + 0.5, (box.minZ + box.maxZ) / 2,
+                g.guiWidth(), g.guiHeight(), screen)) {
             g.centeredText(font, Component.literal(text), screen[0], screen[1], color);
         }
     }

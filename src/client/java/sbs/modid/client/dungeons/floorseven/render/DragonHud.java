@@ -14,7 +14,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.render.WorldRender;
 import sbs.modid.client.dungeons.floorseven.logic.DragonTracker;
@@ -27,6 +28,7 @@ import sbs.modid.client.ui.theme.SBSTheme;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The M7 dragon card: every dragon that is up, weakest first, in its own colour - and, with the
@@ -38,11 +40,14 @@ import java.util.Locale;
  * is not).
  */
 public final class DragonHud {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     private static final int PAD = 6;
     private static final int LINE_GAP = 3;
     private static final int MIN_W = 150;
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     /** How far above the dragon's own position its health floats. */
     private static final double LABEL_HEIGHT = 3.0;
@@ -77,13 +82,13 @@ public final class DragonHud {
                                     List<DragonTracker.Dragon> dragons) {
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
         for (DragonTracker.Dragon dragon : dragons) {
-            Vec3 anchor = dragon.position().add(0, LABEL_HEIGHT, 0);
-            int[] screen = WorldRender.projectToScreen(viewProjection, camPos, anchor,
-                    g.guiWidth(), g.guiHeight());
-            if (screen == null) {
+            Vec3 anchor = dragon.position();
+            int[] screen = SCREEN;
+            if (!WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                    anchor.x, anchor.y + LABEL_HEIGHT, anchor.z, g.guiWidth(), g.guiHeight(), screen)) {
                 continue;
             }
             g.centeredText(font, Component.literal(dragon.kind().label()),
@@ -151,6 +156,6 @@ public final class DragonHud {
     }
 
     private static String strip(String text) {
-        return text.replaceAll(SECTION_SIGN + ".", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 }

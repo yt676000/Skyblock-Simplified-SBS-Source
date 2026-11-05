@@ -12,6 +12,7 @@ import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.module.ModuleGroup;
 import sbs.modid.client.core.module.SbsModule;
+import sbs.modid.client.dungeons.blood.logic.BloodMoveTimer;
 import sbs.modid.client.ui.hud.edit.model.HudElement;
 import sbs.modid.client.ui.hud.edit.ui.HudEditorScreen;
 import sbs.modid.client.ui.settings.SettingRow;
@@ -122,18 +123,22 @@ public final class BloodHelperModule implements SbsModule {
 
                 SettingRow.toggle("Blood Camp Move", () -> cfg().campMove,
                         () -> { cfg().campMove = !cfg().campMove; save(); })
-                        .describe("For camping the room: the Watcher checks it on a three-second "
+                        .describe("For camping the room: the Watcher checks it on a fixed "
                                 + "schedule, and a room that is already empty when he checks makes "
                                 + "him cut his dialogue short. Times his opening line against his "
                                 + "\"Let's see how you can handle this\", works out which check you "
                                 + "are heading for and flashes KILL BLOOD just before it. Counted on "
-                                + "the server's tick rate, so a laggy room does not shift the call."),
+                                + "the server's tick rate, so a laggy room does not shift the call.")
+                        // Live rather than frozen at build time, and the saved value is untouched:
+                        // the row comes back as the player left it once the timing is verified.
+                        .disabledWhile(() -> !BloodMoveTimer.TIMING_VERIFIED, BloodMoveTimer.PAUSED_REASON),
                 SettingRow.label("§8Needs his opening line - it says so instead of guessing when that was missed"),
                 SettingRow.toggle("Move Call To Chat", () -> cfg().campMoveChat,
                         () -> { cfg().campMoveChat = !cfg().campMoveChat; save(); })
                         .describe("Prints the predicted mark into your own chat the moment it is "
                                 + "known, so you can see the call coming instead of only being "
-                                + "flashed at. Nothing is sent to the party."),
+                                + "flashed at. Nothing is sent to the party.")
+                        .disabledWhile(() -> !BloodMoveTimer.TIMING_VERIFIED, BloodMoveTimer.PAUSED_REASON),
 
                 SettingRow.toggle("Blood HUD", () -> cfg().showHud,
                         () -> { cfg().showHud = !cfg().showHud; save(); })

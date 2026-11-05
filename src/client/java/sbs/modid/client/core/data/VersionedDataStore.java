@@ -8,6 +8,9 @@
 
 package sbs.modid.client.core.data;
 
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.SBSFiles;
 import sbs.modid.client.economy.pricehistory.logic.PriceApi;
@@ -147,9 +150,12 @@ public final class VersionedDataStore<T extends VersionedDocument> {
             if (!Files.isRegularFile(cacheFile)) {
                 return null;
             }
-            try (Reader reader = Files.newBufferedReader(cacheFile, StandardCharsets.UTF_8)) {
-                return SBSFiles.GSON.fromJson(reader, type);
+            if (Files.size(cacheFile) > MessageSchemas.maxBytes(MessageTypes.DATASET)) {
+                SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Data] {}: cache too large, ignoring", name);
+                return null;
             }
+            String json = Files.readString(cacheFile, StandardCharsets.UTF_8);
+            return SBSFiles.GSON.fromJson(MessageSchemas.parse(MessageTypes.DATASET, json), type);
         } catch (Exception e) {
             // A corrupt cache must never be fatal - the bundled copy is already loaded.
             SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Data] {}: cache unreadable ({}), ignoring",
@@ -160,8 +166,8 @@ public final class VersionedDataStore<T extends VersionedDocument> {
 
     private void fetch() {
         try {
-            String json = PriceApi.getInstance().getAuthenticated(endpoint);
-            T document = SBSFiles.GSON.fromJson(json, type);
+            String json = PriceApi.getInstance().getAuthenticated(endpoint, MessageTypes.DATASET);
+            T document = SBSFiles.GSON.fromJson(MessageSchemas.parse(MessageTypes.DATASET, json), type);
             if (accept(document, "backend")) {
                 writeCache(json);
             }

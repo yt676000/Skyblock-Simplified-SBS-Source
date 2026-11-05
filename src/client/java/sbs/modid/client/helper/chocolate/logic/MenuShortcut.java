@@ -23,7 +23,7 @@ import java.util.function.DoubleFunction;
  *
  * <p>Layout: {@code docs/skyblock-ui/menus.md}, <i>SkyBlock Menu</i>. Hypixel's own buttons are in
  * {@link #HYPIXEL_BUTTONS}; every other slot of the 54 is a filler pane in both captures. The button
- * only ever replaces a pane, never a real item - see {@link #isFiller}.
+ * only ever replaces a pane, never a real item - see {@link sbs.modid.client.core.item.MenuFiller#isFiller(String, String, int)}.
  */
 public final class MenuShortcut {
 
@@ -90,21 +90,6 @@ public final class MenuShortcut {
         } catch (NumberFormatException e) {
             return -1;
         }
-    }
-
-    /**
-     * Whether a slot holds one of Hypixel's filler panes: a glass pane with a blank name and no lore.
-     * The name and lore are the veto - a pane that says something is a control, and the button is
-     * never drawn over a control.
-     *
-     * @param itemPath  the item's registry path, e.g. {@code black_stained_glass_pane}
-     * @param plainName the hover name with colour codes stripped
-     * @param loreLines how many lore lines the item carries
-     */
-    public static boolean isFiller(String itemPath, String plainName, int loreLines) {
-        return itemPath != null && itemPath.endsWith("glass_pane")
-                && (plainName == null || plainName.isBlank())
-                && loreLines == 0;
     }
 
     /**

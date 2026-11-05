@@ -57,6 +57,7 @@ public final class FairySoulMenu {
     /** An island tile's lore: "Fairy Souls: 0/80". */
     private static final Pattern PROGRESS = Pattern.compile(
             "(?i)fairy\\s+souls?\\s*:\\s*([0-9,]+)\\s*/\\s*([0-9,]+)");
+    private static final Pattern NON_DIGITS = Pattern.compile("[^0-9]");
 
     private static final char SECTION_SIGN = (char) 0x00A7;
 
@@ -191,7 +192,7 @@ public final class FairySoulMenu {
 
     private static int number(String raw) {
         try {
-            return Integer.parseInt(raw.replaceAll("[^0-9]", ""));
+            return Integer.parseInt(NON_DIGITS.matcher(raw).replaceAll(""));
         } catch (NumberFormatException e) {
             return 0;
         }

@@ -1,0 +1,7 @@
+{
+  "_note": "F7/M7 phase-3 Lights device wirings, from our own [SBS][Lights] probe captures only. Coordinates are relative to the layout anchor (minimum corner over every lever and lamp), exactly as the probe logs them. toggles[i] = indices into lamps that levers[i] toggles. Ships empty: no capture exists yet, so the wiring is learned live each run. Each entry carries certainty and capturedOn. Bump dataVersion with every change.",
+  "schemaVersion": 1,
+  "dataVersion": 1,
+  "generatedAt": "2026-10-07",
+  "devices": []
+}

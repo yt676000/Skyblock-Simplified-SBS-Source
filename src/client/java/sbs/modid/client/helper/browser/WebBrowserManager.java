@@ -127,7 +127,11 @@ public final class WebBrowserManager {
      * playing video stays visible during gameplay. No hover is forwarded (mouse is the camera then).
      */
     public void renderHud(GuiGraphicsExtractor g) {
-        if (!cfg().enabled || !cfg().showInWorld || !isActive()) {
+        // Per frame: with no browser opened this session, one field read is the whole cost.
+        if (browser == null || !active) {
+            return;
+        }
+        if (!cfg().enabled || !cfg().showInWorld) {
             return;
         }
         if (GuiStateManager.getInstance().getCurrentScreen() != null) {

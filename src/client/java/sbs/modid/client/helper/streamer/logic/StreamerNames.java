@@ -155,6 +155,8 @@ public final class StreamerNames {
 
     private volatile Redactions current;
     private volatile long builtAt;
+    /** See {@link #revision()}. Written only by {@link #redactions()}. */
+    private volatile int revision;
 
     /** Names and ids already reported to the log, so the debug switch says each thing once. */
     private final Set<String> logged = Collections.synchronizedSet(new HashSet<>());
@@ -379,9 +381,35 @@ public final class StreamerNames {
             return cached.pattern() == null ? null : cached;
         }
         Redactions built = build();
+        if (cached == null || !sameRedactions(cached, built)) {
+            revision++;
+        }
         current = built;
         builtAt = now;
         return built.pattern() == null ? null : built;
+    }
+
+    /**
+     * A number that moves whenever what {@link #apply} would do to a text may have changed: the
+     * feature switched on or off, or the compiled set coming out different. The set is recompiled
+     * every {@value #REBUILD_MS} ms, so its identity says nothing; it is compared by value, and a
+     * recompile that produced the same names keeps the revision - and whatever was cached on it.
+     */
+    public int revision() {
+        if (!active()) {
+            return -1;
+        }
+        redactions();
+        return revision;
+    }
+
+    private static boolean sameRedactions(Redactions a, Redactions b) {
+        String patternA = a.pattern() == null ? null : a.pattern().pattern();
+        String patternB = b.pattern() == null ? null : b.pattern().pattern();
+        return java.util.Objects.equals(patternA, patternB)
+                && a.byLowered().equals(b.byLowered())
+                && java.util.Objects.equals(a.rankPrefix(), b.rankPrefix())
+                && java.util.Objects.equals(a.level(), b.level());
     }
 
     /**

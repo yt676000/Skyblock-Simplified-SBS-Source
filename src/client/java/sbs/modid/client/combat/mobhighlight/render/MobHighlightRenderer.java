@@ -16,8 +16,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
-import org.joml.Vector4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
+import sbs.modid.client.core.render.WorldRender;
 import sbs.modid.client.combat.mobhighlight.logic.MobHighlightTracker;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
@@ -37,6 +38,8 @@ import java.util.List;
  * box is sampled live per frame, so the boxes track moving mobs smoothly between ticks.
  */
 public final class MobHighlightRenderer {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     private static final MobHighlightRenderer INSTANCE = new MobHighlightRenderer();
 
@@ -77,7 +80,7 @@ public final class MobHighlightRenderer {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
         int color = settings.color.argb();
 
@@ -99,7 +102,7 @@ public final class MobHighlightRenderer {
     }
 
     /** Projects and draws the 12 edges of a world-space box. */
-    private static void drawBoxEdges(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos,
+    private static void drawBoxEdges(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos,
                                      double x0, double y0, double z0, double x1, double y1, double z1, int color) {
         // 8 corners: index bits = x,y,z.
         Vec3[] c = {
@@ -119,28 +122,17 @@ public final class MobHighlightRenderer {
     }
 
     /** Draws the mob's SkyBlock name centred above the top face of its box. */
-    private static void drawLabel(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void drawLabel(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                                   AABB box, String label, int color) {
         Vec3 top = new Vec3((box.minX + box.maxX) / 2, box.maxY + 0.4, (box.minZ + box.maxZ) / 2);
-        int[] screen = projectToScreen(vp, camPos, top, g.guiWidth(), g.guiHeight());
-        if (screen == null) {
+        int[] screen = SCREEN;
+        if (!WorldRender.project(vp, camPos.x, camPos.y, camPos.z, top.x, top.y, top.z,
+                g.guiWidth(), g.guiHeight(), screen)) {
             return;
         }
         double distance = camPos.distanceTo(top);
         String text = label + " §7" + (int) Math.round(distance) + "m";
         g.centeredText(font, Component.literal(text), screen[0], screen[1] - font.lineHeight - 1, color);
-    }
-
-    /** Projects a world point to GUI-scaled screen pixels, or {@code null} when behind the camera. */
-    private static int[] projectToScreen(Matrix4f vp, Vec3 camPos, Vec3 world, int guiWidth, int guiHeight) {
-        Vec3 rel = world.subtract(camPos);
-        Vector4f clip = vp.transform(new Vector4f((float) rel.x, (float) rel.y, (float) rel.z, 1.0f));
-        if (clip.w <= 1.0e-4f) {
-            return null;
-        }
-        int sx = Math.round((clip.x / clip.w * 0.5f + 0.5f) * guiWidth);
-        int sy = Math.round((0.5f - clip.y / clip.w * 0.5f) * guiHeight);
-        return new int[] {sx, sy};
     }
 
     /**

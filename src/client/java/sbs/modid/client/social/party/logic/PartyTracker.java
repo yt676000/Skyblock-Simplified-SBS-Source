@@ -58,6 +58,9 @@ public final class PartyTracker {
     /** Strips a "[MVP+]" style rank so only names + separators remain in a roster line. */
     private static final Pattern RANK_TAG = Pattern.compile("\\[[^\\]]+\\]");
 
+    /** Every run of non-name chars in a roster line - what the names are split on. */
+    private static final Pattern NON_NAME_CHARS = Pattern.compile("[^A-Za-z0-9_]+");
+
     /** "Party Leader: [MVP+] Name ●" from /pl - the one line that names the leader outright. */
     private static final Pattern LEADER_LINE = Pattern.compile("^Party Leader: " + RANK + NAME);
     /**
@@ -156,7 +159,7 @@ public final class PartyTracker {
             }
             String rest = RANK_TAG.matcher(text.substring(text.indexOf(':') + 1)).replaceAll(" ");
             boolean any = false;
-            for (String token : rest.split("[^A-Za-z0-9_]+")) {
+            for (String token : NON_NAME_CHARS.split(rest)) {
                 if (token.length() >= 3 && token.length() <= 16) {
                     any |= addSilently(token);
                 }
@@ -199,6 +202,8 @@ public final class PartyTracker {
 
     private void clear() {
         leader = null;
+        // Downtime belongs to this party; a new one starts without it (Auto Requeue reads it).
+        sbs.modid.client.social.chat.command.PartyChatCommands.getInstance().clearDowntime();
         sbs.modid.client.social.notes.logic.PlayerNotesWarner.getInstance().onPartyEnded();
         if (!cfg().members.isEmpty()) {
             cfg().members.clear();

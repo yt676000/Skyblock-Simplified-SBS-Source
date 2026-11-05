@@ -10,7 +10,7 @@ package sbs.modid.client.core.pathfinding;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import sbs.modid.client.core.render.WorldRender;
 
 /**
@@ -162,29 +162,29 @@ final class SciFiPathStyle {
      * because nothing is joined. Each is an independent marker, so a right-angle turn looks the same
      * as a straight run.
      *
-     * @param centre the node's world centre
-     * @param size   edge length of the core cube in blocks
-     * @param t      how far along the whole path this node sits, in {@code [0,1]}
-     * @param phase  the current {@link #pulsePhase()}
+     * @param cx    the node's world centre, x (likewise {@code cy}, {@code cz})
+     * @param size  edge length of the core cube in blocks
+     * @param t     how far along the whole path this node sits, in {@code [0,1]}
+     * @param phase the current {@link #pulsePhase()}
      */
-    static void cube(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos, Vec3 centre,
-                     double size, double t, double phase, int rgb) {
+    static void cube(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
+                     double cx, double cy, double cz, double size, double t, double phase, int rgb) {
         double intensity = pulseIntensity(t, phase);
         double half = size * (1.0 + 0.45 * intensity) / 2.0;
 
         // Outer shell: wide and faint, so the cube glows instead of looking like a wireframe.
-        edges(g, viewProjection, camPos, centre, half + 0.035, argb(rgb, 45), 3);
+        edges(g, viewProjection, camPos, cx, cy, cz, half + 0.035, argb(rgb, 45), 3);
         // Core: tightens to white as the wave hits it.
         int coreAlpha = (int) (165 + 90 * intensity);
-        edges(g, viewProjection, camPos, centre, half,
+        edges(g, viewProjection, camPos, cx, cy, cz, half,
                 argb(towardWhite(rgb, 0.3 + 0.7 * intensity), coreAlpha), intensity > 0.5 ? 2 : 1);
     }
 
-    private static void edges(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
-                              Vec3 centre, double half, int color, int width) {
-        WorldRender.boxEdges(g, viewProjection, camPos,
-                centre.x - half, centre.y - half, centre.z - half,
-                centre.x + half, centre.y + half, centre.z + half,
+    private static void edges(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
+                              double cx, double cy, double cz, double half, int color, int width) {
+        WorldRender.boxEdges(g, viewProjection, camPos.x, camPos.y, camPos.z,
+                cx - half, cy - half, cz - half,
+                cx + half, cy + half, cz + half,
                 color, width);
     }
 

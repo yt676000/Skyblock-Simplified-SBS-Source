@@ -34,9 +34,18 @@ public final class DungeonScoreboard {
     private DungeonScoreboard() {
     }
 
-    /** @return {@code true} when a sidebar line shows the Catacombs floor marker (e.g. "(F6)"/"(M2)"/"(E)"). */
+    /**
+     * @return {@code true} when a sidebar line shows the Catacombs floor marker (e.g. "(F6)"/"(M2)"/"(E)").
+     * Answered from this tick's {@code TickContext}, which asked {@link #isInDungeon(List)} once for
+     * everyone - no caller scans the sidebar for it again.
+     */
     public static boolean isInDungeon() {
-        for (String line : sidebarLines()) {
+        return sbs.modid.client.core.tick.TickContexts.current().location().inDungeonFloor();
+    }
+
+    /** {@link #isInDungeon()} against sidebar lines the caller already read. */
+    public static boolean isInDungeon(List<String> lines) {
+        for (String line : lines) {
             if (line.contains(CATACOMBS_F) || line.contains(CATACOMBS_M) || line.contains(CATACOMBS_E)) {
                 return true;
             }
@@ -46,7 +55,13 @@ public final class DungeonScoreboard {
 
     /** @return {@code true} when the player is anywhere in The Catacombs (broader than a specific floor). */
     public static boolean isInCatacombs() {
-        for (String line : sidebarLines()) {
+        // This tick's context: see isInDungeon().
+        return sbs.modid.client.core.tick.TickContexts.current().location().inCatacombs();
+    }
+
+    /** {@link #isInCatacombs()} against sidebar lines the caller already read. */
+    public static boolean isInCatacombs(List<String> lines) {
+        for (String line : lines) {
             if (line.contains("The Catacombs")) {
                 return true;
             }

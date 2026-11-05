@@ -8,6 +8,8 @@
 
 package sbs.modid.client.core.render;
 
+import java.util.Locale;
+
 /**
  * The shared colour palette for configurable overlays (Ether Warp highlight, pathfinding waypoints
  * and paths, ...), offered as a cycled preset list because the SBS settings UI has no colour picker
@@ -90,6 +92,6 @@ public enum OverlayColor {
 
     /** Formats an RGB value back as {@code RRGGBB}, for showing the current colour in a text field. */
     public static String toHex(int rgb) {
-        return String.format("%06X", rgb & 0xFFFFFF);
+        return String.format(Locale.ROOT, "%06X", rgb & 0xFFFFFF);
     }
 }

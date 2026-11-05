@@ -8,6 +8,9 @@
 
 package sbs.modid.client.core.player;
 
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageTypes;
+
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import sbs.modid.SkyblockSimplifiedSBS;
@@ -67,6 +70,8 @@ public final class PetIconCache {
      */
     private static final Pattern TEXTURE_VALUE =
             Pattern.compile("Value[^A-Za-z0-9]+([A-Za-z0-9+/=]{60,})");
+    /** Everything a pet-type key collapses to one underscore. */
+    private static final Pattern NON_KEY_CHARS = Pattern.compile("[^A-Z0-9]+");
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
     // MUST come after every constant above: the constructor reads TIMEOUT, and static
@@ -82,6 +87,9 @@ public final class PetIconCache {
     });
 
     private final ConcurrentHashMap<String, ItemStack> cache = new ConcurrentHashMap<>();
+
+    /** The last-resort pet icon. Shared and drawn as-is - never mutate it. */
+    private static final ItemStack BONE = new ItemStack(Items.BONE);
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
     private final Set<String> failed = ConcurrentHashMap.newKeySet();
 
@@ -121,13 +129,25 @@ public final class PetIconCache {
      * looking like two different things in two places.
      */
     public ItemStack iconOrFallback(String type) {
-        String key = type == null ? "" : type.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_");
+        String key = toKey(type);
         ItemStack fetched = get(key);
         if (fetched != null) {
             return fetched;
         }
         ItemStack repo = SkyBlockItemIcons.getInstance().icon("PET_" + key, null, 1);
-        return repo.is(Items.BARRIER) ? new ItemStack(Items.BONE) : repo;
+        return repo.is(Items.BARRIER) ? BONE : repo;
+    }
+
+    /**
+     * Whether {@link #iconOrFallback} now returns the fetched skull for this pet - the one answer
+     * that cannot improve later, so a caller holding on to the icon can stop asking.
+     */
+    public boolean hasFetched(String type) {
+        return cache.containsKey(toKey(type));
+    }
+
+    private static String toKey(String type) {
+        return type == null ? "" : NON_KEY_CHARS.matcher(type.toUpperCase(Locale.ROOT)).replaceAll("_");
     }
 
     private void fetch(String type) {
@@ -155,7 +175,8 @@ public final class PetIconCache {
                 .replace("+", "%20");
         HttpRequest request = HttpRequest.newBuilder(URI.create(RAW + file))
                 .timeout(TIMEOUT).header("User-Agent", "SkyblockSimplifiedSBS").GET().build();
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = SecureHttp.send(MessageTypes.REPO_PET_ITEM, request,
+                HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200) {
             return null;
         }

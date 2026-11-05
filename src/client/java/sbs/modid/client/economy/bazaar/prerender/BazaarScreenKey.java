@@ -51,6 +51,9 @@ public final class BazaarScreenKey {
     /** Minecraft formatting codes, stripped so a recolour never changes an identity. */
     private static final Pattern FORMATTING = Pattern.compile("§[0-9a-fk-orA-FK-OR]");
 
+    /** A run of whitespace, collapsed to one space. */
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+
     /** Names of the paging controls, lowercased. Their presence is what makes a missing counter fatal. */
     private static final List<String> PAGE_ARROW_NAMES = List.of("next page", "previous page");
 
@@ -123,6 +126,6 @@ public final class BazaarScreenKey {
 
     /** Collapses internal whitespace so a title that gains a space does not become a second key. */
     private static String squash(String text) {
-        return text.trim().replaceAll("\\s+", " ");
+        return WHITESPACE.matcher(text.trim()).replaceAll(" ");
     }
 }

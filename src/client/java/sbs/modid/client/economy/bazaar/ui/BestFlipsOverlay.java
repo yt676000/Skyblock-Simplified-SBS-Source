@@ -366,7 +366,8 @@ public final class BestFlipsOverlay {
         }
         List<Line> built = new ArrayList<>();
         for (String line : FlipFormat.wrap(font, state.failure().sentence(), textWidth, "")) {
-            built.add(new Line(line, "", SBSTheme.WARN, SBSTheme.TEXT_MUTED));
+            built.add(new Line(line, "", sbs.modid.client.ui.render.FailureStyle.colour(state.failure()),
+                    SBSTheme.TEXT_MUTED));
         }
         String hint = cfg().localFlipFallback
                 ? "No bazaar data cached yet either - it should arrive shortly."

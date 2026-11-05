@@ -10,6 +10,7 @@ package sbs.modid.client.core.util;
 
 import net.minecraft.network.chat.Component;
 import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.social.notes.logic.PlayerNotesListAnnotator;
 import sbs.modid.client.social.presence.SbsPresence;
 
 /**
@@ -51,6 +52,7 @@ public final class ChatDisplayRewrites {
         Component out = DisplayedText.filter(message);
         out = NumberTextFormat.orServer(ConfigManager.getInstance().get().chatOptions.numberFormat)
                 .apply(out);
+        out = PlayerNotesListAnnotator.getInstance().decorate(out);
         return SbsPresence.getInstance().decorateChat(out);
     }
 }

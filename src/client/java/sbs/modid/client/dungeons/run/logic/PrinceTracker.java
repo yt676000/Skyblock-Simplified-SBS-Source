@@ -98,6 +98,15 @@ public final class PrinceTracker {
         return INSTANCE;
     }
 
+    /**
+     * World leave: only the entity-id stamps - a tracked Prince dropping out of sight because the
+     * world ended must not be judged a kill. Whether a Prince already died this run survives a
+     * rejoin into the same run.
+     */
+    public void onWorldChange() {
+        lastSeen.clear();
+    }
+
     private static SBSConfig.DungeonsSettings cfg() {
         return ConfigManager.getInstance().get().dungeons;
     }

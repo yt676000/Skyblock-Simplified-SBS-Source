@@ -104,6 +104,17 @@ public final class BurrowDetector {
     }
 
     /**
+     * Whether {@code packet} is one the Diana signature table claims (burrow, spade trail, arrow),
+     * read without recording anything - asked by the particle limiter so a capped type never thins
+     * out the particles the guesses are drawn from. {@code typeId} is the caller's cached registry id.
+     */
+    public boolean matchesSignature(String typeId, ClientboundLevelParticlesPacket packet) {
+        return packet != null && armed()
+                && DianaParticles.roleOf(typeId, packet.getCount(), packet.getMaxSpeed(),
+                        packet.getXDist(), packet.getYDist(), packet.getZDist()) != null;
+    }
+
+    /**
      * One particle packet.
      *
      * <p>Called from the TAIL of the packet handler, which is the main-thread invocation - netty

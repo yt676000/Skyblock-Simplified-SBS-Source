@@ -20,6 +20,7 @@ import sbs.modid.client.ui.hud.logic.HypixelHudState;
 import sbs.modid.client.core.item.SkyblockItem;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The active quest and how far along it is – <b>all client-side</b>.
@@ -48,6 +49,7 @@ public final class QuestTracker {
     /** Hypixel prefixes every NPC dialogue line with this. */
     private static final String NPC_PREFIX = "[NPC] ";
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     private volatile Quest quest;
     private volatile String error;
@@ -250,7 +252,7 @@ public final class QuestTracker {
 
     /** Drops legacy §-colour codes, which Hypixel sometimes leaves in the literal text. */
     private static String stripCodes(String text) {
-        return text.replaceAll(SECTION_SIGN + ".", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 
     private void advance() {

@@ -36,6 +36,8 @@ import java.util.regex.Pattern;
  */
 public final class SweepParser {
 
+    private static final Pattern COLOUR_CODE = Pattern.compile("(?i)§.");
+
     /** The mathematical glyph the stat is written with, when it is a real codepoint. */
     public static final char SWEEP_GLYPH = '∮';
 
@@ -78,7 +80,7 @@ public final class SweepParser {
             return false;
         }
         if (raw.contains("Yum!")) {
-            String plain = raw.replaceAll("(?i)§.", "").trim();
+            String plain = COLOUR_CODE.matcher(raw).replaceAll("").trim();
             if (plain.startsWith("Yum!") || plain.startsWith("Big Yum!")) {
                 return false;
             }

@@ -19,11 +19,10 @@ import net.minecraft.world.item.component.CustomData;
 import sbs.modid.SkyblockSimplifiedSBS;
 
 import java.io.ByteArrayInputStream;
-import java.util.ArrayList;
 import java.util.Base64;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Helpers for reading the Hypixel SkyBlock internal item id from both a live {@link ItemStack} and
@@ -39,7 +38,30 @@ public final class SkyblockItem {
     private static final String EXTRA_ATTRIBUTES = "ExtraAttributes";
     private static final String ID = "id";
 
+    // normalizeName runs per item (tooltips, storage, AH index), so its patterns are compiled once.
+    private static final Pattern FORMATTING_CODE = Pattern.compile(String.valueOf((char) 0x00A7) + ".");
+    private static final Pattern PET_LEVEL_PREFIX = Pattern.compile("(?i)^\\[Lvl\\s*[0-9]+]\\s*");
+    private static final Pattern NON_KEY_CHARS = Pattern.compile("[^A-Z0-9]+");
+    private static final Pattern EDGE_UNDERSCORES = Pattern.compile("^_+|_+$");
+
+    /** Shared empty result. Callers only read the returned tag, so one instance serves them all. */
+    private static final CompoundTag EMPTY = new CompoundTag();
+
     private SkyblockItem() {
+    }
+
+    /**
+     * The tag inside a custom-data component <b>without copying it</b>. The returned tag is the
+     * component's own and must never be modified. {@code CustomData.copyTag()} is a full deep copy;
+     * reading the field directly is what makes a per-slot, per-frame id read free. Falls back to
+     * the copy only where the accessor mixin is not applied (plain unit tests).
+     */
+    public static CompoundTag customTag(CustomData data) {
+        // Through Object: CustomData is final, so javac rejects the check against the mixin interface.
+        if ((Object) data instanceof sbs.modid.client.core.mixin.CustomDataAccessor accessor) {
+            return accessor.skyblockSimplified$tag();
+        }
+        return data.copyTag();
     }
 
     /**
@@ -49,35 +71,44 @@ public final class SkyblockItem {
      * {@code minecraft:custom_data} ({@code id}, {@code enchantments}, ... sit directly on the
      * tag; verified against the live client NBT). Empty when the stack has
      * no custom data at all.
+     *
+     * <p><b>Read-only.</b> This is the stack's own tag, not a copy: modifying it would modify the
+     * item. Copy it first if a mutable compound is needed.
      */
     public static CompoundTag extraAttributes(ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
-            return new CompoundTag();
+            return EMPTY;
         }
         CustomData data = stack.get(DataComponents.CUSTOM_DATA);
         if (data == null || data.isEmpty()) {
-            return new CompoundTag();
+            return EMPTY;
         }
-        CompoundTag tag = data.copyTag();
-        CompoundTag extra = tag.getCompoundOrEmpty(EXTRA_ATTRIBUTES);
-        if (!extra.isEmpty()) {
+        CompoundTag tag = customTag(data);
+        // get + instanceof rather than getCompoundOrEmpty, which allocates an empty compound on
+        // every miss - and a miss is the common, flattened case.
+        if (tag.get(EXTRA_ATTRIBUTES) instanceof CompoundTag extra && !extra.isEmpty()) {
             return extra;
         }
         // Tolerate casing variants of the legacy key ("extraAttributes", ...).
         for (String key : tag.keySet()) {
-            if (key.equalsIgnoreCase(EXTRA_ATTRIBUTES)) {
-                CompoundTag cased = tag.getCompoundOrEmpty(key);
-                if (!cased.isEmpty()) {
-                    return cased;
-                }
+            if (key.equalsIgnoreCase(EXTRA_ATTRIBUTES)
+                    && tag.get(key) instanceof CompoundTag cased && !cased.isEmpty()) {
+                return cased;
             }
         }
         return tag; // modern flattened form
     }
 
-    /** The SkyBlock id of a live stack (e.g. "HYPERION"), or {@code null} if it is not a SkyBlock item. */
+    /**
+     * The SkyBlock id of a live stack (e.g. "HYPERION"), or {@code null} if it is not a SkyBlock
+     * item. Served from the shared {@link ItemAnalysis}.
+     */
     public static String id(ItemStack stack) {
-        CompoundTag extra = extraAttributes(stack);
+        return ItemAnalysis.of(stack).id();
+    }
+
+    /** The id as read from the attribute compound: {@code id}, else {@code ID}; {@code null} if neither. */
+    static String readId(CompoundTag extra) {
         String id = extra.getStringOr(ID, "");
         if (id.isEmpty()) {
             id = extra.getStringOr("ID", "");
@@ -97,6 +128,9 @@ public final class SkyblockItem {
      * <p>Kept here, beside {@link #id}, because this class is the single place the mod reads
      * {@code ExtraAttributes} – a MC version bump that moves the custom-data component is then one
      * file to change rather than a search across every feature that reads NBT.
+     *
+     * <p>Reads the tag directly, never through {@link ItemAnalysis}: the item-name hook calls this
+     * from inside {@code getHoverName}, which an analysis itself calls.
      */
     public static String uuid(ItemStack stack) {
         CompoundTag extra = extraAttributes(stack);
@@ -117,25 +151,11 @@ public final class SkyblockItem {
      *       a custom item (e.g. Infiniboom on a TNT base) must never fall back to its vanilla base
      *       item, or it would show that item's prices and crafting cost.</li>
      * </ol>
-     * Price consumers try each candidate against their cache until one hits.
+     * Price consumers try each candidate against their cache until one hits. Immutable and shared:
+     * served from {@link ItemAnalysis}.
      */
     public static List<String> priceLookupCandidates(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return List.of();
-        }
-        LinkedHashSet<String> candidates = new LinkedHashSet<>();
-        String skyblockId = id(stack);
-        if (skyblockId != null) {
-            candidates.add(skyblockId.toUpperCase(Locale.ROOT));
-        }
-        String normalized = normalizeName(stack.getHoverName().getString());
-        if (!normalized.isEmpty()) {
-            candidates.add(normalized);
-        }
-        if (skyblockId == null) {
-            candidates.add(BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath().toUpperCase(Locale.ROOT));
-        }
-        return new ArrayList<>(candidates);
+        return ItemAnalysis.of(stack).baseCandidates();
     }
 
     /**
@@ -207,9 +227,10 @@ public final class SkyblockItem {
         if (displayName == null) {
             return "";
         }
-        String clean = displayName.replaceAll(String.valueOf((char) 0x00A7) + ".", "").trim();
-        clean = clean.replaceAll("(?i)^\\[Lvl\\s*[0-9]+]\\s*", ""); // pet levels vary per auction
-        String key = clean.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_").replaceAll("^_+|_+$", "");
+        String clean = FORMATTING_CODE.matcher(displayName).replaceAll("").trim();
+        clean = PET_LEVEL_PREFIX.matcher(clean).replaceAll(""); // pet levels vary per auction
+        String key = EDGE_UNDERSCORES.matcher(
+                NON_KEY_CHARS.matcher(clean.toUpperCase(Locale.ROOT)).replaceAll("_")).replaceAll("");
         // Strip one leading reforge word ("SHARP_ASPECT_OF_THE_END" → "ASPECT_OF_THE_END").
         int underscore = key.indexOf('_');
         if (underscore > 0 && REFORGES.contains(key.substring(0, underscore))) {
@@ -225,14 +246,7 @@ public final class SkyblockItem {
      * {@code STICK}), which is exactly how the Bazaar / auctions APIs key those items.
      */
     public static String idForPricing(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return null;
-        }
-        String skyblockId = id(stack);
-        if (skyblockId != null) {
-            return skyblockId;
-        }
-        return BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath().toUpperCase(Locale.ROOT);
+        return ItemAnalysis.of(stack).idForPricing();
     }
 
     /** The SkyBlock id inside a base64 + gzip auction {@code item_bytes} blob, or {@code null} on failure. */

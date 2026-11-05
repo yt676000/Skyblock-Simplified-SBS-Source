@@ -100,6 +100,11 @@ public final class PvSkinRender {
         }
     }
 
+    /** The resolved skin; the default skin until the profile lookup lands. */
+    public PlayerSkin skin() {
+        return skin.get().playerSkin();
+    }
+
     /** Draws the model to fill the given box, scaled to its height exactly as vanilla does. */
     public void render(GuiGraphicsExtractor g, int x, int y, int w, int h) {
         PlayerSkin resolved = skin.get().playerSkin();

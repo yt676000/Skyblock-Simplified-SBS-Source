@@ -60,6 +60,7 @@ public final class DungeonStateManager {
     private static final long ROOM_PROBE_MS = 1_000;
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     /** "The Catacombs (F6)" / "(M7)" / "(E)". */
     private static final Pattern FLOOR = Pattern.compile("The Catacombs \\(([EFM])(\\d?)\\)");
@@ -73,7 +74,13 @@ public final class DungeonStateManager {
     /** Sidebar "Cleared: 67% (163)" - the room-completion percent the score's room components use. */
     private static final Pattern CLEARED_PCT = Pattern.compile("(?i)Cleared:?\\s*(\\d+)\\s*%");
 
-    private boolean inDungeon;
+    /**
+     * "The Catacombs" is on the sidebar. Set once per client tick; {@code volatile} because render
+     * code reads it - render code uses these two flags, never a {@link DungeonScoreboard} query.
+     */
+    private volatile boolean inDungeon;
+    /** A floor marker ("(F6)"/"(M2)"/"(E)") is on the sidebar. Same tick-set, render-read contract. */
+    private volatile boolean onFloor;
     private char floorType;      // 'E' / 'F' / 'M', 0 = unknown
     private int floorNumber;     // 0 for the Entrance / unknown
     private DungeonEvents.Phase phase = DungeonEvents.Phase.START;
@@ -119,6 +126,11 @@ public final class DungeonStateManager {
 
     public boolean inDungeon() {
         return inDungeon;
+    }
+
+    /** Narrower than {@link #inDungeon()}: see {@link DungeonScoreboard#isInDungeon()}. */
+    public boolean onFloor() {
+        return onFloor;
     }
 
     /** 'E' / 'F' / 'M', or 0 when unknown. */
@@ -209,7 +221,14 @@ public final class DungeonStateManager {
 
     /** Called once per client tick from the tracking mixin. */
     public void tick(Minecraft minecraft) {
-        boolean nowIn = DungeonScoreboard.isInCatacombs();
+        // Both flags are this tick's context - the sidebar was read once for every gate, not again here.
+        sbs.modid.client.core.tick.TickLocation location =
+                sbs.modid.client.core.tick.TickContexts.current().location();
+        boolean nowIn = location.inCatacombs();
+        onFloor = location.inDungeonFloor();
+        // The map snapshot is produced here, off the render path. Gated on the floor only, not on the
+        // map HUD setting: the room locator, the Explore score and the wither doors read it too.
+        DungeonState.getInstance().tick(onFloor);
         if (nowIn != inDungeon) {
             inDungeon = nowIn;
             if (!nowIn) {
@@ -448,6 +467,6 @@ public final class DungeonStateManager {
     }
 
     private static String strip(String text) {
-        return text == null ? "" : text.replaceAll(SECTION_SIGN + ".", "").trim();
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("").trim();
     }
 }

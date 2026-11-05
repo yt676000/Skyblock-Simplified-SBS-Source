@@ -24,6 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.ToLongFunction;
+import java.util.regex.Pattern;
 
 /**
  * Every Seymour piece the player owns, as far as SBS has seen: a <b>view</b> over the storage index
@@ -35,6 +36,8 @@ import java.util.function.ToLongFunction;
  * live inventory counts as captured now. Pieces without a uuid cannot be told apart and are all kept.
  */
 public final class SeymourCollection {
+
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
     /**
      * One piece, as plain data (no item stack), so sorting, searching and the CSV are testable.
@@ -158,7 +161,7 @@ public final class SeymourCollection {
             return true;
         }
         String text = line.searchText();
-        for (String word : query.toLowerCase(Locale.ROOT).trim().split("\\s+")) {
+        for (String word : WHITESPACE.split(query.toLowerCase(Locale.ROOT).trim())) {
             String bare = word.startsWith("#") ? word.substring(1) : word;
             if (!text.contains(word) && (bare.isEmpty() || !text.contains(bare))) {
                 return false;

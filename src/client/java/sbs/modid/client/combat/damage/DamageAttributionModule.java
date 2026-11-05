@@ -144,7 +144,7 @@ public final class DamageAttributionModule implements SbsModule {
                         .describe("The damage share at which the alert fires on slayer bosses. The "
                                 + "official threshold is 10%."),
                 SettingRow.label("Wiki eligibility: 1% of max HP on mobs, 10% on slayer bosses"),
-                SettingRow.toggle("LootShare Sound", () -> cfg().lootshareSound,
+                SettingRow.soundToggle("LootShare Sound", () -> cfg().lootshareSound,
                         () -> { cfg().lootshareSound = !cfg().lootshareSound; save(); })
                         .describe("Plays a ping along with the loot-share alert."),
 

@@ -435,13 +435,20 @@ public final class SettingRowList {
         String description = row.description();
         boolean licenceMark = sbs.modid.client.core.licence.LicenceMarks.marked(row);
         boolean devMark = row.isInDevelopment();
-        if ((description == null || description.isBlank()) && !licenceMark && !devMark) {
+        String disabledReason = row.disabledReason();
+        if ((description == null || description.isBlank()) && !licenceMark && !devMark
+                && disabledReason == null) {
             return;
         }
         var font = SbsFonts.ui();
         List<FormattedCharSequence> lines = new ArrayList<>();
         lines.add(Component.literal(row.label())
                 .withColor(SBSTheme.ACCENT_BRIGHT & 0xFFFFFF).getVisualOrderText());
+        // First, because it answers the question a greyed-out row raises: why can I not click this.
+        if (disabledReason != null) {
+            lines.addAll(font.split(Component.literal(disabledReason)
+                    .withColor(SBSTheme.WARN & 0xFFFFFF), TOOLTIP_WIDTH));
+        }
         if (description != null && !description.isBlank()) {
             lines.addAll(font.split(
                     Component.literal(description).withColor(SBSTheme.TEXT_MUTED & 0xFFFFFF), TOOLTIP_WIDTH));

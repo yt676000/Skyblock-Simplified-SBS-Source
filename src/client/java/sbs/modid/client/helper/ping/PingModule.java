@@ -175,7 +175,7 @@ public final class PingModule implements SbsModule {
                         + "staying on the ground behind it. Off puts every ping on the block "
                         + "the ray hits, whatever is standing in front of it. On by default."));
 
-        rows.add(SettingRow.toggle("Ping Sound", () -> cfg().sound,
+        rows.add(SettingRow.soundToggle("Ping Sound", () -> cfg().sound,
                         () -> {
                             cfg().sound = !cfg().sound;
                             save();

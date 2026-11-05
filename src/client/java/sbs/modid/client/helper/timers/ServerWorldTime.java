@@ -16,12 +16,10 @@ import net.minecraft.world.clock.WorldClock;
 import net.minecraft.world.clock.WorldClocks;
 import net.minecraft.world.level.Level;
 import sbs.modid.SkyblockSimplifiedSBS;
-import sbs.modid.client.core.tab.TabWidgets;
+import sbs.modid.client.core.location.SkyBlockLocation;
 
 import java.lang.ref.WeakReference;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * The two clocks the server actually sends, taken straight off {@code ClientboundSetTimePacket}
@@ -79,9 +77,6 @@ public final class ServerWorldTime {
     private static boolean logged;
     private static int packetsHere;
 
-    /** "Server: mini24CD" in the tab widget - the only name Hypixel gives an instance. */
-    private static final Pattern SERVER = Pattern.compile("(?i)^server:\\s*(\\S+)");
-
     /**
      * How many packets to wait for the tab widget before logging anyway. The name is what makes a
      * sample worth anything - two readings are only comparable if you know whether they came from
@@ -105,9 +100,11 @@ public final class ServerWorldTime {
             clockPackets = 0;
             logged = false;
             packetsHere = 0;
+            ServerTickClock.worldChanged();
         }
         packetsHere++;
         gameTime = packet.gameTime();
+        ServerTickClock.packet(gameTime);
         receivedAtMs = System.currentTimeMillis();
         for (Map.Entry<Holder<WorldClock>, ClockNetworkState> update : packet.clockUpdates().entrySet()) {
             if (update.getKey().is(WorldClocks.OVERWORLD)) {
@@ -133,30 +130,21 @@ public final class ServerWorldTime {
     }
 
     /**
-     * The instance name Hypixel publishes in the tab widget ("mini24CD"), or {@code null} before it
-     * shows up.
+     * The instance name ("mini24CD"), or {@code null} before anything has named it - callers must
+     * handle the {@code null}: on a server switch the island is often known before the lobby id.
+     * {@link SkyBlockLocation#server()} is the one source (the location API, then the tab widget).
      *
      * <p>Public because it is the only place the client is ever told which instance it is on, and
      * two features need that: this one, to say whether two clock readings are even comparable, and
      * Streamer Mode, to know the exact string it has to take back out of everything on screen.
      */
     public static String serverName() {
-        for (String line : TabWidgets.lines()) {
-            String name = serverNameOf(line);
-            if (name != null) {
-                return name;
-            }
-        }
-        return null;
+        return SkyBlockLocation.server();
     }
 
     /** The instance name one tab line carries ({@code "Server: mini24CD"}), or {@code null}. Pure. */
     public static String serverNameOf(String line) {
-        if (line == null) {
-            return null;
-        }
-        Matcher m = SERVER.matcher(line.trim());
-        return m.find() ? m.group(1) : null;
+        return SkyBlockLocation.serverOf(line);
     }
 
     /**

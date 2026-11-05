@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Beacon Tuning helper (Foraging): marks the option matching the beat in Galatea's beacon menus.
@@ -69,6 +70,8 @@ import java.util.Map;
  * this class becomes the half that matches options against it rather than the half that reads it.
  */
 public final class BeaconTuning {
+
+    private static final Pattern NON_LETTERS = Pattern.compile("[^a-z]");
 
     private static final BeaconTuning INSTANCE = new BeaconTuning();
 
@@ -219,8 +222,8 @@ public final class BeaconTuning {
      * minigame is built on - because the island gate is what makes it safe to be broad, and a title
      * we fail to recognise is a helper that silently does nothing.
      */
-    private static boolean isBeaconMenu(String title) {
-        String norm = title.toLowerCase(Locale.ROOT).replaceAll("[^a-z]", "");
+    public static boolean isBeaconMenu(String title) {
+        String norm = NON_LETTERS.matcher(title.toLowerCase(Locale.ROOT)).replaceAll("");
         for (String word : TITLE_WORDS) {
             if (norm.contains(word)) {
                 return true;

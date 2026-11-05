@@ -16,7 +16,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.render.WorldRender;
 import sbs.modid.client.dungeons.spiritbear.logic.SpiritBearTracker;
@@ -36,6 +37,8 @@ import sbs.modid.client.dungeons.spiritbear.logic.SpiritBearTracker;
  * view over {@link SpiritBearTracker}'s tick cache.
  */
 public final class SpiritBowHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     /** Light purple - the colour the drop's own name is printed in. */
     private static final int COLOR_BOW = 0xFFE87CFF;
@@ -65,7 +68,7 @@ public final class SpiritBowHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
 
         AABB box = bow.getBoundingBox().inflate(BOX_INFLATE);
@@ -80,10 +83,9 @@ public final class SpiritBowHighlight {
         // The distance is on the label because the answer being looked for is "can I get there first",
         // and a beam alone cannot say how far away its base is.
         String text = "Spirit Bow " + Math.round(minecraft.player.distanceTo(bow)) + "m";
-        Vec3 top = new Vec3(foot.x, box.maxY + 0.5, foot.z);
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos, top,
-                g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                foot.x, box.maxY + 0.5, foot.z, g.guiWidth(), g.guiHeight(), screen)) {
             g.centeredText(font, Component.literal(text), screen[0], screen[1], COLOR_BOW);
         }
     }

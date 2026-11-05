@@ -13,7 +13,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.build.logic.SelectionManager;
 import sbs.modid.client.core.build.render.GhostStyle;
 import sbs.modid.client.core.config.ConfigManager;
@@ -51,7 +52,7 @@ public final class GardenBlueprintSelection {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         int color = 0xFF000000 | GhostStyle.rgb(cfg.selectionColorHex, 0xFFE24B);
         int thickness = Math.max(1, Math.min(4, cfg.lineWidth));
         if (a != null && b != null) {

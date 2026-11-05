@@ -47,6 +47,9 @@ public final class SettingRow {
      */
     private BooleanSupplier disabledWhen = () -> false;
 
+    /** Shown in the tooltip while the row is greyed out; {@code null} for none. */
+    private String disabledReason;
+
     /**
      * Set by {@link #disabledWhile}. Only such a row has its widget re-synced each frame: a fixed row
      * leaves {@code active} to the widget, which may have switched itself off for reasons of its own.
@@ -143,6 +146,29 @@ public final class SettingRow {
         return this;
     }
 
+    /**
+     * {@link #disabledWhile} with a reason, shown in the row's tooltip while it is greyed out - so the
+     * player sees which other setting to change rather than a dead switch.
+     */
+    public SettingRow disabledWhile(BooleanSupplier condition, String reason) {
+        this.disabledReason = reason;
+        return disabledWhile(condition);
+    }
+
+    /**
+     * For a row that only controls a sound the mod plays itself: greyed out while the "SBS Sounds"
+     * master switch is off, with that as the reason.
+     */
+    public SettingRow needsSbsSounds() {
+        return disabledWhile(() -> !sbs.modid.client.core.audio.SbsSounds.enabled(),
+                sbs.modid.client.core.audio.SbsSounds.OFF_REASON);
+    }
+
+    /** Why the row is greyed out right now, or {@code null} when it is not or no reason was given. */
+    public String disabledReason() {
+        return disabledReason != null && isDisabled() ? disabledReason : null;
+    }
+
     /** Whether the row is greyed out right now. */
     public boolean isDisabled() {
         return disabledWhen.getAsBoolean();
@@ -233,6 +259,10 @@ public final class SettingRow {
      * forget, and the cost of forgetting is silent. Passing the previous ids – the old anchor, or
      * the slug of the old label – keeps stored references working through the rename, and they can
      * be dropped again a few releases later.
+     *
+     * <p>A row that moved to another module passes its old full id, {@code "oldModule:oldRowId"}:
+     * an alias containing a colon is taken as already scoped instead of being prefixed with this
+     * row's module.
      *
      * <p>Required on rows whose label is not unique within their module; {@code OptionIndex} audits
      * that on startup.
@@ -341,6 +371,15 @@ public final class SettingRow {
     public static SettingRow toggle(String label, BooleanSupplier state, Runnable onToggle) {
         return new SettingRow(label, (x, y, w, h) ->
                 new SciFiToggleButton(x, y, w, h, Component.literal(label), state, onToggle));
+    }
+
+    /**
+     * A {@link #toggle} for a feature's own sound, greyed out with the reason while the "SBS Sounds"
+     * master is off - see {@link #needsSbsSounds()}. Only for a switch that controls nothing but the
+     * sound; one that also sends a chat line stays a plain toggle.
+     */
+    public static SettingRow soundToggle(String label, BooleanSupplier state, Runnable onToggle) {
+        return toggle(label, state, onToggle).needsSbsSounds();
     }
 
     /**

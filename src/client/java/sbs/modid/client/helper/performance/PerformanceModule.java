@@ -54,7 +54,8 @@ public final class PerformanceModule implements SbsModule {
     @Override
     public String description() {
         return "Skip the invisible helper armor stands behind holograms and scripts, "
-                + "and cull the rest by distance";
+                + "and cull the rest by distance. Lag or stutter? The Performance FAQ "
+                + "(README, Performance section) covers RAM and Java settings";
     }
 
     @Override
@@ -115,12 +116,29 @@ public final class PerformanceModule implements SbsModule {
                                 + "hologram text is unreadable at that range anyway. 0 means no "
                                 + "limit (vanilla). Your own boxes and trackers are unaffected: "
                                 + "they draw independently of the stand itself."),
-                SettingRow.toggle("Skip Hidden Stand Ticking", () -> cfg().tickCulling,
-                        () -> { cfg().tickCulling = !cfg().tickCulling; save(); })
-                        .describe("Armor stands that are not rendered anyway also stop being "
-                                + "calculated each tick. Stands carrying another entity keep "
-                                + "ticking (their tick moves the rider), and stands resume a "
-                                + "little before they come back into view so nothing snaps."),
+                SettingRow.toggle("Nametag Distance by Type", () -> cfg().nametagClasses,
+                        () -> { cfg().nametagClasses = !cfg().nametagClasses; save(); })
+                        .describe("Common mobs' name and health labels fade out sooner than the "
+                                + "rest. NPC names, holograms, quest text and the names listed "
+                                + "below are always shown, whatever the distance. Other mobs keep "
+                                + "the Armor Stand Distance. Off: one distance for every label."),
+                SettingRow.rangeSlider("Common Mob Label Distance", 0, 64,
+                        () -> cfg().trashNametagDistance,
+                        value -> { cfg().trashNametagDistance = value; save(); }, "blocks")
+                        .describe("How far common mobs' labels are shown while Nametag Distance by "
+                                + "Type is on. 0 uses the Armor Stand Distance."),
+                SettingRow.text("Always Show Labels With", "Inquisitor, Horror", 400,
+                        () -> cfg().nametagAlwaysShow,
+                        value -> { cfg().nametagAlwaysShow = value; save(); })
+                        .describe("Comma-separated words. A label containing any of them (any "
+                                + "case) is never hidden by distance - bosses, rare mobs, event "
+                                + "creatures."),
+                SettingRow.toggle("Hide Mob Labels Behind Walls", () -> cfg().nametagOcclusion,
+                        () -> { cfg().nametagOcclusion = !cfg().nametagOcclusion; save(); })
+                        .describe("Mob labels with a wall between you and them are hidden, checked "
+                                + "a few times a second per label. Always-shown labels are never "
+                                + "hidden. Has no effect while another installed mod already "
+                                + "hides entities behind walls."),
                 SettingRow.label(summary()));
     }
 }

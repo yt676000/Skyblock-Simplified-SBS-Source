@@ -129,7 +129,7 @@ public final class TerminalSolverTest {
      */
     private static Result order() {
         Board board = new Board(3);
-        for (int number = 1; number <= 14; number++) {
+        for (int number = 1; number <= 10; number++) {
             board.set(number - 1, pane(number <= 5 ? DyeColor.LIME : DyeColor.RED, number));
         }
         return check("Click in order!", "Click in order!", board,

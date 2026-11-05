@@ -8,6 +8,7 @@
 
 package sbs.modid.client.skills.hunting.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
@@ -66,6 +67,9 @@ import java.util.regex.Pattern;
  * from here, and the log is how a missed line gets pinned.
  */
 public final class SafariTracker {
+
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
+    private static final Pattern NON_ID_CHARS = Pattern.compile("[^A-Z0-9_]");
 
     private static final SafariTracker INSTANCE = new SafariTracker();
 
@@ -385,7 +389,7 @@ public final class SafariTracker {
         if (cfg().sound) {
             LocalPlayer player = Minecraft.getInstance().player;
             if (player != null) {
-                player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.5f);
+                SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.5f);
             }
         }
     }
@@ -400,7 +404,7 @@ public final class SafariTracker {
         if (text == null || !inside || !cfg().enabled) {
             return;
         }
-        String line = text.replaceAll("§.", "");
+        String line = COLOUR_CODE.matcher(text).replaceAll("");
         if (PLAYER_CHAT.matcher(line).find()) {
             return;   // "Name: caught a Tide Shard lol" is a player talking, not a catch
         }
@@ -454,8 +458,8 @@ public final class SafariTracker {
         if (amount <= 0) {
             return;
         }
-        String id = "SHARD_" + name.toUpperCase(Locale.ROOT).replace(' ', '_')
-                .replaceAll("[^A-Z0-9_]", "");
+        String id = "SHARD_" + NON_ID_CHARS.matcher(name.toUpperCase(Locale.ROOT).replace(' ', '_'))
+                .replaceAll("");
         shards.merge(id, amount, Integer::sum);
         names.putIfAbsent(id, name + " Shard");
         colors.computeIfAbsent(id, key -> rarityColor(raw, name));

@@ -14,6 +14,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import sbs.modid.client.core.dev.PacketThreadCheck;
 
 /**
  * The sound packet, for the Diana toolkit: the Echo trail plays a harp note per point, and the
@@ -35,6 +36,7 @@ public class DianaEchoSoundMixin {
                     + "Lnet/minecraft/network/PacketProcessor;)V",
             shift = At.Shift.AFTER))
     private void skyblockSimplified$dianaEchoNote(ClientboundSoundPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaEchoSoundMixin.dianaEchoNote");
         sbs.modid.client.combat.diana.logic.DianaGuard.run(sbs.modid.client.combat.diana.logic.DianaGuard.Hook.SOUND,
                 packet, () -> sbs.modid.client.combat.diana.logic.BurrowDetector.getInstance().onSoundPacket(packet));
     }

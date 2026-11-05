@@ -35,6 +35,12 @@ public final class DungeonRoom {
     public List<RoomBlock> blocks;
     public Map<String, RoomWaypoint> waypoints;
 
+    /**
+     * Optional core hashes of this room (see {@code RoomCoreHash}): one centre-column hash per cell
+     * variant. A hit names the room before any signature-block scoring; absent = signature blocks only.
+     */
+    public List<Integer> cores;
+
     /** A door-relative coordinate triple. */
     public static final class Coord {
         public int relative_x;

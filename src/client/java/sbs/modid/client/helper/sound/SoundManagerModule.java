@@ -13,6 +13,7 @@ import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.module.ModuleGroup;
 import sbs.modid.client.core.module.SbsModule;
 import sbs.modid.client.core.sound.SoundControl;
+import sbs.modid.client.core.sound.SoundSpamLimiter;
 import sbs.modid.client.ui.settings.SettingRow;
 
 import java.util.List;
@@ -80,6 +81,20 @@ public final class SoundManagerModule implements SbsModule {
                         .describe("The table of every sound the game knows: search it, mute "
                                 + "entries, set a volume per sound and preview them."),
                 SettingRow.label(summary()),
+
+                SettingRow.label("— Spam —"),
+                SettingRow.toggle("Limit sound spam", () -> cfg().limitSpam,
+                        () -> { cfg().limitSpam = !cfg().limitSpam; save(); })
+                        .describe("Drops further copies of the same sound once too many started at "
+                                + "the same place at once - ability spam that otherwise fills the "
+                                + "sound engine and cuts other sounds off. Note blocks, interface "
+                                + "and level-up sounds are never limited."),
+                SettingRow.rangeSlider("Max Copies", 1, SoundSpamLimiter.CAPACITY,
+                        () -> cfg().spamMaxSounds, v -> { cfg().spamMaxSounds = v; save(); }, ""),
+                SettingRow.rangeSlider("Within Ticks", 1, 20, () -> cfg().spamWindowTicks,
+                        v -> { cfg().spamWindowTicks = v; save(); }, " ticks"),
+                SettingRow.rangeSlider("Within Radius", 1, 32, () -> cfg().spamRadius,
+                        v -> { cfg().spamRadius = v; save(); }, " blocks"),
 
                 SettingRow.label("— Mode —"),
                 SettingRow.cycle("Mode", () -> cfg().whitelistMode ? "Whitelist" : "Blacklist",

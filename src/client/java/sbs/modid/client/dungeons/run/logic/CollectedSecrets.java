@@ -8,6 +8,7 @@
 
 package sbs.modid.client.dungeons.run.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -104,7 +105,7 @@ public final class CollectedSecrets implements DungeonEvents.Listener {
         if (ConfigManager.getInstance().get().dungeons.secretClickedFeedback) {
             LocalPlayer player = Minecraft.getInstance().player;
             if (player != null) {
-                player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.8f);
+                SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.8f);
                 player.sendOverlayMessage(Component.literal("§aSecret collected §7(" + secret.kind() + ")"));
             }
         }

@@ -82,6 +82,7 @@ public final class TerminalSolutions {
 
     private static final Pattern STARTS_WITH = Pattern.compile("(?i)starts?\\s*with:?\\s*'?([A-Za-z0-9])");
     private static final Pattern CLICK_THE = Pattern.compile("(?i)click\\s+the\\s+(.+?)[!?.]*$");
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     private TerminalSolutions() {
     }
@@ -146,7 +147,11 @@ public final class TerminalSolutions {
     /** The colour of the panes that carry a number. The frame is a different colour, and that is the point. */
     private static final String NUMBER_PANE = "red";
 
-    /** Highest number this terminal ever shows. */
+    /**
+     * Highest stack size still read as a number. The board shows 1..10 since Hypixel 2026-10 (it was
+     * 1..14); the ceiling deliberately stays at the old size, so a revert does not silently drop
+     * 11..14 from the solve. It only filters out red panes that cannot be numbers at all.
+     */
     private static final int MAX_NUMBER = 14;
 
     /**
@@ -364,27 +369,14 @@ public final class TerminalSolutions {
         if (upper < columns || upper % columns != 0) {
             return Map.of();
         }
-        int[] markers = new int[columns];
         List<Integer> notes = new ArrayList<>();
         for (int i = 0; i < upper; i++) {
             String colour = paneColour(item(menu, i));
-            if (colour == null) {
-                continue;
-            }
-            if (colour.equals("magenta") || colour.equals("purple")) {
-                markers[i % columns]++;
-            } else if (colour.equals("green") || colour.equals("lime")) {
+            if ("green".equals(colour) || "lime".equals(colour)) {
                 notes.add(i);
             }
         }
-        int hitColumn = -1;
-        int mostMarkers = 1; // one stray pane is not a marked column; two of them are
-        for (int column = 0; column < columns; column++) {
-            if (markers[column] > mostMarkers) {
-                mostMarkers = markers[column];
-                hitColumn = column;
-            }
-        }
+        int hitColumn = melodyColumn(menu, upper);
         Map<Integer, Hint> hints = new LinkedHashMap<>();
         for (int note : notes) {
             boolean now = hitColumn >= 0 && note % columns == hitColumn;
@@ -433,7 +425,7 @@ public final class TerminalSolutions {
     }
 
     static String displayName(ItemStack stack) {
-        return stack.getHoverName().getString().replaceAll("§.", "").trim();
+        return FORMATTING.matcher(stack.getHoverName().getString()).replaceAll("").trim();
     }
 
     /**
@@ -507,6 +499,34 @@ public final class TerminalSolutions {
             }
         }
         return -1;
+    }
+
+    /**
+     * Melody's marked column - the one carrying the most purple / magenta panes (two at least, since
+     * one stray pane is not a marked column) - or {@code -1}. Shared by the solve and the board's
+     * column indicator, so the two can never point at different columns.
+     */
+    static int melodyColumn(AbstractContainerMenu menu, int upper) {
+        int columns = 9;
+        if (upper < columns || upper % columns != 0) {
+            return -1;
+        }
+        int[] markers = new int[columns];
+        for (int i = 0; i < upper; i++) {
+            String colour = paneColour(item(menu, i));
+            if ("magenta".equals(colour) || "purple".equals(colour)) {
+                markers[i % columns]++;
+            }
+        }
+        int hitColumn = -1;
+        int mostMarkers = 1; // one stray pane is not a marked column; two of them are
+        for (int column = 0; column < columns; column++) {
+            if (markers[column] > mostMarkers) {
+                mostMarkers = markers[column];
+                hitColumn = column;
+            }
+        }
+        return hitColumn;
     }
 
     /** The clickable button (or lever) in a melody row, or -1 when the row has none. */

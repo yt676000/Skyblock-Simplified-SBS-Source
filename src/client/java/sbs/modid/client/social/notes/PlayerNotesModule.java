@@ -108,6 +108,20 @@ public final class PlayerNotesModule implements SbsModule {
                                 + "Neutral. Hidden while Streamer Mode is on, so a stream never shows "
                                 + "who you tagged. Default: off."),
 
+                SettingRow.label("— Friend and ignore lists —"),
+                SettingRow.toggle("Show Notes In Friend/Ignore Lists", () -> cfg().listNotes,
+                        () -> { cfg().listNotes = !cfg().listNotes; save(); })
+                        .describe("When you run /friend list or /ignore list, a noted player's line "
+                                + "gets a ✎ with the start of your note; hover it for the whole note. "
+                                + "Only your own chat shows it - Hypixel's line and its buttons stay "
+                                + "as they are. Streamer Mode shows the tag, not the text. Default: on."),
+                SettingRow.toggle("Add-Note Buttons", () -> cfg().listButtons,
+                        () -> { cfg().listButtons = !cfg().listButtons; save(); })
+                        .describe("Puts [+note] (or [edit] for someone you noted) on every player in "
+                                + "those lists. Clicking fills in the chat box with /sbs note; nothing "
+                                + "is sent. /sbs notes friends lists the noted friends from your last "
+                                + "/friend list. Default: on."),
+
                 SettingRow.label("— How you are warned —")));
         rows.addAll(AlertChannelRows.forAlert("player_note", "a noted player shows up",
                 () -> cfg().channels, value -> { cfg().channels = value; save(); }));

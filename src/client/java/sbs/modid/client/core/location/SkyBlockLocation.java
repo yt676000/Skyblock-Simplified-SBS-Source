@@ -8,18 +8,11 @@
 
 package sbs.modid.client.core.location;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.world.scores.DisplaySlot;
-import net.minecraft.world.scores.Objective;
-import net.minecraft.world.scores.PlayerScoreEntry;
-import net.minecraft.world.scores.PlayerTeam;
-import net.minecraft.world.scores.Scoreboard;
 import sbs.modid.client.core.keybind.IslandCatalog;
+import sbs.modid.client.core.scoreboard.ScoreboardSnapshot;
+import sbs.modid.client.core.scoreboard.ScoreboardSnapshots;
 import sbs.modid.client.core.tab.TabWidgets;
-import sbs.modid.client.skills.farming.model.FarmingText;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -131,12 +124,47 @@ public final class SkyBlockLocation {
         return zone;
     }
 
+    /** "Server: mini24CD" in the tab widget - the tab list's name for the instance. */
+    private static final Pattern SERVER_LINE = Pattern.compile("(?i)^server:\\s*(\\S+)");
+
+    /**
+     * The instance the player is on ("mini24CD"), or {@code null} while nothing has named it yet.
+     *
+     * <p>Hypixel's Mod API location event first ({@link HypixelLocationApi}): it arrives with the
+     * server switch, while the tab list's {@code Server:} line - the fallback - shows up a moment
+     * later, and an island known without a lobby id is exactly the window that crashed the Crystal
+     * Hollows join. Not cached: the API read is a field, and the tab scan is what callers did before.
+     */
+    public static String server() {
+        String api = HypixelLocationApi.current().server();
+        if (api != null && !api.isBlank()) {
+            return api;
+        }
+        for (String line : TabWidgets.lines()) {
+            String name = serverOf(line);
+            if (name != null) {
+                return name;
+            }
+        }
+        return null;
+    }
+
+    /** The instance name one tab line carries ({@code "Server: mini24CD"}), or {@code null}. Pure. */
+    public static String serverOf(String line) {
+        if (line == null) {
+            return null;
+        }
+        Matcher m = SERVER_LINE.matcher(line.trim());
+        return m.find() ? m.group(1) : null;
+    }
+
     /**
      * The island the player is on ("Crimson Isle", "The Garden", "The Catacombs"), or {@code ""} when
      * nothing can be read.
      *
-     * <p>Preference order: the tab list's {@code Area:} line (authoritative and island-level), then the
-     * dungeon line that replaces it in the Catacombs, then the zone resolved up to its island through
+     * <p>Preference order: the tab list's {@code Area:} line (authoritative and island-level), then
+     * Hypixel's Mod API location event ({@link HypixelLocationApi} - there even with the sidebar and
+     * tab list hidden, but blind to which of Galatea's islands you are on), then the dungeon line that replaces it in the Catacombs, then the zone resolved up to its island through
      * {@link IslandCatalog} - the last of which is a guess from a seed table and only used while the
      * tab list has not been served yet.
      */
@@ -144,6 +172,10 @@ public final class SkyBlockLocation {
         refresh();
         if (!tabIsland.isEmpty()) {
             return tabIsland;
+        }
+        String api = HypixelLocationApi.islandOf(HypixelLocationApi.current());
+        if (!api.isEmpty()) {
+            return api;
         }
         if (!dungeon.isEmpty()) {
             String named = IslandCatalog.islandForArea(dungeon);
@@ -428,43 +460,36 @@ public final class SkyBlockLocation {
      */
     public static boolean inCrystalHollows() {
         refresh();
-        return "Crystal Hollows".equalsIgnoreCase(tabIsland.trim());
+        return "Crystal Hollows".equalsIgnoreCase(tabIsland.trim())
+                || "Crystal Hollows".equals(HypixelLocationApi.islandOf(HypixelLocationApi.current()));
     }
 
     /**
      * The current sidebar's lines, colour-stripped (empty when there is no sidebar / no world).
      *
      * <p>Hypixel renders each sidebar line as a fake scoreboard entry whose visible text lives in the
-     * entry's team prefix/suffix, so a line is rebuilt as {@code prefix + owner + suffix}. Uncached on
-     * purpose - dungeon features read the floor and the run stats off these lines every tick and want
-     * the live text, while the location fields above are what the timer covers.
+     * entry's team prefix/suffix, so a line is {@code prefix + owner + suffix}. Read from the shared
+     * {@link ScoreboardSnapshot}, which is as live as the old per-call read (it is rebuilt on the first
+     * client-thread read after any scoreboard packet) but built once per change instead of once per
+     * caller. The list is immutable and shared - copy it before changing it.
+     *
+     * <p>No client and no level ("nowhere") both give the empty list, which every caller already
+     * handles - they ask this to find out where they are.
      */
     public static List<String> sidebarLines() {
-        List<String> lines = new ArrayList<>();
-        // No client at all is the offline-tooling case; no level is the main-menu case. Both mean
-        // "nowhere", which every caller already handles - they ask this to find out where they are.
-        Minecraft minecraft = Minecraft.getInstance();
-        ClientLevel level = minecraft == null ? null : minecraft.level;
-        if (level == null) {
-            return lines;
-        }
-        Scoreboard scoreboard = level.getScoreboard();
-        Objective sidebar = scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
-        if (sidebar == null) {
-            return lines;
-        }
-        for (PlayerScoreEntry entry : scoreboard.listPlayerScores(sidebar)) {
-            lines.add(FarmingText.strip(lineText(scoreboard, entry)));
-        }
-        return lines;
+        return ScoreboardSnapshots.current().texts();
     }
 
-    private static String lineText(Scoreboard scoreboard, PlayerScoreEntry entry) {
-        String owner = entry.owner();
-        PlayerTeam team = scoreboard.getPlayersTeam(owner);
-        if (team == null) {
-            return owner;
-        }
-        return team.getPlayerPrefix().getString() + owner + team.getPlayerSuffix().getString();
+    // ------------------------------------------------------------------ the tick context
+
+    /**
+     * Re-reads both halves now, ignoring the {@link #REFRESH_MS} throttle. Called by
+     * {@code core/tick/TickContexts} when the sidebar or the tab list changed, so the context's gates
+     * and every feature asking later in the same tick read the same, current location - a throttled
+     * read could otherwise answer a quarter of a second behind the gate.
+     */
+    public static void rereadNow() {
+        readAt = 0;
+        refresh();
     }
 }

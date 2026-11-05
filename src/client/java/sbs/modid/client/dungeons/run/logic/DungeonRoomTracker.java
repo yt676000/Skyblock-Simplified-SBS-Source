@@ -38,7 +38,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -160,6 +162,16 @@ public final class DungeonRoomTracker {
     }
 
     /**
+     * World leave: only the starred-mob state, which is keyed by entity id. The run memory (room
+     * footprints, locked rooms, the run registry) is positions in the dungeon instance and must
+     * survive a rejoin into the same run; leaving The Catacombs clears it.
+     */
+    public void onWorldChange() {
+        DungeonHighlight.getInstance().clearStarredMobs();
+        clearStarredMobState();
+    }
+
+    /**
      * Whether any consumer needs the locked room <b>identified</b> against the database (its name /
      * {@link #activeMatch()}): room waypoints, the SBS Dungeon Map, Secret Routes, the puzzle solver
      * (finds its puzzle by room name) and the blood helper (finds the blood room by name). A consumer
@@ -269,7 +281,15 @@ public final class DungeonRoomTracker {
                     // those placed the footprint from the drift-prone marker pixel, and the run
                     // memory used to cement them for the whole run.
                     boolean untrusted = !fromMap || (!lockedAnchored && nowAnchored);
-                    if (untrusted && !sameFootprint(again.borders(), borders)) {
+                    String againColor = again.mapRoom() != null ? again.mapRoom().colorName() : null;
+                    if (untrusted && mergesForeignRoom(borders.rects().size(), mapColor,
+                            again.borders().rects().size(), againColor)) {
+                        // The re-read is BIGGER and painted in another colour than the lock: the fill
+                        // fused a neighbouring room onto it (seen: the 1x1 "Mini Rail Track" read as a
+                        // 3-cell brown L with the room next door). Keep the smaller lock.
+                        DungeonDebug.chat("§eMap takeover refused: §b" + again.borders().shape() + " " + againColor
+                                + " §7would swallow " + borders.shape() + " " + mapColor);
+                    } else if (untrusted && !sameFootprint(again.borders(), borders)) {
                         DungeonDebug.chat("§eMap takeover: §b" + again.borders().shape()
                                 + " §7replaces " + (fromMap ? "pre-anchor" : "fallback") + " " + borders.shape());
                         forgetFootprint(borders);
@@ -406,7 +426,7 @@ public final class DungeonRoomTracker {
         pushDevBoxes();
         RoomMapReader.MapRoom mapRoom = located.mapRoom();
         roomState = mapRoom != null ? mapRoom.state() : null;
-        DungeonDebug.chat(String.format("§a✔ Room: §b%s%s §7(%d,%d → %d,%d) NW anchor §b%d,%d §7src %s%s",
+        DungeonDebug.chat(String.format(Locale.ROOT, "§a✔ Room: §b%s%s §7(%d,%d → %d,%d) NW anchor §b%d,%d §7src %s%s",
                 mapRoom != null ? mapRoom.colorName() + " " : "", found.shape(),
                 found.min().getX(), found.min().getZ(), found.max().getX(), found.max().getZ(),
                 anchor.getX(), anchor.getZ(), fromMap ? "§amap+grid" : "§evoid",
@@ -448,7 +468,21 @@ public final class DungeonRoomTracker {
         BlockLookup lookup = pos -> BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()).toString();
         // fromMap = the dungeon map ruled on this footprint, so it is the size authority and the room
         // must stand exactly on it (no roaming placements into the neighbour room - see identify).
-        RoomMatch match = DungeonRoomMatcher.identify(lookup, borders, player, mapColor, fromMap, database);
+        // Core first: the centre-column hash of the player's cell names the room independent of
+        // footprint and rotation; the signature blocks then only have to place that one room.
+        int core = RoomCoreHash.coreAt(lookup, player.getX(), player.getZ());
+        String coreRoom = RoomCoreHash.roomFor(core, database);
+        RoomMatch match = null;
+        if (coreRoom != null) {
+            match = DungeonRoomMatcher.identify(lookup, borders, player, mapColor, fromMap,
+                    Map.of(coreRoom, database.get(coreRoom)));
+            DungeonDebug.chat("§7Core " + core + " → §b" + coreRoom + (match == null ? " §c(placement failed)" : ""));
+        } else if (DevMode.ACTIVE) { // DEV-ONLY: shows the core of unknown rooms for the database
+            DungeonDebug.chat("§7Core " + core + " §8(no room with this core)");
+        }
+        if (match == null) {
+            match = DungeonRoomMatcher.identify(lookup, borders, player, mapColor, fromMap, database);
+        }
         if (match == null) {
             return;
         }
@@ -463,7 +497,7 @@ public final class DungeonRoomTracker {
             hiddenWaypoints.retainAll(currentRun.foundSecrets());
         }
         // matched/total are the WINNING CELL's counts, not the whole room's (per-cell scoring).
-        DungeonDebug.chat(String.format("§a✔ Room match: §b%s §7facing §b%s §7(cell %d/%d) secrets %d/%s",
+        DungeonDebug.chat(String.format(Locale.ROOT, "§a✔ Room match: §b%s §7facing §b%s §7(cell %d/%d) secrets %d/%s",
                 match.name(), match.facing(), match.matched(), match.total(),
                 currentRun != null ? currentRun.secretsFound() : 0,
                 secretsTotal >= 0 ? secretsTotal : "?"));
@@ -552,6 +586,16 @@ public final class DungeonRoomTracker {
         }
     }
 
+    /**
+     * Would a map takeover merge the locked room into a foreign one? True when the re-read footprint
+     * is larger than the lock AND its colour differs from the lock's ({@code null} - no colour read -
+     * counts as different): a room never changes colour while it grows, so a bigger read in another
+     * colour is a neighbour fused onto it. Shrinking takeovers (oversized void-fill locks) stay allowed.
+     */
+    static boolean mergesForeignRoom(int lockedRects, String lockedColor, int readRects, String readColor) {
+        return readRects > lockedRects && !Objects.equals(lockedColor, readColor);
+    }
+
     /** Whether two footprints cover exactly the same cells (XZ rects only – Y varies with the player). */
     private static boolean sameFootprint(DungeonRoomBorders.Borders a, DungeonRoomBorders.Borders b) {
         return new HashSet<>(a.rects()).equals(new HashSet<>(b.rects()));
@@ -573,7 +617,7 @@ public final class DungeonRoomTracker {
             lastDoorChat = door.anchor();
             // Hypixel doorways always sit inside Y 66..73 (known constant) – flag outliers.
             boolean hypixelY = door.anchor().getY() >= 66 && door.anchor().getY() <= 73;
-            DungeonDebug.chat(String.format("§eDoor %s at %d,%d,%d §7(axis %s%s)",
+            DungeonDebug.chat(String.format(Locale.ROOT, "§eDoor %s at %d,%d,%d §7(axis %s%s)",
                     door.variant(), door.anchor().getX(), door.anchor().getY(), door.anchor().getZ(),
                     door.axis(), hypixelY ? "" : ", §cY outside 66-73§7"));
         }
@@ -815,24 +859,28 @@ public final class DungeonRoomTracker {
             clearStarredMobState();
             return;
         }
+        DungeonHighlight.getInstance().refreshStarredStyle();
         long tick = ++starTick;
         boolean probe = DungeonDebug.enabled();
-        List<net.minecraft.world.entity.Entity> starred = new ArrayList<>();
-        Set<Integer> seen = new HashSet<>();
-        for (net.minecraft.world.entity.Entity entity : level.entitiesForRendering()) {
-            if (!(entity instanceof net.minecraft.world.entity.decoration.ArmorStand stand)
-                    || !stand.hasCustomName()) {
+        List<net.minecraft.world.entity.Entity> starred = starScratch;
+        starred.clear();
+        starSeen.clear();
+        // Stands only, and the ✯ test runs on the name cached per change - not a getString() per
+        // stand per tick. Any ✯ counts, as before (a ✯ crit splash included).
+        List<sbs.modid.client.core.entity.Tracked> stands =
+                sbs.modid.client.core.entity.EntityIndex.bucket(sbs.modid.client.core.entity.EntityKind.ARMOR_STAND);
+        for (int i = 0, n = stands.size(); i < n; i++) {
+            sbs.modid.client.core.entity.Tracked tracked = stands.get(i);
+            if (tracked.nameClass() == sbs.modid.client.core.entity.NameClass.NONE
+                    || !tracked.plain().contains(STARRED_MOB_MARK)) {
                 continue;
             }
-            var name = stand.getCustomName();
-            if (name == null || !name.getString().contains(STARRED_MOB_MARK)) {
-                continue;
-            }
+            var stand = (net.minecraft.world.entity.decoration.ArmorStand) tracked.entity;
             StarredMobMatch.Pick<net.minecraft.world.entity.LivingEntity> pick = mobBelow(level, stand);
             net.minecraft.world.entity.LivingEntity mob = pick.mob();
             StarredMobMatch.Outcome outcome = pick.outcome();
             if (mob != null) {
-                seen.add(mob.getId());
+                starSeen.add(mob.getId());
                 if (isVisible(player, level, mob, tick)) {
                     starred.add(mob);
                 } else {
@@ -840,12 +888,21 @@ public final class DungeonRoomTracker {
                 }
             }
             if (probe) {
-                probeStar(stand, name.getString(), mob, outcome);
+                probeStar(stand, tracked.raw(), mob, outcome);
             }
         }
-        starVisibility.keySet().retainAll(seen);
-        DungeonHighlight.getInstance().setStarredMobs(starred);
+        starVisibility.keySet().removeIf(starNotSeen);
+        if (!starred.equals(starPublished)) {
+            starPublished = List.copyOf(starred);
+            DungeonHighlight.getInstance().setStarredMobs(starPublished);
+        }
     }
+
+    /** This tick's boxed mobs (scratch) and the list the highlight last got; client thread only. */
+    private final List<net.minecraft.world.entity.Entity> starScratch = new ArrayList<>();
+    private List<net.minecraft.world.entity.Entity> starPublished = List.of();
+    private final it.unimi.dsi.fastutil.ints.IntOpenHashSet starSeen = new it.unimi.dsi.fastutil.ints.IntOpenHashSet();
+    private final java.util.function.Predicate<Integer> starNotSeen = id -> !starSeen.contains(id.intValue());
 
     /** Throttled visibility: the rays for one mob are cast every few ticks, the answer reused between. */
     private boolean isVisible(LocalPlayer player, ClientLevel level,
@@ -913,12 +970,14 @@ public final class DungeonRoomTracker {
         }
         String type = mob == null ? "none"
                 : BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).getPath()
-                + (mob instanceof net.minecraft.world.entity.player.Player ? " (fake player)" : "");
+                + (mob instanceof net.minecraft.world.entity.player.Player
+                        ? " (fake player " + RealPlayers.describe(mob) + ")" : "");
         SkyblockSimplifiedSBS.LOGGER.info("[SBS][StarMobs] ✯ '{}' → {} ({})",
                 rawName.replaceAll(String.valueOf((char) 0x00A7) + ".", ""), type, outcome.reason());
     }
 
     private void clearStarredMobState() {
+        starPublished = List.of();
         starVisibility.clear();
         starProbeLogged.clear();
     }
@@ -1054,6 +1113,17 @@ public final class DungeonRoomTracker {
     /** The locked room's borders, or {@code null} when no room is locked. */
     public DungeonRoomBorders.Borders borders() {
         return borders;
+    }
+
+    /**
+     * For diagnostics: {@code yes}, or {@code no} with the reason - the scanner is stood down (boss
+     * room, no map in slot 9, nothing findable), or simply no room is locked around the player.
+     */
+    public String bordersState() {
+        if (borders != null) {
+            return "yes";
+        }
+        return standingDown ? "no (room scanner stood down)" : "no (no room locked)";
     }
 
     /**

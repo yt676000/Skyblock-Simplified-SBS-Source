@@ -115,7 +115,7 @@ public final class SafariSummaryModule implements SbsModule {
                 () -> { cfg().liveCounter = !cfg().liveCounter; save(); })
                 .describe("Keeps the same card on screen while you are still inside, counting "
                         + "along. Off means the card only ever appears once you are back out."));
-        rows.add(SettingRow.toggle("Sound", () -> cfg().sound,
+        rows.add(SettingRow.soundToggle("Sound", () -> cfg().sound,
                 () -> { cfg().sound = !cfg().sound; save(); })
                 .describe("A short ping when the summary appears."));
 

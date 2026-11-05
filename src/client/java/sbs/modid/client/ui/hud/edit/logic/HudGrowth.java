@@ -52,8 +52,24 @@ public final class HudGrowth {
      */
     private static final float CENTRE_TOLERANCE = 1.0f;
 
-    /** Scratch for {@link #offset}, so a per-frame, per-element call allocates nothing. */
-    private static final ThreadLocal<float[]> scratch = ThreadLocal.withInitial(() -> new float[2]);
+    /** What {@link #offset} hands out, so a per-frame, per-element call allocates nothing. Render thread only. */
+    private static final float[] scratch = new float[2];
+
+    /**
+     * The last correction per element ({@code [dx, dy]} at {@code ordinal * 2}) and everything it was
+     * computed from: the measured rectangle (by {@link HudLayout#measureVersion}), the transform's
+     * position and scale, and the GUI size. The correction is a pure function of exactly those, so
+     * while none of them change - which is nearly every frame - it is read back instead of re-solved.
+     */
+    private static final int ELEMENTS = HudElement.values().length;
+    private static final float[] cached = new float[ELEMENTS * 2];
+    private static final boolean[] valid = new boolean[ELEMENTS];
+    private static final int[] keyVersion = new int[ELEMENTS];
+    private static final double[] keyX = new double[ELEMENTS];
+    private static final double[] keyY = new double[ELEMENTS];
+    private static final double[] keyScale = new double[ELEMENTS];
+    private static final int[] keyWidth = new int[ELEMENTS];
+    private static final int[] keyHeight = new int[ELEMENTS];
 
     private HudGrowth() {
     }
@@ -68,13 +84,43 @@ public final class HudGrowth {
      */
     public static float[] offset(HudElement element, int guiWidth, int guiHeight) {
         HudTransform t = HudLayout.get(element);
+        int o = element.ordinal();
+        int version = HudLayout.measureVersion(element);
+        if (!valid[o] || keyVersion[o] != version || keyX[o] != t.x || keyY[o] != t.y
+                || keyScale[o] != t.scale || keyWidth[o] != guiWidth || keyHeight[o] != guiHeight) {
+            float[] solved = solve(element, t, version, guiWidth, guiHeight);
+            cached[o * 2] = solved[0];
+            cached[o * 2 + 1] = solved[1];
+            keyVersion[o] = version;
+            keyX[o] = t.x;
+            keyY[o] = t.y;
+            keyScale[o] = t.scale;
+            keyWidth[o] = guiWidth;
+            keyHeight[o] = guiHeight;
+            valid[o] = true;
+        }
+        if (cached[o * 2] == 0f && cached[o * 2 + 1] == 0f) {
+            return NONE;
+        }
+        scratch[0] = cached[o * 2];
+        scratch[1] = cached[o * 2 + 1];
+        return scratch;
+    }
+
+    /** The uncached correction behind {@link #offset}; returns {@link #NONE} or {@link #scratch}. */
+    private static float[] solve(HudElement element, HudTransform t, int version, int guiWidth,
+                                 int guiHeight) {
         HudElement.Bounds def = element.defaultBounds(guiWidth, guiHeight);
-        HudElement.Bounds local = HudLayout.localBounds(element, guiWidth, guiHeight);
+        boolean measured = version != 0;
+        float localX = measured ? HudLayout.measured(element, 0) : def.x();
+        float localY = measured ? HudLayout.measured(element, 1) : def.y();
+        float localW = measured ? HudLayout.measured(element, 2) : def.w();
+        float localH = measured ? HudLayout.measured(element, 3) : def.h();
         float s = (float) t.scale;
         float anchorW = def.w() * s;
         float anchorH = def.h() * s;
-        float grownW = local.w() * s;
-        float grownH = local.h() * s;
+        float grownW = localW * s;
+        float grownH = localH * s;
         boolean wider = grownW > anchorW + 0.5f;
         boolean taller = grownH > anchorH + 0.5f;
         if (!wider && !taller) {
@@ -84,12 +130,12 @@ public final class HudGrowth {
         // growing right and down from that same top-left corner.
         float anchorX = (float) (def.x() + t.x);
         float anchorY = (float) (def.y() + t.y);
-        float naturalX = anchorX + (local.x() - def.x()) * s;
-        float naturalY = anchorY + (local.y() - def.y()) * s;
+        float naturalX = anchorX + (localX - def.x()) * s;
+        float naturalY = anchorY + (localY - def.y()) * s;
         // The ring the card paints around itself counts as part of it: clamping the measured box to
         // the border would push the ring off the edge, where it is simply cut off.
         float bleed = HudLayout.VISUAL_BLEED * s;
-        float[] out = scratch.get();
+        float[] out = scratch;
         out[0] = wider
                 ? (pin(naturalX, grownW, anchorX, anchorW, bleed, guiWidth) - naturalX) / s
                 : 0f;

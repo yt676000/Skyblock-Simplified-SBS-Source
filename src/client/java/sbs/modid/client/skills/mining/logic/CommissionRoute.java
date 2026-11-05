@@ -32,6 +32,7 @@ import sbs.modid.client.skills.mining.model.CommissionTarget;
 import sbs.modid.client.social.chat.logic.SBSChat;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -77,8 +78,27 @@ public final class CommissionRoute {
     /** How often the same "that area is not loaded, here is the warp" line may be said. */
     private static final long WARP_HINT_INTERVAL_MS = 60_000L;
 
+    /**
+     * Target hysteresis for live targets: a re-scan only moves the target when the old one was mined
+     * out, or the new one is at least this many blocks <i>and</i> {@link #SWITCH_RATIO} closer. Without
+     * it "the nearest mithril" flipped between veins at similar distance on every scan, and every flip
+     * was a new route search.
+     */
+    private static final double SWITCH_GAIN = 8.0;
+    private static final double SWITCH_RATIO = 0.7;
+
     /** Resolution per commission name, kept between scans. Rebuilt when the commission set changes. */
     private final Map<String, CommissionTarget> resolved = new LinkedHashMap<>();
+
+    /**
+     * The waypoint last published per commission. Re-published as the same object while the place
+     * is unchanged: the router compares goals by identity, so a fresh object every 500 ms read as a
+     * new goal and restarted the search.
+     */
+    private final Map<String, Waypoint> waypoints = new HashMap<>();
+
+    /** The routed-to block of a material commission changed: its target is free to move at once. */
+    private boolean targetMined;
 
     /** Commissions whose area the player has stood in - guidance stops rather than nagging. */
     private final List<String> arrived = new ArrayList<>();
@@ -165,6 +185,9 @@ public final class CommissionRoute {
             }
             waypoints.add(waypointFor(commission, target, level, now));
         }
+        if (rescanLive) {
+            targetMined = false;
+        }
         if (!pinned.isEmpty()) {
             waypoints.removeIf(waypoint -> !waypoint.name.startsWith(pinned));
         } else if (!cfg().commissionRouteAuto) {
@@ -208,11 +231,25 @@ public final class CommissionRoute {
             return known;
         }
         CommissionTarget fresh = CommissionTargets.resolve(commission.name(), level, from);
+        if (known != null && keepPrevious(known, fresh, from)) {
+            return known;
+        }
         CommissionTarget previous = resolved.put(commission.name(), fresh);
         if (previous == null || previous.kind() != fresh.kind()) {
             logResolution(commission, fresh);
         }
         return fresh;
+    }
+
+    /** Whether a re-scan's answer is not enough of an improvement to move the target - see {@link #SWITCH_GAIN}. */
+    private boolean keepPrevious(CommissionTarget known, CommissionTarget fresh, BlockPos from) {
+        if (targetMined || !known.isLive() || !known.hasPosition()
+                || fresh.kind() != known.kind() || !fresh.hasPosition()) {
+            return false;
+        }
+        double old = Math.sqrt(known.pos().distSqr(from));
+        double now = Math.sqrt(fresh.pos().distSqr(from));
+        return old - now < SWITCH_GAIN || now > old * SWITCH_RATIO;
     }
 
     /**
@@ -227,9 +264,13 @@ public final class CommissionRoute {
     private Waypoint waypointFor(Commission commission, CommissionTarget target, ClientLevel level,
                                  long now) {
         String label = commission.name() + " §7" + commission.progressLabel();
-        Waypoint waypoint = new Waypoint(label, target.pos(), WaypointStore.currentDimension(),
-                Waypoint.SOURCE_COMMISSION);
         BlockPos pos = target.pos();
+        Waypoint waypoint = waypoints.get(commission.name());
+        if (waypoint == null || !waypoint.pos().equals(pos)) {
+            waypoint = new Waypoint(label, pos, WaypointStore.currentDimension(), Waypoint.SOURCE_COMMISSION);
+            waypoints.put(commission.name(), waypoint);
+        }
+        waypoint.name = label;
         boolean loaded = level.hasChunk(pos.getX() >> 4, pos.getZ() >> 4);
         waypoint.routable = loaded;
         if (!loaded) {
@@ -282,6 +323,7 @@ public final class CommissionRoute {
         for (CommissionTarget target : resolved.values()) {
             if (target.kind() == CommissionTarget.Kind.MATERIAL && pos.equals(target.pos())) {
                 liveDirty = true;
+                targetMined = true;
                 return;
             }
         }
@@ -290,6 +332,8 @@ public final class CommissionRoute {
     /** Drops every resolution and marker - island change, or the feature being switched off. */
     private void forget() {
         resolved.clear();
+        waypoints.clear();
+        targetMined = false;
         arrived.clear();
         pinned = "";
         lastScanFrom = null;
@@ -304,6 +348,7 @@ public final class CommissionRoute {
             names.add(commission.name());
         }
         resolved.keySet().removeIf(name -> !names.contains(name));
+        waypoints.keySet().removeIf(name -> !names.contains(name));
         arrived.removeIf(label -> {
             for (CommissionTarget target : resolved.values()) {
                 if (label.equals(target.label())) {

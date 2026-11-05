@@ -102,7 +102,7 @@ public final class SlotBindingsModule implements SbsModule {
                                 + "or a shop is how everything gets deposited and sold, and a "
                                 + "binding that swapped instead would look like broken shift-click. "
                                 + "Turn this off to swap inside those menus as well."),
-                SettingRow.toggle("Swap Sound", () -> cfg().swapSound,
+                SettingRow.soundToggle("Swap Sound", () -> cfg().swapSound,
                         () -> { cfg().swapSound = !cfg().swapSound; save(); })
                         .describe("A short click when a shift-click swaps two bound slots, so you "
                                 + "can tell the swap from a normal shift-click without looking.")));

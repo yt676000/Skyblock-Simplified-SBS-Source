@@ -15,7 +15,14 @@ import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.licence.privacy.ConsentGate;
 import sbs.modid.client.core.licence.privacy.ConsentManager;
 import sbs.modid.client.core.licence.privacy.ConsentScope;
+import sbs.modid.client.core.net.Credentials;
+import sbs.modid.client.core.net.FreeAccess;
 import sbs.modid.client.economy.pricehistory.logic.PriceApi;
+
+import sbs.modid.client.core.net.Redact;
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
 
 import java.io.IOException;
 import java.net.http.HttpClient;
@@ -80,7 +87,7 @@ public final class SbsApi {
      * needing a second failure path everywhere.
      */
     public static final class NoLicenceException extends IOException {
-        private NoLicenceException() {
+        NoLicenceException() {
             super("No SBS licence token set - request not sent");
         }
     }
@@ -96,9 +103,17 @@ public final class SbsApi {
      * ship data the user declined at the moment it was collected.
      */
     public static final class NoConsentException extends IOException {
-        private NoConsentException(ConsentScope scope) {
+        private final transient ConsentScope scope;
+
+        NoConsentException(ConsentScope scope) {
             super("No consent for scope '" + (scope == null ? "<undeclared>" : scope.id())
                     + "' - request not sent");
+            this.scope = scope;
+        }
+
+        /** The scope that was not granted, or {@code null} for a request that declared none. */
+        public ConsentScope scope() {
+            return scope;
         }
     }
 
@@ -129,23 +144,45 @@ public final class SbsApi {
 // PURPOSE: The single choke point for all traffic to our own backend. Every SBS request in
 //   the mod is sent from here, so the licence gate and the consent gate cannot be bypassed
 //   by a caller that forgets them.
-// DATA SENT: Whatever the calling client built, plus the licence-token headers added by
-//   withLicence below. Player uuid only on the player-scoped proxy routes (see selfUuid).
+// DATA SENT: Whatever the calling client built, plus the credential headers: the licence token
+//   (withLicence below), or for a player with no licence a free token (Credentials.apply /
+//   FreeAccess), only on the PlayerViewer and party finder routes. Player uuid only on the
+//   player-scoped proxy routes (see selfUuid).
 // DATA RECEIVED: Read-only JSON, parsed by the calling client with Gson. Nothing here can
 //   name a class to instantiate and no response is ever deserialized into arbitrary objects.
-// SAFETY DECLARATION: Requests carry the licence token, which identifies the PURCHASE, not
-//   the player. No Mojang credentials, no session id, no OS or hardware telemetry. Every
-//   call declares a ConsentScope and is refused with NoConsentException until the user has
-//   granted it; without a token nothing is sent at all (NoLicenceException).
+// SAFETY DECLARATION: A licence token identifies the PURCHASE, not the player. A free token is
+//   issued for the player's Mojang-verified uuid and DOES identify the player. No Mojang
+//   credentials, no session id, no OS or hardware telemetry. Every call declares a ConsentScope
+//   and is refused with NoConsentException until the user has granted it. Without any token,
+//   only the PlayerViewer and party finder routes and the two free-token routes that issue one
+//   (/v1/free-token/challenge, /claim) may be reached - and only once that feature's consent is
+//   granted; everything else is refused unsent (NoLicenceException).
 // ============================================================================
     public static <T> HttpResponse<T> send(ConsentScope scope, HttpClient client, HttpRequest request,
                                            HttpResponse.BodyHandler<T> handler)
             throws IOException, InterruptedException {
+        return send(scope, (String) null, request, handler);
+    }
+
+    /**
+     * {@link #send(ConsentScope, HttpClient, HttpRequest, HttpResponse.BodyHandler)} with the body
+     * capped at the size registered for {@code typeId} in
+     * {@link sbs.modid.client.core.net.validation.MessageSchemas} (the default cap when
+     * {@code null}). The request always travels on {@link SecureHttp}'s client: https only, default
+     * trust and hostname verification, no redirects, bounded time.
+     */
+    public static <T> HttpResponse<T> send(ConsentScope scope, String typeId, HttpRequest request,
+                                           HttpResponse.BodyHandler<T> handler)
+            throws IOException, InterruptedException {
+        // A tester token, or with no token entered the automatic free access, stands in for the
+        // licence only on the routes that accept it (and the two routes that issue it).
+        boolean licensed = hasLicence()
+                || (request != null && sbs.modid.client.core.net.Credentials.freeAccessAllowed(request.uri()));
         ConsentGate.Decision decision = ConsentGate.evaluate(
-                scope == null ? null : ConsentManager.getInstance().registry(), hasLicence(), scope);
+                scope == null ? null : ConsentManager.getInstance().registry(), licensed, scope);
         switch (decision) {
             case UNDECLARED -> {
-                return sendUndeclared(client, request, handler);
+                return sendUndeclared(request);
             }
             case NO_LICENCE -> throw new NoLicenceException();
             case NO_CONSENT -> {
@@ -157,9 +194,26 @@ public final class SbsApi {
             }
             default -> {
                 sbs.modid.client.core.perf.Perf.countNetworkCall();
-                return client.send(request, handler);
+                HttpResponse<T> response = typeId == null
+                        ? SecureHttp.send(request, handler, SecureHttp.defaultCap(), SecureHttp.DEFAULT_TOTAL_TIMEOUT)
+                        : SecureHttp.send(typeId, request, handler);
+                if (response.statusCode() == 401 && tokenOnlyRoute(request.uri())) {
+                    // Expired or revoked tester token: drop it so the next request claims a new one.
+                    request.headers().firstValue("Authorization")
+                            .map(h -> h.startsWith("Bearer ") ? h.substring(7) : h)
+                            .filter(t -> Credentials.kindOf(t) == Credentials.Kind.FREE)
+                            .ifPresent(t -> FreeAccess.get().rejected(t));
+                }
+                return response;
             }
         }
+    }
+
+    /** Routes where a 401 can only mean the credential itself was refused (not a session). */
+    private static boolean tokenOnlyRoute(java.net.URI uri) {
+        String path = uri == null ? null : uri.getRawPath();
+        return path != null && (path.startsWith("/v1/playerviewer/") || path.startsWith("/api/hypixel/profiles")
+                || path.equals("/v1/session/challenge"));
     }
 
     /**
@@ -177,13 +231,11 @@ public final class SbsApi {
     public static <T> HttpResponse<T> send(HttpClient client, HttpRequest request,
                                            HttpResponse.BodyHandler<T> handler)
             throws IOException, InterruptedException {
-        return sendUndeclared(client, request, handler);
+        return sendUndeclared(request);
     }
 
-    private static <T> HttpResponse<T> sendUndeclared(HttpClient client, HttpRequest request,
-                                                      HttpResponse.BodyHandler<T> handler)
-            throws IOException {
-        String target = request == null ? "<none>" : String.valueOf(request.uri());
+    private static <T> HttpResponse<T> sendUndeclared(HttpRequest request) throws IOException {
+        String target = request == null ? "<none>" : Redact.uri(request.uri());
         if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
             throw new IllegalStateException(
                     "SBS request to " + target + " declared no ConsentScope. Every backend call must "
@@ -197,14 +249,6 @@ public final class SbsApi {
 
     /** The handshake header a socket ticket travels in. Never a query parameter. */
     public static final String TICKET_HEADER = "X-Sbs-Ticket";
-
-    /** What a ticket may look like: opaque, URL-safe, bounded. Anything else is refused. */
-    private static final java.util.regex.Pattern TICKET =
-            java.util.regex.Pattern.compile("^[A-Za-z0-9._~+/=-]{16,1024}$");
-
-    /** Shared by every socket: the JDK client's own threads are daemons. */
-    private static final HttpClient SOCKET_HTTP = HttpClient.newBuilder()
-            .connectTimeout(java.time.Duration.ofSeconds(10)).build();
 
     /**
      * Creates a live WebSocket channel to the SBS backend. It does not connect until
@@ -233,7 +277,7 @@ public final class SbsApi {
 //   Sharing (helper/map/logic/StructureSharing).
 // DATA SENT: The ticket request carries the caller's JSON body and the licence-token headers
 //   (withLicence). The handshake carries only the ticket, in the X-Sbs-Ticket header.
-// DATA RECEIVED: {"ticket": "<opaque string>"} parsed with Gson and checked against TICKET;
+// DATA RECEIVED: {"ticket": "<opaque string>"} validated against the sbs.socket.ticket schema;
 //   then the socket's text frames, which the caller parses.
 // SAFETY DECLARATION: THE TICKET REQUEST TRANSMITS THE LICENCE TOKEN, like every backend call.
 //   It identifies the purchase, not the player. No Mojang credentials, no session id, no OS
@@ -251,12 +295,15 @@ public final class SbsApi {
             throw new IllegalStateException("SBS socket to " + socketUri + " declared no ConsentScope.");
         }
         SbsSocket.TicketSource tickets = () -> {
+            String body = ticketBody == null ? "{}" : ticketBody;
+            MessageSchemas.checkOutgoing(MessageTypes.OUT_SOCKET_TICKET,
+                    com.google.gson.JsonParser.parseString(body));
             HttpRequest request = withLicence(HttpRequest.newBuilder(ticketUri))
                     .timeout(java.time.Duration.ofSeconds(10))
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(ticketBody == null ? "{}" : ticketBody))
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
-            HttpResponse<String> response = send(scope, SOCKET_HTTP, request,
+            HttpResponse<String> response = send(scope, MessageTypes.SOCKET_TICKET, request,
                     HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
             int code = response.statusCode();
             if (code == 401 || code == 403) {
@@ -268,7 +315,7 @@ public final class SbsApi {
             return parseTicket(response.body());
         };
         return new SbsSocket(socketUri, TICKET_HEADER, tickets, listener, SbsSocket.Settings.defaults(),
-                SbsSocket.sharedScheduler(), SOCKET_HTTP, System::currentTimeMillis, Math::random);
+                SbsSocket.sharedScheduler(), SecureHttp.client(), System::currentTimeMillis, Math::random);
     }
 
     private static boolean ours(java.net.URI uri, String scheme) {
@@ -277,19 +324,8 @@ public final class SbsApi {
 
     /** The ticket out of {@code {"ticket": "…"}}, or an {@link IOException} for anything else. */
     static String parseTicket(String body) throws IOException {
-        try {
-            com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(body == null ? "" : body);
-            if (root.isJsonObject() && root.getAsJsonObject().has("ticket")) {
-                com.google.gson.JsonElement ticket = root.getAsJsonObject().get("ticket");
-                if (ticket.isJsonPrimitive() && ticket.getAsJsonPrimitive().isString()
-                        && TICKET.matcher(ticket.getAsString()).matches()) {
-                    return ticket.getAsString();
-                }
-            }
-        } catch (RuntimeException malformed) {
-            // Falls through to the refusal below: a body that is not JSON is not a ticket.
-        }
-        throw new IOException("ticket response was not a ticket");
+        return MessageSchemas.parse(MessageTypes.SOCKET_TICKET, body == null ? "" : body)
+                .getAsJsonObject().get("ticket").getAsString();
     }
 
     /** Adds the licence-token auth headers (both accepted forms) to a request builder. */

@@ -14,17 +14,22 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.economy.crafthelper.logic.CraftHelper;
+import sbs.modid.client.economy.crafthelper.logic.CraftPins;
+import sbs.modid.client.economy.crafthelper.ui.CraftTreePanel;
 import sbs.modid.client.economy.pricehistory.ui.PriceHistoryScreen;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.component.SciFiButton;
 import sbs.modid.client.ui.theme.SBSTheme;
 import sbs.modid.client.economy.recipe.model.ItemFilter;
 import sbs.modid.client.economy.recipe.model.ItemRef;
+import sbs.modid.client.economy.recipe.logic.RecipeLookup;
 import sbs.modid.client.economy.recipe.logic.RecipeRegistry;
 import sbs.modid.client.economy.recipe.model.SbsRecipe;
 import sbs.modid.client.economy.recipe.logic.SearchHighlightState;
@@ -127,6 +132,30 @@ public final class RecipeViewerScreen extends Screen {
     /** The icon/row under the mouse in the last rendered frame (for the price-history hotkey). */
     private ItemRef priceKeyHovered;
 
+    // Craft Helper: the Recipe / Tree switch, the favourite star and the tree itself (detail mode).
+    private static final String[] VIEW_LABELS = {"Recipe", "Tree"};
+    private static final int STAR_ON = 0xFFFFD64D;
+    private boolean treeView;
+    private int viewSwitchW;
+    private final CraftTreePanel treePanel = new CraftTreePanel(CraftTreePanel.Action.HUD_TOGGLE);
+
+    private static boolean craftHelperOn() {
+        return CraftHelper.cfg().enabled;
+    }
+
+    private int starX() {
+        return innerX + contentWidth - 9;
+    }
+
+    private int viewSwitchX() {
+        return starX() - 6 - viewSwitchW;
+    }
+
+    /** Bottom of the tree area: above Supercraft when it shows, else above the nav row. */
+    private int treeBottom() {
+        return (sbs$canSupercraft() ? supercraftY : navY) - 4;
+    }
+
     /** Opened from the SBS module overlay. */
     public RecipeViewerScreen() {
         super(Component.literal("Recipe Viewer"));
@@ -150,6 +179,35 @@ public final class RecipeViewerScreen extends Screen {
         this.pendingUsages = usages;
     }
 
+    /** Swallows the R-key lookup's own 'r', which arrives here after the key press opened us. */
+    private final RecipeLookup.CharSwallow hotkeyChar = new RecipeLookup.CharSwallow();
+
+    /**
+     * Opened by the R-key lookup directly on {@code item}: the search box starts empty and the
+     * hotkey's character ({@code hotkeyChar}) is not typed into it.
+     */
+    public static RecipeViewerScreen forHotkey(ItemRef item, boolean usages, char hotkeyChar) {
+        RecipeViewerScreen screen = new RecipeViewerScreen(item, usages);
+        screen.query = "";
+        screen.hotkeyChar.arm(hotkeyChar);
+        return screen;
+    }
+
+    /** Opened by the R-key lookup as a text search for {@code query}, without typing the hotkey. */
+    public static RecipeViewerScreen forHotkey(String query, char hotkeyChar) {
+        RecipeViewerScreen screen = new RecipeViewerScreen(query);
+        screen.hotkeyChar.arm(hotkeyChar);
+        return screen;
+    }
+
+    @Override
+    public boolean charTyped(CharacterEvent event) {
+        if (hotkeyChar.swallow(event.codepoint())) {
+            return true;
+        }
+        return super.charTyped(event);
+    }
+
     @Override
     protected void init() {
         panelW = clamp(this.width - SBSTheme.SCREEN_MARGIN * 2, SBSTheme.PANEL_MIN_WIDTH, SBSTheme.PANEL_MAX_WIDTH);
@@ -170,6 +228,7 @@ public final class RecipeViewerScreen extends Screen {
         supercraftY = navY - SBSTheme.SEARCH_HEIGHT - 4;
 
         addRenderableOnly(new PanelRenderable());
+        viewSwitchW = sbs.modid.client.ui.render.ChipSwitch.width(this.font, VIEW_LABELS);
 
         int textHeight = this.font.lineHeight;
         int editY = searchY + (SBSTheme.SEARCH_HEIGHT - textHeight) / 2;
@@ -375,9 +434,13 @@ public final class RecipeViewerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubled) {
-        boolean handled = super.mouseClicked(event, doubled);
         double mx = event.x();
         double my = event.y();
+        // An open Craft Helper recipe list takes the click first, wherever it lands.
+        if (selected != null && treeView && treePanel.popupOpen()) {
+            return treePanel.click(mx, my, event.button());
+        }
+        boolean handled = super.mouseClicked(event, doubled);
 
         // Double-click on the search bar toggles Search Highlight Mode.
         if (doubled && mx >= innerX && mx <= innerX + contentWidth
@@ -421,6 +484,25 @@ public final class RecipeViewerScreen extends Screen {
                 }
             }
             return false;
+        }
+
+        // Detail mode: Craft Helper star, Recipe / Tree switch, and the tree itself.
+        if (craftHelperOn() && event.button() == 0 && my >= detailTop - 2 && my < detailTop + 11) {
+            if (mx >= starX() - 2 && mx < starX() + 9) {
+                CraftPins.getInstance().togglePin(selected.lookupId());
+                return true;
+            }
+            int view = sbs.modid.client.ui.render.ChipSwitch.hit(this.font, viewSwitchX(), detailTop, mx, my,
+                    VIEW_LABELS);
+            if (view >= 0) {
+                treeView = view == 1;
+                treePanel.reset();
+                return true;
+            }
+        }
+        if (craftHelperOn() && treeView && my < treeBottom()
+                && treePanel.click(mx, my, event.button())) {
+            return true;
         }
 
         // Detail mode: Supercraft button (auto-craft via Hypixel's own menu).
@@ -486,12 +568,35 @@ public final class RecipeViewerScreen extends Screen {
             scrollOffset = clamp((int) (scrollOffset - Math.signum(scrollY)), 0, maxOffset);
             return true;
         }
+        if (selected != null && treeView && craftHelperOn() && treePanel.scroll(mouseX, mouseY, scrollY)) {
+            return true;
+        }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        if (selected != null && treeView && treePanel.drag(event.y())) {
+            return true;
+        }
+        return super.mouseDragged(event, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (treePanel.release()) {
+            return true;
+        }
+        return super.mouseReleased(event);
     }
 
     /** The Item Price History hotkey: pressed over any item icon/row it opens that item's page. */
     @Override
     public boolean keyPressed(KeyEvent event) {
+        hotkeyChar.disarm(); // a new key press: the next character is the player's own
+        if (event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && selected != null && treeView && treePanel.escape()) {
+            return true;
+        }
         int openKey = ConfigManager.getInstance().get().priceHistory.openKey;
         if (openKey != 0 && event.key() == openKey
                 && (searchBox == null || !searchBox.isFocused())
@@ -694,7 +799,18 @@ public final class RecipeViewerScreen extends Screen {
 
             g.item(selected.displayStack(), innerX, y - 2);
             g.text(font, Component.literal(selected.name), innerX + 22, y + 2, SBSTheme.ACCENT_BRIGHT);
+            if (craftHelperOn()) {
+                drawCraftControls(g, font, y, mouseX, mouseY);
+            }
             y += font.lineHeight + 8;
+
+            if (treeView && craftHelperOn()) {
+                CraftHelper.Model model = CraftHelper.getInstance().model(selected.lookupId(),
+                        CraftPins.getInstance().quantity(selected.lookupId()));
+                treePanel.render(g, model, innerX, y, contentWidth, treeBottom() - y, mouseX, mouseY, true);
+                drawFooter(g, font);
+                return;
+            }
 
             String pet = selectedPet();
             if (pet != null) {
@@ -767,7 +883,25 @@ public final class RecipeViewerScreen extends Screen {
                 g.text(font, Component.literal("Obtain via: " + String.join(", ", methods)),
                         innerX, y, SBSTheme.HUD_MANA);
             }
+            drawFooter(g, font);
+        }
 
+        /**
+         * Craft Helper controls on the detail title row: the Recipe / Tree switch and the favourite
+         * star, right-aligned so they never sit on the item name's start.
+         */
+        private void drawCraftControls(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font, int y,
+                                       int mouseX, int mouseY) {
+            sbs.modid.client.ui.render.ChipSwitch.draw(g, font, viewSwitchX(), y, treeView ? 1 : 0,
+                    mouseX, mouseY, VIEW_LABELS);
+            boolean pinned = CraftPins.getInstance().isPinned(selected.lookupId());
+            boolean hover = mouseX >= starX() - 2 && mouseX < starX() + 9 && mouseY >= y - 2 && mouseY < y + 11;
+            g.text(font, Component.literal(pinned ? "★" : "☆"), starX(), y + 1,
+                    pinned ? STAR_ON : (hover ? SBSTheme.ACCENT_BRIGHT : SBSTheme.TEXT_MUTED));
+        }
+
+        /** Supercraft and the navigation row, under both the recipe and the tree view. */
+        private void drawFooter(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font) {
             // Supercraft button (auto-craft on Hypixel), accent-framed above the nav row.
             if (sbs$canSupercraft()) {
                 SciFiRender.roundedRectWithBorder(g, innerX, supercraftY, contentWidth, SBSTheme.SEARCH_HEIGHT,

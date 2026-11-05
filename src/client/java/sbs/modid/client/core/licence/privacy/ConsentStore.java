@@ -12,6 +12,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import sbs.modid.SkyblockSimplifiedSBS;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -40,8 +41,11 @@ public final class ConsentStore {
     /**
      * Envelope version of the file itself, not of any disclosure. Bumped only if the file's shape
      * changes; scope-level resets are {@link ConsentScope#disclosureVersion()}'s job.
+     *
+     * <p>Version 2 added {@code policyVersion} per answer and {@code policyNoticeShown}. A version 1
+     * file is migrated on read: its answers load with {@code policyVersion = ""}.
      */
-    private static final int FILE_VERSION = 1;
+    static final int FILE_VERSION = 2;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -56,14 +60,28 @@ public final class ConsentStore {
     }
 
     /**
-     * Everything the file holds: the answers, plus whether this account has already been shown the
-     * one-time notice that the privacy screen exists.
+     * Everything the file holds: the answers, whether this account has already been shown the
+     * one-time notice that the privacy screen exists, and the policy version the policy-update
+     * notice was last shown for.
      *
-     * <p>The flag lives here rather than in the config because the config is per-profile and this
-     * is per-person: kept there, making a new profile would re-announce the notice to someone who
-     * has already read it and made their choices.
+     * <p>The two notice fields live here rather than in the config because the config is
+     * per-profile and this is per-person: kept there, making a new profile would re-announce a
+     * notice to someone who has already read it and made their choices.
+     *
+     * @param refused true when the file was written by a newer build ({@code version} above
+     *                {@link #FILE_VERSION}). Its answers are not read, and the caller must not
+     *                write over it until the user answers again.
      */
-    public record Snapshot(Map<ConsentScope, ConsentState> states, boolean noticeShown) {
+    public record Snapshot(Map<ConsentScope, ConsentState> states, boolean noticeShown,
+                           String policyNoticeShown, boolean refused) {
+
+        public Snapshot {
+            policyNoticeShown = policyNoticeShown == null ? "" : policyNoticeShown;
+        }
+
+        static Snapshot empty() {
+            return new Snapshot(blank(), false, "", false);
+        }
     }
 
     /**
@@ -72,19 +90,28 @@ public final class ConsentStore {
      * "missing" from "declined".
      */
     public Snapshot load() {
-        Map<ConsentScope, ConsentState> states = blank();
         if (!Files.exists(file)) {
-            return new Snapshot(states, false);
+            return Snapshot.empty();
         }
-        boolean noticeShown = false;
+        Map<ConsentScope, ConsentState> states = blank();
         try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             JsonObject root = GSON.fromJson(reader, JsonObject.class);
             if (root == null) {
-                return new Snapshot(states, false);
+                return Snapshot.empty();
             }
-            noticeShown = root.has("noticeShown") && root.get("noticeShown").getAsBoolean();
+            // A file without a version predates the field and is version 1.
+            int version = root.has("version") ? root.get("version").getAsInt() : 1;
+            if (version > FILE_VERSION) {
+                SkyblockSimplifiedSBS.LOGGER.info(
+                        "[SBS][Privacy] Consent file {} has version {}, this build reads up to {}. "
+                                + "Treated as no answers and left unchanged.", file, version, FILE_VERSION);
+                return new Snapshot(blank(), false, "", true);
+            }
+            boolean noticeShown = root.has("noticeShown") && root.get("noticeShown").getAsBoolean();
+            String policyNoticeShown = version >= 2 && root.has("policyNoticeShown")
+                    ? stringOrThrow(root.get("policyNoticeShown")) : "";
             if (!root.has("scopes") || !root.get("scopes").isJsonObject()) {
-                return new Snapshot(states, noticeShown);
+                return new Snapshot(states, noticeShown, policyNoticeShown, false);
             }
             JsonObject scopes = root.getAsJsonObject("scopes");
             for (Map.Entry<String, JsonElement> entry : scopes.entrySet()) {
@@ -94,27 +121,41 @@ public final class ConsentStore {
                 if (scope == null || !entry.getValue().isJsonObject()) {
                     continue;
                 }
-                states.put(scope, readState(entry.getValue().getAsJsonObject()));
+                states.put(scope, readState(entry.getValue().getAsJsonObject(), version));
             }
+            return new Snapshot(states, noticeShown, policyNoticeShown, false);
         } catch (Exception e) {
             // Corrupt file: fall back to "nothing granted". Deliberately not rethrown - a parse
             // error must not become a startup crash, and must not become a silent yes either.
-            return new Snapshot(blank(), false);
+            return Snapshot.empty();
         }
-        return new Snapshot(states, noticeShown);
     }
 
-    private static ConsentState readState(JsonObject json) {
+    /**
+     * One answer. Version 1 answers carry no policy version and migrate to {@code ""}, which does
+     * not match {@link PrivacyPolicy#VERSION}, so every v1 grant of a consent scope is asked again.
+     */
+    private static ConsentState readState(JsonObject json, int fileVersion) {
         try {
             boolean granted = json.has("granted") && json.get("granted").getAsBoolean();
             long grantedAt = json.has("grantedAt") ? json.get("grantedAt").getAsLong() : 0L;
             int version = json.has("disclosureVersion") ? json.get("disclosureVersion").getAsInt() : 0;
             ConsentSource source = ConsentSource.byId(
                     json.has("source") ? json.get("source").getAsString() : null);
-            return new ConsentState(granted, grantedAt, version, source);
+            String policyVersion = fileVersion >= 2 && json.has("policyVersion")
+                    ? stringOrThrow(json.get("policyVersion")) : "";
+            return new ConsentState(granted, grantedAt, version, source, policyVersion);
         } catch (Exception e) {
             return ConsentState.none();
         }
+    }
+
+    /** The value as a string; any other JSON type throws, which the callers read as corrupt. */
+    private static String stringOrThrow(JsonElement element) {
+        if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+            return element.getAsString();
+        }
+        throw new IllegalStateException("expected a string");
     }
 
     /**
@@ -124,8 +165,8 @@ public final class ConsentStore {
      * previous file intact rather than a half-written one. A truncated consent file would read as
      * "nothing granted", which is safe but would silently throw away answers the user had given.
      */
-    public void save(String accountId, Map<ConsentScope, ConsentState> states, boolean noticeShown)
-            throws IOException {
+    public void save(String accountId, Map<ConsentScope, ConsentState> states, boolean noticeShown,
+                     String policyNoticeShown) throws IOException {
         JsonObject scopes = new JsonObject();
         for (Map.Entry<ConsentScope, ConsentState> entry : states.entrySet()) {
             ConsentState state = entry.getValue();
@@ -137,12 +178,14 @@ public final class ConsentStore {
             json.addProperty("grantedAt", state.grantedAt());
             json.addProperty("disclosureVersion", state.disclosureVersion());
             json.addProperty("source", state.source().id());
+            json.addProperty("policyVersion", state.policyVersion());
             scopes.add(entry.getKey().id(), json);
         }
         JsonObject root = new JsonObject();
         root.addProperty("version", FILE_VERSION);
         root.addProperty("accountId", accountId == null ? "" : accountId);
         root.addProperty("noticeShown", noticeShown);
+        root.addProperty("policyNoticeShown", policyNoticeShown == null ? "" : policyNoticeShown);
         root.add("scopes", scopes);
 
         Path parent = file.getParent();

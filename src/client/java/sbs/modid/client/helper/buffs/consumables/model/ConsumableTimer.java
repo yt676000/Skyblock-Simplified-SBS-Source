@@ -31,6 +31,8 @@ public final class ConsumableTimer {
 
     /** A trailing Roman numeral: the level of "Speed III". */
     private static final Pattern LEVEL = Pattern.compile("^(.*\\S)\\s+([IVXLC]+)$");
+    private static final Pattern NON_KEY_CHARS = Pattern.compile("[^a-z0-9]+");
+    private static final Pattern EDGE_UNDERSCORES = Pattern.compile("^_+|_+$");
 
     public String key;
     public String displayName;
@@ -107,9 +109,9 @@ public final class ConsumableTimer {
         if (name == null) {
             return "";
         }
-        String base = splitLevel(name)[0].toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9]+", "_")
-                .replaceAll("^_+|_+$", "");
+        String base = EDGE_UNDERSCORES.matcher(
+                NON_KEY_CHARS.matcher(splitLevel(name)[0].toLowerCase(Locale.ROOT)).replaceAll("_"))
+                .replaceAll("");
         return base.equals("cookie_buff") ? ConsumableKind.COOKIE_KEY : base;
     }
 

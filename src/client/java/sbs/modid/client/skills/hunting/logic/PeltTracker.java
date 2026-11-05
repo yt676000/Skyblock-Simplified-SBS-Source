@@ -8,6 +8,7 @@
 
 package sbs.modid.client.skills.hunting.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -55,6 +56,8 @@ import java.util.regex.Pattern;
  * it the renderer boxes the stand's own position instead. The tracker never goes blind mid-hunt.
  */
 public final class PeltTracker {
+
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
 
     private static final PeltTracker INSTANCE = new PeltTracker();
 
@@ -220,7 +223,7 @@ public final class PeltTracker {
         if (text == null || !cfg().enabled) {
             return;
         }
-        String line = text.replaceAll("§.", "");
+        String line = COLOUR_CODE.matcher(text).replaceAll("");
         Matcher start = QUEST_START.matcher(line);
         if (start.find()) {
             questRarity = start.group(1).toLowerCase(Locale.ROOT);
@@ -375,15 +378,24 @@ public final class PeltTracker {
     }
 
     /**
-     * Whether the player is on the Farming Islands (where the whole hunt lives). An unknown location -
-     * neither the tab list nor the scoreboard readable this moment - counts as "still there": the hunt
-     * gate above already limits scanning to an active quest, and going dark on a hiccup would drop the
-     * box mid-chase.
+     * Whether the player is on the Farming Islands (where the whole hunt lives). An unknown location
+     * is not - except within {@link FarmingIslandsGate#GRACE_MS} of the last Farming Islands read, so
+     * a location hiccup mid-chase does not drop the box. See {@link FarmingIslandsGate}.
      */
-    private static boolean onFarmingIslands() {
-        return SkyBlockLocation.island().isEmpty()
-                || SkyBlockLocation.onIsland("The Farming Islands");
+    public static boolean onFarmingIslands() {
+        long now = System.currentTimeMillis();
+        boolean known = !SkyBlockLocation.island().isEmpty();
+        boolean onFarming = known && SkyBlockLocation.onIsland(FARMING_ISLANDS);
+        if (onFarming) {
+            lastFarmingAtMs = now;
+        }
+        return FarmingIslandsGate.decide(known, onFarming, now, lastFarmingAtMs);
     }
+
+    private static final String FARMING_ISLANDS = "The Farming Islands";
+
+    /** Client thread only (tick and HUD render): when the Farming Islands were last read. */
+    private static long lastFarmingAtMs;
 
     /**
      * One sweep over the nearby animal nametags. The current target is kept while its stand is
@@ -433,7 +445,7 @@ public final class PeltTracker {
 
     private static String plainName(Entity entity) {
         Component name = entity.getCustomName();
-        return name == null ? "" : name.getString().replaceAll("§.", "");
+        return name == null ? "" : COLOUR_CODE.matcher(name.getString()).replaceAll("");
     }
 
     /** First detection of this animal: one chat line + ping, then never again for this hunt. */
@@ -446,7 +458,7 @@ public final class PeltTracker {
         if (!cfg().foundPing) {
             return;
         }
-        player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.5f);
+        SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.5f);
         player.sendSystemMessage(Component.literal("§8[§bSBS§8]§r §6Animal found §7- " + tagText));
     }
 }

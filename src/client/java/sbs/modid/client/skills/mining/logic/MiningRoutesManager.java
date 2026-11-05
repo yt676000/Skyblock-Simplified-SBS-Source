@@ -15,7 +15,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.social.chat.logic.SBSChat;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
@@ -38,6 +39,9 @@ import java.util.List;
  * render pass are the same thread, so no locking is needed.
  */
 public final class MiningRoutesManager {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
+    private static final int[] SCREEN_B = new int[2];
 
     private static final MiningRoutesManager INSTANCE = new MiningRoutesManager();
     private static final Gson GSON = new Gson();
@@ -174,7 +178,7 @@ public final class MiningRoutesManager {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f vp = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc vp = FrameCamera.viewProjection();
         Font font = minecraft.font;
         int thickness = Math.max(1, settings.lineWidth);
         int gw = g.guiWidth();
@@ -201,9 +205,9 @@ public final class MiningRoutesManager {
                             color, thickness);
                 }
                 if (settings.showLabels) {
-                    int[] s = WorldRender.projectToScreen(vp, camPos,
-                            new Vec3(p[0] + 0.5, p[1] + 1.2, p[2] + 0.5), gw, gh);
-                    if (s != null) {
+                    int[] s = SCREEN;
+                    if (WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                            p[0] + 0.5, p[1] + 1.2, p[2] + 0.5, gw, gh, s)) {
                         String label = "§f" + (i + 1);
                         g.text(font, Component.literal(label), s[0] - font.width(label) / 2, s[1], color, false);
                     }
@@ -218,11 +222,15 @@ public final class MiningRoutesManager {
         return rgb == null ? 0xFF3FB4FF : 0xFF000000 | rgb;
     }
 
-    private static void drawSegment(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos,
+    private static void drawSegment(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos,
                                     int[] a, int[] b, int color, int thickness, int gw, int gh) {
-        int[] sa = WorldRender.projectToScreen(vp, camPos, new Vec3(a[0] + 0.5, a[1] + 0.5, a[2] + 0.5), gw, gh);
-        int[] sb = WorldRender.projectToScreen(vp, camPos, new Vec3(b[0] + 0.5, b[1] + 0.5, b[2] + 0.5), gw, gh);
-        if (sa != null && sb != null) {
+        int[] sa = SCREEN;
+        int[] sb = SCREEN_B;
+        boolean aOk = WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                a[0] + 0.5, a[1] + 0.5, a[2] + 0.5, gw, gh, sa);
+        boolean bOk = WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                b[0] + 0.5, b[1] + 0.5, b[2] + 0.5, gw, gh, sb);
+        if (aOk && bOk) {
             WorldRender.line(g, sa[0], sa[1], sb[0], sb[1], color, thickness);
         }
     }

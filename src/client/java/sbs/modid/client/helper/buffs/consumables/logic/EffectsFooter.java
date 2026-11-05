@@ -72,6 +72,7 @@ public final class EffectsFooter {
             "(?i)^(?:use\\b.*|you have\\b.*|no effects active\\b.*|ground to buff yourself.*|.*/effects.*)$");
     /** An effect name: starts with a letter, letters/spaces/apostrophes/hyphens, optional level. */
     private static final Pattern EFFECT_NAME = Pattern.compile("^[A-Za-z][A-Za-z' -]*?(?: [IVXLC]+)?$");
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
     private EffectsFooter() {
     }
@@ -173,7 +174,7 @@ public final class EffectsFooter {
      * duration is the time, the rest the name. {@code null} when what is left is not a name.
      */
     static Effect effect(String line) {
-        String[] words = line.trim().split("\\s+");
+        String[] words = WHITESPACE.split(line.trim());
         for (int take = Math.min(3, words.length - 1); take >= 1; take--) {
             String tail = String.join(" ", Arrays.copyOfRange(words, words.length - take, words.length));
             BuffDuration.Parsed d = BuffDuration.parse(tail);

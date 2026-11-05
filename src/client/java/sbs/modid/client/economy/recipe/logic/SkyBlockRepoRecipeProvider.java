@@ -8,6 +8,10 @@
 
 package sbs.modid.client.economy.recipe.logic;
 
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
@@ -329,22 +333,20 @@ public final class SkyBlockRepoRecipeProvider implements RecipeProvider {
     private void download() {
         SkyblockSimplifiedSBS.LOGGER.info("[SBS][RecipeRepo] Downloading the SkyBlock recipe database (one-time)...");
         try {
-            HttpClient http = HttpClient.newBuilder()
-                    .connectTimeout(TIMEOUT)
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .build();
             HttpRequest request = HttpRequest.newBuilder(URI.create(REPO_ZIP_URL))
                     .timeout(Duration.ofMinutes(5))
                     .header("User-Agent", "SkyblockSimplifiedSBS")
                     .GET()
                     .build();
-            HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<InputStream> response = SecureHttp.send(request, HttpResponse.BodyHandlers.ofInputStream(),
+                    MessageSchemas.maxBytes(MessageTypes.REPO_ARCHIVE), Duration.ofMinutes(6));
             if (response.statusCode() != 200) {
                 SkyblockSimplifiedSBS.LOGGER.warn("[SBS][RecipeRepo] Download returned status {}.", response.statusCode());
                 return;
             }
             int parsed = 0;
-            try (ZipInputStream zip = new ZipInputStream(response.body())) {
+            try (ZipInputStream zip = new ZipInputStream(
+                    SecureHttp.limit(response.body(), MessageSchemas.maxBytes(MessageTypes.REPO_ARCHIVE)))) {
                 ZipEntry entry;
                 while ((entry = zip.getNextEntry()) != null) {
                     String entryName = entry.getName();
@@ -582,11 +584,17 @@ public final class SkyBlockRepoRecipeProvider implements RecipeProvider {
         return text == null ? "" : text.replaceAll(SECTION_SIGN + ".", "");
     }
 
+    /** Largest single archive entry read into memory. */
+    private static final int MAX_ENTRY_BYTES = 4 * 1024 * 1024;
+
     private static String readEntry(ZipInputStream zip) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream(1024);
         byte[] buffer = new byte[4096];
         int read;
         while ((read = zip.read(buffer)) > 0) {
+            if (out.size() + read > MAX_ENTRY_BYTES) {
+                throw new java.io.IOException("archive entry exceeds its size cap");
+            }
             out.write(buffer, 0, read);
         }
         return out.toString(StandardCharsets.UTF_8);

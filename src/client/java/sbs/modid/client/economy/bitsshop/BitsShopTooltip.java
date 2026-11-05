@@ -14,7 +14,9 @@ import net.minecraft.world.item.ItemStack;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.item.SkyblockItem;
+import sbs.modid.client.core.item.TooltipLines;
 import sbs.modid.client.core.util.NumberDisplay;
+import sbs.modid.client.economy.prices.PriceVersion;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +36,8 @@ public final class BitsShopTooltip {
     private static final int YELLOW = 0xFFFF55;
     private static final int MUTED = 0xAAAAAA;
 
+    private static final TooltipLines CACHE = new TooltipLines(BitsShopTooltip::build);
+
     private BitsShopTooltip() {
     }
 
@@ -48,25 +52,29 @@ public final class BitsShopTooltip {
      */
     public static List<Component> decorate(List<Component> lines, ItemStack stack) {
         SBSConfig.BitsShopSettings cfg = cfg();
-        if (!cfg.enabled || !cfg.showTooltipLine || lines == null || stack == null || stack.isEmpty()) {
+        if (!cfg.enabled || !cfg.showTooltipLine || lines == null || stack == null || stack.isEmpty()
+                || !BitsShop.shopOpen()) {
             return lines;
         }
-        if (!BitsShop.shopOpen()) {
-            return lines;
-        }
+        // Built once per stack, price version (which the shop's offers bump too) and config revision.
+        long key = TooltipLines.key(PriceVersion.get(), ConfigManager.getInstance().revision(), 0);
+        return TooltipLines.append(lines, CACHE.get(stack, key));
+    }
+
+    private static List<Component> build(ItemStack stack) {
         Long bits = BitsShop.bitsCost(stack);
         String id = SkyblockItem.id(stack);
         if (bits == null || id == null || id.isEmpty()) {
-            return lines;
+            return List.of();
         }
 
-        List<Component> out = new ArrayList<>(lines);
+        List<Component> out = new ArrayList<>();
         out.add(Component.empty());
         BitsShop.Ranked ranked = BitsShop.rankOf(id);
         if (ranked == null) {
             // Known offer, unknown price: say which, rather than implying it is a bad deal.
             out.add(text("Bits Shop: no market price for this item", MUTED));
-            return out;
+            return List.copyOf(out);
         }
 
         int total = BitsShop.ranking().size();
@@ -94,7 +102,7 @@ public final class BitsShopTooltip {
         int observed = BitsShopCatalog.getInstance().observedCount();
         out.add(text("Comparing " + total + " priced offer(s) from " + observed
                 + " seen  ·  open each category once for the full shop", MUTED));
-        return out;
+        return List.copyOf(out);
     }
 
     /** A seeded entry has no display name until the page is actually seen; fall back to its id. */

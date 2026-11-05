@@ -74,11 +74,54 @@ public final class SciFiRender {
             return;
         }
         g.fill(x, y + r, x + w, y + h - r, color);
+        cornerRows(g, x, y, w, h, r, color, color);
+    }
+
+    /**
+     * Per radius, how far corner row {@code i} (0 = the outermost) is inset from the edge. The same
+     * circle equation the corners have always used, evaluated once per radius instead of once per
+     * row per frame - the table is the arc, not an approximation of it.
+     *
+     * <p>Grown lazily on the render thread, the only thread that draws.
+     */
+    private static int[][] cornerInsets = new int[0][];
+
+    private static int[] cornerInsets(int r) {
+        int[][] table = cornerInsets;
+        if (r < table.length && table[r] != null) {
+            return table[r];
+        }
+        if (r >= table.length) {
+            table = java.util.Arrays.copyOf(table, r + 1);
+        }
+        int[] dx = new int[r];
         for (int i = 0; i < r; i++) {
             double dy = r - i - 0.5D;
-            int dx = (int) Math.round(r - Math.sqrt((double) r * r - dy * dy));
-            g.fill(x + dx, y + i, x + w - dx, y + i + 1, color);
-            g.fill(x + dx, y + h - i - 1, x + w - dx, y + h - i, color);
+            dx[i] = (int) Math.round(r - Math.sqrt((double) r * r - dy * dy));
+        }
+        table[r] = dx;
+        cornerInsets = table;
+        return dx;
+    }
+
+    /**
+     * The {@code r} arc rows at the top and bottom of a rounded rectangle. Consecutive rows with the
+     * same inset go out as one fill rather than one each - the innermost rows of a corner are often
+     * flush - so the same pixels are covered, each exactly once, in fewer submissions.
+     */
+    private static void cornerRows(GuiGraphicsExtractor g, int x, int y, int w, int h, int r,
+                                   int top, int bottom) {
+        int[] dx = cornerInsets(r);
+        int i = 0;
+        while (i < r) {
+            int inset = dx[i];
+            int end = i + 1;
+            while (end < r && dx[end] == inset) {
+                end++;
+            }
+            g.fill(x + inset, y + i, x + w - inset, y + end, top);
+            g.fill(x + inset, y + h - end, x + w - inset, y + h - i, bottom);
+            i = end;
         }
     }
 
@@ -91,12 +134,7 @@ public final class SciFiRender {
         int r = clampRadius(w, h, radius);
         // Gradient for the central block.
         g.fillGradient(x, y + r, x + w, y + h - r, top, bottom);
-        for (int i = 0; i < r; i++) {
-            double dy = r - i - 0.5D;
-            int dx = (int) Math.round(r - Math.sqrt((double) r * r - dy * dy));
-            g.fill(x + dx, y + i, x + w - dx, y + i + 1, top);
-            g.fill(x + dx, y + h - i - 1, x + w - dx, y + h - i, bottom);
-        }
+        cornerRows(g, x, y, w, h, r, top, bottom);
         // The material sees the top tone: it is the lit face of the surface, which is what grain,
         // sheen and bloom are all describing.
         SurfaceMaterial.Weight weight = SurfaceMaterial.Weight.of(w, h);
@@ -162,8 +200,7 @@ public final class SciFiRender {
         if (i < 0) {
             return 0;
         }
-        double dy = r - i - 0.5D;
-        return (int) Math.round(r - Math.sqrt((double) r * r - dy * dy));
+        return cornerInsets(r)[i];
     }
 
     /** Rounded rectangle with a 1px border (border drawn underneath, fill on top). */

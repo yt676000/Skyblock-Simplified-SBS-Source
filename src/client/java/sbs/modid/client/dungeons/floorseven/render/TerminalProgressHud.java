@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * The Goldor-gate card: terminals, devices and levers done against their totals, and the three
@@ -40,6 +41,7 @@ public final class TerminalProgressHud {
     private static final int MIN_W = 132;
     private static final int TOP_PLAYERS = 3;
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     private TerminalProgressHud() {
     }
@@ -103,6 +105,6 @@ public final class TerminalProgressHud {
     }
 
     private static String strip(String text) {
-        return text.replaceAll(SECTION_SIGN + ".", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 }

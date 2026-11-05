@@ -78,6 +78,8 @@ public class HudMixin {
         // Closes the previous frame's measurement window before anything of this frame is drawn.
         sbs.modid.client.core.perf.Perf.endFrame();
         HudLayout.beginFrame();
+        // One camera read for every world-to-screen renderer below, instead of one matrix each.
+        sbs.modid.client.core.render.FrameCamera.capture(g);
     }
 
     /**
@@ -265,39 +267,36 @@ public class HudMixin {
         }
     }
 
-    /** SBS HUD extras (Active Pet card, cooldown text), each its own GUI-editor element. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$hudExtras(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
-        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.hudExtras")) {
-            SBSHudRenderer.renderHudExtras(g);
-        }
+    /**
+     * SBS HUD extras (Active Pet card, cooldown text), each its own GUI-editor element.
+     * TEMPORARY: not wrapped here - renderHudExtras opens sequential sections of its own
+     * (hud.hudExtras / hud.loadoutCard / hud.loadoutPreview) to measure the loadout preview.
+     */
+    private void skyblockSimplified$hudExtras(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
+        SBSHudRenderer.renderHudExtras(g);
     }
 
     /** Dev: /sbs perf - the KPI overlay. Not measured itself: it would only measure its own reading. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$perfOverlay(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$perfOverlay(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         sbs.modid.client.core.perf.PerfOverlay.render(g);
     }
 
     /** Quest Guide overlay – self-hiding: draws only while a quest is being tracked. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$questGuide(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$questGuide(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.questGuide")) {
             sbs.modid.client.helper.quest.ui.QuestOverlay.render(g);
         }
     }
 
     /** Skill Progress overlay – self-hiding: draws only while a skill is actively earning XP. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$skillProgress(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$skillProgress(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.skillProgress")) {
             sbs.modid.client.skills.progress.SkillProgressHud.render(g);
         }
     }
 
     /** Slayer Carry Counter: boss highlight boxes (world) plus the self-hiding HUD overlay. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$carryCounter(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$carryCounter(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.carryCounter")) {
             sbs.modid.client.combat.carry.render.CarryHighlight.render(g);
             sbs.modid.client.combat.carry.ui.CarryCounterOverlay.render(g);
@@ -305,74 +304,70 @@ public class HudMixin {
     }
 
     /** Bazaar Orders card – the Manage Orders panel on the HUD; self-hiding with no open orders. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$bazaarOrders(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$bazaarOrders(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.bazaarOrders")) {
             sbs.modid.client.economy.bazaar.ui.ManageOrdersPanel.renderHud(g);
         }
     }
 
     /** Rejoin Timer – centred countdown banner, self-hiding except while waiting out a kick. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$rejoinTimer(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$rejoinTimer(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.rejoinTimer")) {
             sbs.modid.client.helper.rejoin.RejoinTimer.getInstance().render(g);
+        }
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.autoRequeue")) {
+            sbs.modid.client.dungeons.requeue.render.RequeueHud.render(g);
         }
     }
 
     /** Recipe Viewer NPC locator panel – self-hiding; shows in-world after the recipe screen closes. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$npcLocator(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$npcLocator(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.npcLocator")) {
             sbs.modid.client.helper.npc.NpcLocator.getInstance().render(g);
         }
     }
 
     /** Composter status card – self-hiding: draws only while fresh Composter data exists. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$composter(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$composter(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.composter")) {
             sbs.modid.client.skills.garden.ui.ComposterOverlay.getInstance().render(g);
         }
     }
 
     /** Visitor Timer card – Garden only. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$visitorTimer(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$visitorTimer(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.visitorTimer")) {
             sbs.modid.client.skills.garden.ui.VisitorTimerHud.render(g);
         }
     }
 
     /** Visitor shopping list card – self-hiding: Garden only, and only with known offers. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$visitorShopping(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$visitorShopping(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.visitorShopping")) {
             sbs.modid.client.skills.garden.ui.VisitorShoppingHud.render(g);
         }
     }
 
     /** Farming Tracker card – self-hiding: draws only while farming stat widgets are being served. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$farmingTracker(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$farmingTracker(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.farmingTracker")) {
             sbs.modid.client.skills.garden.logic.FarmingTracker.getInstance().render(g);
             // Pest Profit card: self-gating, on the Garden once a pest was killed this session.
             sbs.modid.client.skills.garden.pests.PestProfitTracker.getInstance().render(g);
+            // Farming Net card: self-gating, farming islands once anything was counted.
+            sbs.modid.client.skills.farming.render.FarmingNetHud.render(g);
         }
     }
 
     /** Farm Drops card – farming islands only, once a drop has been counted. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$farmDrops(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$farmDrops(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.farmDrops")) {
             sbs.modid.client.skills.farming.render.FarmDropHud.render(g);
         }
     }
 
     /** Crop Milestone card – self-hiding: draws only while the tool counter is moving. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$cropMilestone(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$cropMilestone(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.cropMilestone")) {
             sbs.modid.client.skills.farming.logic.CropMilestoneTracker.getInstance().render(g);
             // Jacob's Contest card: self-gating, only while a contest runs.
@@ -383,16 +378,14 @@ public class HudMixin {
     }
 
     /** Farming Fortune card – draws only while a farming tool is held. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$farmingFortune(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$farmingFortune(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.farmingFortune")) {
             sbs.modid.client.skills.farming.render.FarmingFortuneDisplay.getInstance().render(g);
         }
     }
 
     /** Sweep card (Foraging) – draws only while a chop has been reported and is not hidden. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$foragingSweep(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$foragingSweep(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.foragingSweep")) {
             sbs.modid.client.skills.foraging.render.SweepHud.render(g);
             sbs.modid.client.skills.foraging.render.HoneyTimerHud.render(g);
@@ -400,6 +393,14 @@ public class HudMixin {
             sbs.modid.client.economy.forge.render.ForgeTimerHud.render(g);
             // Coins per Hour card - self-gating.
             sbs.modid.client.economy.coinsperhour.render.CoinsPerHourHud.render(g);
+            // Dice Profit card - self-gating.
+            sbs.modid.client.economy.dice.render.DiceProfitHud.render(g);
+            // Dragon Profit card - self-gating.
+            sbs.modid.client.combat.dragonprofit.render.DragonProfitHud.render(g);
+            // Sacrifice Altar card - self-gating, The End only.
+            sbs.modid.client.economy.sacrifice.render.SacrificeAltarHud.render(g);
+            // Experiment Profit card - self-gating.
+            sbs.modid.client.helper.experiment.render.ExperimentProfitHud.render(g);
             // Hide Nearby Players: the "hidden player in the way" hint under the crosshair - self-gating.
             sbs.modid.client.helper.hideplayers.logic.PlayerHiding.renderHint(g);
             // Fallen Star line - self-gating, Dwarven Mines only.
@@ -419,56 +420,78 @@ public class HudMixin {
     }
 
     /** Hoe Level card – draws only while a levelled farming tool is held. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$hoeLevels(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$hoeLevels(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.hoeLevels")) {
             sbs.modid.client.skills.farming.model.HoeLevels.getInstance().render(g);
         }
     }
 
     /** Garden Level card – self-hiding: draws only while the Garden widget is being served. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$gardenLevel(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$gardenLevel(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.gardenLevel")) {
             sbs.modid.client.skills.garden.model.GardenLevel.getInstance().render(g);
         }
     }
 
-    /** Pest card and its spawn title – self-hiding away from the Garden. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$pests(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
-        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.pests")) {
+    /**
+     * The buff, timer and garden cards plus the shared alert title. Still one injector callback, but
+     * each card is its own perf section (sequential, never nested) so /sbs perf names the one that
+     * actually costs - the old single "hud.pests" section billed all ten to the Pest card.
+     */
+    private void skyblockSimplified$buffsAndTimers(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.buffs")) {
             sbs.modid.client.helper.buffs.BuffHud.render(g);
+        }
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.consumables")) {
             sbs.modid.client.helper.buffs.consumables.render.ConsumableHud.render(g);
-            sbs.modid.client.helper.timers.TimerHud.render(g);
+        }
+        // TEMPORARY: TimerHud opens hud.timers / hud.timersChrome itself (sequential) to split card
+        // chrome from content.
+        sbs.modid.client.helper.timers.TimerHud.render(g);
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.milestone")) {
             sbs.modid.client.helper.milestone.MilestoneHud.render(g);
+        }
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.pestStatus")) {
             sbs.modid.client.skills.garden.render.PestStatusHud.render(g);
+        }
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.beaconTuner")) {
             sbs.modid.client.skills.foraging.beacon.render.BeaconTunerHud.render(g);
+        }
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.sprayonator")) {
             sbs.modid.client.skills.garden.render.SprayonatorHud.render(g);
+        }
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.riftTime")) {
             // Rift clock - self-hiding outside the Rift.
             sbs.modid.client.helper.rift.render.RiftTimeHud.render(g);
-            // Diana's two cards - self-hiding outside the Hub and while the ritual is not running.
+        }
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.diana")) {
+            // Diana's cards - self-hiding outside the Hub and while the ritual is not running.
             sbs.modid.client.combat.diana.logic.DianaGuard.run(sbs.modid.client.combat.diana.logic.DianaGuard.Hook.HUD, "Diana HUD",
-                    () -> sbs.modid.client.combat.diana.render.DianaHud.render(g));
+                    sbs.modid.client.combat.diana.render.DianaHud::render, g);
+            sbs.modid.client.combat.diana.logic.DianaGuard.run(sbs.modid.client.combat.diana.logic.DianaGuard.Hook.HUD, "Diana Profit",
+                    sbs.modid.client.combat.diana.render.DianaProfitHud::render, g);
+        }
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.pests")) {
+            // Pest card, cooldown and spawn title - self-hiding away from the Garden.
             sbs.modid.client.skills.garden.logic.PestTracker.getInstance().render(g);
             sbs.modid.client.skills.garden.logic.PestTracker.getInstance().renderCooldown(g);
             sbs.modid.client.skills.garden.logic.PestTracker.getInstance().renderTitle(g);
+        }
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.alertTitle")) {
             // The shared alert title, for any feature using the TITLE channel. Self-hiding.
             sbs.modid.client.core.alert.AlertTitle.render(g);
         }
     }
 
     /** Collection Tracker card – self-hiding: draws only while a collection counter is tracked. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$collectionTracker(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$collectionTracker(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.collectionTracker")) {
             sbs.modid.client.skills.collection.CollectionTrackerHud.render(g);
         }
     }
 
     /** Safari summary card – self-hiding: draws after a Safari trip (and, if on, during one). */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$safariSummary(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$safariSummary(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.safariSummary")) {
             sbs.modid.client.skills.hunting.render.SafariSummaryHud.render(g);
             sbs.modid.client.skills.hunting.render.HuntingSessionHud.render(g);
@@ -476,56 +499,49 @@ public class HudMixin {
     }
 
     /** Ability Damage card – draws only while the HUD mode is picked and a hit is still fresh. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$abilityDamage(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$abilityDamage(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.abilityDamage")) {
             sbs.modid.client.combat.damage.render.AbilityDamageHud.render(g);
         }
     }
 
     /** Melee Damage card – draws only while a melee splash attributed to you is still fresh. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$meleeDamage(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$meleeDamage(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.meleeDamage")) {
             sbs.modid.client.combat.damage.render.MeleeDamageHud.render(g);
         }
     }
 
     /** Damage Estimate card – draws only while the overlay is on and a mob is under the crosshair. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$damageEstimate(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$damageEstimate(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.damageEstimate")) {
             sbs.modid.client.combat.damage.render.DamageEstimateHud.render(g);
         }
     }
 
     /** Bestiary Tracker card – draws only while a mob is pinned (kills-to-max from the menu). */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$bestiaryTracker(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$bestiaryTracker(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.bestiaryTracker")) {
             sbs.modid.client.combat.bestiary.BestiaryHud.render(g);
         }
     }
 
     /** Route List card – the active routes, one line each; only while two or more exist. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$routeList(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$routeList(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.routeList")) {
             sbs.modid.client.helper.routes.render.RouteListHud.render(g);
         }
     }
 
     /** Garden visitor highlight – valuable/unchecked visitors, only on the Garden. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$visitorHighlight(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$visitorHighlight(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.visitorHighlight")) {
             sbs.modid.client.skills.garden.render.VisitorHighlightRenderer.render(g);
         }
     }
 
     /** Year of the Pig – pig/orb world markers, the session card and the live orb countdown. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$yearOfThePig(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$yearOfThePig(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.yearOfThePig")) {
             sbs.modid.client.helper.yearofthepig.render.ShinyPigHighlight.render(g);
             sbs.modid.client.helper.yearofthepig.render.ShinyPigHud.render(g);
@@ -534,20 +550,20 @@ public class HudMixin {
     }
 
     /** Tank Range – a translucent green ground bubble in the tank's 30-block Diversion radius. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$tankRange(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$tankRange(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.tankRange")) {
             sbs.modid.client.dungeons.run.render.TankRangeRender.render(g);
         }
     }
 
     /** Slayer module – world boxes (boss/beacon/heads), the tracker card and the flash alerts. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$slayer(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$slayer(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.slayer")) {
             sbs.modid.client.combat.slayer.render.SlayerHighlight.render(g);
             sbs.modid.client.combat.slayer.render.SlayerHud.render(g);
             sbs.modid.client.combat.slayer.render.BlazeAttunementHud.render(g);
+            sbs.modid.client.combat.slayer.render.InfernoPhaseHud.render(g);
+            sbs.modid.client.combat.slayer.render.VoidgloomPhaseHud.render(g);
             sbs.modid.client.combat.slayer.render.SlayerAlerts.getInstance().render(g);
         }
     }
@@ -557,8 +573,7 @@ public class HudMixin {
      * hitbox), the run card and the module's own flash call-out. All three self-gate on the module
      * toggle and on being in an actual run.
      */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$kuudra(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$kuudra(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.kuudra")) {
             sbs.modid.client.combat.kuudra.render.KuudraHighlight.render(g);
             sbs.modid.client.combat.kuudra.render.KuudraHud.render(g);
@@ -567,8 +582,7 @@ public class HudMixin {
     }
 
     /** Blood Helper – blood-room boxes, the spawn markers/tracers and the blood card. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$blood(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$blood(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.blood")) {
             sbs.modid.client.dungeons.blood.render.BloodHighlight.render(g);
             sbs.modid.client.dungeons.blood.render.BloodHud.render(g);
@@ -580,8 +594,7 @@ public class HudMixin {
      * the card, plus the shared dungeon flash alert. The alert is drawn here, once, for every dungeon
      * helper that raises one.
      */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$spiritBear(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$spiritBear(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.spiritBear")) {
             sbs.modid.client.dungeons.spiritbear.render.SpiritBearHighlight.render(g);
             sbs.modid.client.dungeons.spiritbear.render.SpiritBowHighlight.render(g);
@@ -594,8 +607,7 @@ public class HudMixin {
      * Pelt Tracker – box + tracer on the trapper's quest animal and Trevor's cooldown line
      * (detection runs on the tick), plus the Trapper Crest's collected count over the hotbar item.
      */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$peltTracker(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$peltTracker(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.peltTracker")) {
             sbs.modid.client.skills.hunting.render.PeltHighlight.render(g);
             sbs.modid.client.skills.hunting.render.PeltCrestOverlay.render(g);
@@ -606,8 +618,7 @@ public class HudMixin {
      * Critter Finder – box, name and tracer on each hiding critter the Safari sweep found. Pure
      * view: the detection runs on the tick, so this only walks the handful of cached sightings.
      */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$critterFinder(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$critterFinder(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.critterFinder")) {
             sbs.modid.client.skills.hunting.render.HidingCritterHighlight.render(g);
         }
@@ -618,56 +629,49 @@ public class HudMixin {
      * Pure view: the sweep runs on the tick, so this only walks the handful of cached drops, and it
      * re-checks each one so a collected drop loses its box on the pickup frame.
      */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$floorDrops(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$floorDrops(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.floorDrops")) {
             sbs.modid.client.helper.floordrop.render.FloorDropHighlight.render(g);
         }
     }
 
     /** Death-Save Timers – Bonzo / Spirit / Phoenix cooldown card (chat-driven, drawn from cache). */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$abilityTimers(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$abilityTimers(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.abilityTimers")) {
             sbs.modid.client.combat.abilitytimers.render.AbilityCooldownHud.render(g);
         }
     }
 
     /** Party highlight – through-wall box + nametag on each party member on the island. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$partyHighlight(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$partyHighlight(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.partyHighlight")) {
             sbs.modid.client.social.party.render.PartyHighlight.render(g);
         }
     }
 
     /** Transparent inventory overlay above the hotbar – its own GUI-editor element (view only). */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$inventoryOverlay(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$inventoryOverlay(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.inventoryOverlay")) {
             sbs.modid.client.helper.inventory.render.InventoryOverlayHud.render(g);
         }
     }
 
     /** SBS Dungeon Map minimap (Dungeons module) – its own GUI-editor element, block-event gated. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$dungeonMap(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$dungeonMap(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.dungeonMap")) {
             sbs.modid.client.dungeons.run.render.DungeonMapRenderer.render(g);
         }
     }
 
     /** Dungeon waypoint/highlight rendering only – detection runs on the client tick, this just draws cache. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$dungeonRooms(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$dungeonRooms(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.dungeonRooms")) {
             sbs.modid.client.dungeons.run.render.DungeonHighlight.getInstance().render(g);
         }
     }
 
     /** Livid Tracker – box + tracer on the real Livid and its card; identification runs on the tick. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$livid(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$livid(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.livid")) {
             sbs.modid.client.dungeons.livid.render.LividHighlight.render(g);
             sbs.modid.client.dungeons.livid.render.LividHud.render(g);
@@ -675,64 +679,63 @@ public class HudMixin {
     }
 
     /** F7/M7 phase splits – the card only reads the chat-driven timer, it measures nothing itself. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$phaseTimer(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$phaseTimer(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.phaseTimer")) {
             sbs.modid.client.dungeons.floorseven.render.FloorSevenPhaseHud.render(g);
+            // Storm pad / Goldor tick countdown: draws the model the tick task rebuilt.
+            sbs.modid.client.dungeons.floorseven.render.M7TickTimersHud.render(g);
             sbs.modid.client.dungeons.floorseven.render.NecronHealerWaypoint.render(g);
             // Simon Says: the order the device's lights came on in, drawn on the buttons themselves.
             sbs.modid.client.dungeons.floorseven.render.SimonSaysWaypoints.render(g);
+            // Lights device: the levers still to flip, and the device's state label.
+            sbs.modid.client.dungeons.floorseven.render.LightsDeviceMarks.render(g);
             // Goldor gate: terminals / devices / levers done, straight off the server's own counter.
             sbs.modid.client.dungeons.floorseven.render.TerminalProgressHud.render(g);
             // M7 dragons: the statue boxes first (world), then the health card over them.
             sbs.modid.client.dungeons.floorseven.render.DragonHighlight.render(g);
             sbs.modid.client.dungeons.floorseven.render.DragonHud.render(g);
+            // M7 relics: the line to the carried relic's spot (the markers are waypoints).
+            sbs.modid.client.dungeons.floorseven.render.RelicGuideLine.render(g);
         }
     }
 
     /** F3/M3 Fire Freeze card – reads the chat-armed clock; the flash comes from the shared alert. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$fireFreeze(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$fireFreeze(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.fireFreeze")) {
             sbs.modid.client.dungeons.floorthree.render.FireFreezeHud.render(g);
         }
     }
 
     /** F6/M6 terracotta respawn boxes – the spots are booked on the tick, this only draws them. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$terracotta(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$terracotta(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.terracotta")) {
             sbs.modid.client.dungeons.floorsix.render.TerracottaHighlight.render(g);
         }
     }
 
     /** F6/M6 giant health – the card plus the world numbers; the tags are read on the tick. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$giantHp(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$giantHp(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.giantHp")) {
             sbs.modid.client.dungeons.floorsix.render.GiantHpHud.render(g);
         }
     }
 
     /** F3/M3 guardian health – the card plus the world numbers; the tags are read on the tick. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$guardianHp(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$guardianHp(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.guardianHp")) {
             sbs.modid.client.dungeons.floorthree.render.GuardianHpHud.render(g);
         }
     }
 
     /** Mob Highlight boxes – targets collected on the client tick, drawn from cache here. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$mobHighlight(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$mobHighlight(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.mobHighlight")) {
             sbs.modid.client.combat.mobhighlight.render.MobHighlightRenderer.getInstance().render(g);
         }
     }
 
     /** Ghost Hunter – the chosen ghost's box + tracer; self-gated, targets come from the tick scan. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$ghostHunter(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$ghostHunter(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.ghostHunter")) {
             sbs.modid.client.combat.ghost.render.GhostHighlight.render(g);
             // Sea Creature Announcer: a short-lived box on the creature that just spawned from your rod.
@@ -745,8 +748,7 @@ public class HudMixin {
     }
 
     /** Fairy Souls – markers for the island's souls; self-gated and island-scoped inside. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$fairySouls(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$fairySouls(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.fairySouls")) {
             sbs.modid.client.helper.fairysouls.render.FairySoulRenderer.render(g);
             // Enigma Soul waypoints - self-hiding outside the Rift.
@@ -757,139 +759,146 @@ public class HudMixin {
     }
 
     /** Looking At chip – names the crosshair target; self-hiding, the ray scan is throttled inside. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$lookingAt(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$lookingAt(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.lookingAt")) {
             sbs.modid.client.helper.lookingat.LookingAtHud.render(g);
         }
     }
 
+    /** Spring Boots charge meter - self-hiding, drawn only while a charge runs. */
+    private void skyblockSimplified$springBoots(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.springBoots")) {
+            sbs.modid.client.helper.springboots.render.SpringBootsHud.render(g);
+        }
+    }
+
     /** Mining Routes: custom waypoint routes + connecting lines, drawn in the world. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$miningRoutes(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$miningRoutes(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.miningRoutes")) {
             sbs.modid.client.skills.mining.logic.MiningRoutesManager.getInstance().render(g);
         }
     }
 
     /** Lane End Warning: marked lane-area outlines, end arrows and the corner-2 preview. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$laneAreas(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$laneAreas(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.laneAreas")) {
             sbs.modid.client.skills.farming.logic.LaneEndWarning.getInstance().render(g);
         }
     }
 
     /** Pickobolus: the blocks the pickaxe-throw ability would break, previewed where you aim. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$pickobolus(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$pickobolus(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.pickobolus")) {
             sbs.modid.client.skills.mining.render.PickobolusHighlight.render(g);
             // Precision Mining: the marker on the block being mined; self-gated on its toggle.
             sbs.modid.client.skills.mining.precision.render.PrecisionMiningRender.render(g);
         }
+        // Gyro Helper: the Gravity Storm ring; returns on one boolean while the wand is not held.
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.gyro")) {
+            sbs.modid.client.combat.gyro.render.GyroPreview.render(g);
+        }
     }
 
     /** Effective Ore Blocks: visible ore faces tinted by yield per strength (self-gating on toggle + zone). */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$effectiveBlocks(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$effectiveBlocks(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.effectiveBlocks")) {
             sbs.modid.client.skills.mining.render.EffectiveBlockHighlight.render(g);
         }
     }
 
     /** Chat coordinate waypoints: box + beam every position shared in chat (self-gating on toggle). */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$chatWaypoints(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$chatWaypoints(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.chatWaypoints")) {
             sbs.modid.client.social.chat.logic.ChatWaypoints.getInstance().render(g);
         }
     }
 
     /** Frozen Corpse highlight: box Glacite-Mineshaft corpses once seen (self-gating on toggle + area). */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$frozenCorpses(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$frozenCorpses(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.frozenCorpses")) {
             sbs.modid.client.skills.mining.render.FrozenCorpseHighlight.render(g);
         }
     }
 
     /** Stopped minions: box + reason over each one the island scan flagged (self-gating on toggle + island). */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$stoppedMinions(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$stoppedMinions(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.stoppedMinions")) {
             sbs.modid.client.economy.minions.render.MinionStopHighlight.render(g);
         }
     }
 
     /** Trap Highlighter: dungeon tripwire runs and dispenser boxes, drawn from the indexed set. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$dungeonTraps(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$dungeonTraps(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.dungeonTraps")) {
             sbs.modid.client.dungeons.traps.render.TrapEsp.render(g);
         }
     }
 
     /** Mining Helpers: commission, Heart of the Mountain and tool-uses cards (each self-hiding). */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$miningHelpers(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$miningHelpers(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.miningHelpers")) {
             sbs.modid.client.skills.mining.render.MiningHud.render(g);
         }
     }
 
     /** Gemstone Profit: coins from this session's gemstones (self-hiding, own element). */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$gemstoneProfit(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$gemstoneProfit(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.gemstoneProfit")) {
             sbs.modid.client.skills.mining.render.GemstoneHud.render(g);
         }
     }
 
     /** Nucleus Run: the run in progress, the last run and the totals (self-hiding, own element). */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$nucleusRun(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$nucleusRun(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.nucleusRun")) {
             sbs.modid.client.skills.mining.nucleus.render.NucleusRunHud.render(g);
         }
     }
 
+    /** Dungeon Profit: last run, session total, per hour (self-hiding, own element). */
+    private void skyblockSimplified$dungeonProfit(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.dungeonProfit")) {
+            sbs.modid.client.dungeons.profit.render.DungeonProfitHud.render(g);
+        }
+    }
+
+    /** Kuudra Profit: last run, session total, per hour (self-hiding, own element). */
+    private void skyblockSimplified$kuudraProfit(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.kuudraProfit")) {
+            sbs.modid.client.combat.kuudraprofit.render.KuudraProfitHud.render(g);
+        }
+    }
+
     /** Glacite Cold card (self-hiding: Glacite zones with a known reading only). */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$glacitCold(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$glacitCold(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.glacitCold")) {
             sbs.modid.client.skills.mining.render.ColdHud.render(g);
         }
     }
 
     /** Pathfinding waypoints + route (dev only) – draws the cached path, never computes here. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$pathfinding(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$pathfinding(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.pathfinding")) {
             sbs.modid.client.core.pathfinding.PathRenderer.render(g);
         }
     }
 
     /** Secret Routes: waypoints, walk trail, breaker blocks and the pearl/AOTV aim indicator. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$secretRoutes(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$secretRoutes(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.secretRoutes")) {
             sbs.modid.client.dungeons.secretroutes.render.SecretRoutesRenderer.render(g);
         }
     }
 
-    /** Dungeon puzzle solver: boxes the solution in the world (blaze target, ...) – draws from cache. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$dungeonPuzzles(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    /** Dungeon puzzle solver: boxes the solution in the world – draws the coordinator's cached highlights. */
+    private void skyblockSimplified$dungeonPuzzles(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.dungeonPuzzles")) {
-            sbs.modid.client.dungeons.puzzle.PuzzleSolver.getInstance().render(g);
             sbs.modid.client.dungeons.puzzle.render.PuzzleRenderer.render(g);
         }
     }
 
     /** Ether Warp target highlight – re-raycast every frame so the box tracks the crosshair live. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$etherWarp(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$etherWarp(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.etherWarp")) {
             sbs.modid.client.helper.etherwarp.EtherWarpRenderer.render(g,
                     deltaTracker.getGameTimeDeltaPartialTick(true));
@@ -900,8 +909,7 @@ public class HudMixin {
      * The build hologram's outlines (Garden Blueprint and Build Tools share it) and Garden Blueprint's
      * custom-area box - self-gated: draw only while a hologram is shown or corners are being picked.
      */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$gardenBlueprint(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$gardenBlueprint(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.gardenBlueprint")) {
             sbs.modid.client.core.build.render.HologramRenderer.render(g);
             sbs.modid.client.skills.garden.render.GardenBlueprintSelection.render(g);
@@ -912,8 +920,7 @@ public class HudMixin {
     }
 
     /** Pest highlight + infested-plot highlight – self-gated: only in the Garden, only when toggled. */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$pestHighlight(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$pestHighlight(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.pestHighlight")) {
             sbs.modid.client.skills.garden.render.PestHighlight.render(g);
         }
@@ -924,8 +931,7 @@ public class HudMixin {
      * the chat is focused, which is precisely when the tabs have to be there to be clicked. This
      * hook runs whenever the HUD does, open screen or not.
      */
-    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
-    private void skyblockSimplified$chatTabs(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void skyblockSimplified$chatTabs(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.chatTabs")) {
             sbs.modid.client.social.chat.render.ChatTabBar.render(g);
             // Where the next typed message is going. Drawn after the tab strip and independently
@@ -1020,16 +1026,17 @@ public class HudMixin {
     private void skyblockSimplified$parseActionBar(Component message, boolean animate, CallbackInfo ci) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.parseActionBar")) {
             if (message != null) {
-                HypixelHudState.getInstance().parseActionBar(message.getString());
+                String text = message.getString();
+                HypixelHudState.getInstance().parseActionBar(text);
                 // Layout Recorder (dev, default off): the action bar's shape.
-                sbs.modid.client.core.dev.LayoutRecorder.getInstance().onActionBar(message.getString());
+                sbs.modid.client.core.dev.LayoutRecorder.getInstance().onActionBar(text);
                 // Server Scanner (dev): action-bar changes while its channel is on.
                 sbs.modid.client.core.dev.scanner.ServerScanner.onActionBar(message);
                 // Glacite Cold: capture log + reading (which HUD line carries it is unverified).
-                sbs.modid.client.skills.mining.logic.ColdTracker.getInstance().onActionBar(message.getString());
+                sbs.modid.client.skills.mining.logic.ColdTracker.getInstance().onActionBar(text);
                 // Crop Analyzer capture (research, off by default).
                 sbs.modid.client.skills.garden.logic.CropAnalyzerCapture.getInstance()
-                        .onText("actionbar", message.getString());
+                        .onText("actionbar", text);
             }
         }
     }
@@ -1044,6 +1051,8 @@ public class HudMixin {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.parseTitle")) {
             if (title != null) {
                 HypixelHudState.getInstance().parseTitle(title.getString());
+                sbs.modid.client.combat.slayer.logic.VoidgloomFight.getInstance()
+                        .probe(System.currentTimeMillis(), "title", title.getString());
                 sbs.modid.client.skills.garden.logic.CropAnalyzerCapture.getInstance()
                         .onText("title", title.getString());
             }
@@ -1055,9 +1064,93 @@ public class HudMixin {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.parseSubtitle")) {
             if (subtitle != null) {
                 HypixelHudState.getInstance().parseTitle(subtitle.getString());
+                sbs.modid.client.combat.slayer.logic.VoidgloomFight.getInstance()
+                        .probe(System.currentTimeMillis(), "subtitle", subtitle.getString());
                 sbs.modid.client.skills.garden.logic.CropAnalyzerCapture.getInstance()
                         .onText("subtitle", subtitle.getString());
             }
         }
+    }
+
+    /**
+     * The one TAIL hook for every SBS card and overlay drawn after the hotbar: one injector
+     * callback per frame instead of one per card. Each call below is what used to be its own
+     * {@code @Inject} here, in the same (declaration) order Mixin ran them in.
+     */
+    @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
+    private void skyblockSimplified$hudTail(GuiGraphicsExtractor g, DeltaTracker deltaTracker, CallbackInfo ci) {
+        skyblockSimplified$hudExtras(g, deltaTracker);
+        skyblockSimplified$perfOverlay(g, deltaTracker);
+        skyblockSimplified$questGuide(g, deltaTracker);
+        skyblockSimplified$skillProgress(g, deltaTracker);
+        skyblockSimplified$carryCounter(g, deltaTracker);
+        skyblockSimplified$bazaarOrders(g, deltaTracker);
+        skyblockSimplified$rejoinTimer(g, deltaTracker);
+        skyblockSimplified$npcLocator(g, deltaTracker);
+        skyblockSimplified$composter(g, deltaTracker);
+        skyblockSimplified$visitorTimer(g, deltaTracker);
+        skyblockSimplified$visitorShopping(g, deltaTracker);
+        skyblockSimplified$farmingTracker(g, deltaTracker);
+        skyblockSimplified$farmDrops(g, deltaTracker);
+        skyblockSimplified$cropMilestone(g, deltaTracker);
+        skyblockSimplified$farmingFortune(g, deltaTracker);
+        skyblockSimplified$foragingSweep(g, deltaTracker);
+        skyblockSimplified$hoeLevels(g, deltaTracker);
+        skyblockSimplified$gardenLevel(g, deltaTracker);
+        skyblockSimplified$buffsAndTimers(g, deltaTracker);
+        skyblockSimplified$collectionTracker(g, deltaTracker);
+        skyblockSimplified$safariSummary(g, deltaTracker);
+        skyblockSimplified$abilityDamage(g, deltaTracker);
+        skyblockSimplified$meleeDamage(g, deltaTracker);
+        skyblockSimplified$damageEstimate(g, deltaTracker);
+        skyblockSimplified$bestiaryTracker(g, deltaTracker);
+        skyblockSimplified$routeList(g, deltaTracker);
+        skyblockSimplified$visitorHighlight(g, deltaTracker);
+        skyblockSimplified$yearOfThePig(g, deltaTracker);
+        skyblockSimplified$tankRange(g, deltaTracker);
+        skyblockSimplified$slayer(g, deltaTracker);
+        skyblockSimplified$kuudra(g, deltaTracker);
+        skyblockSimplified$blood(g, deltaTracker);
+        skyblockSimplified$spiritBear(g, deltaTracker);
+        skyblockSimplified$peltTracker(g, deltaTracker);
+        skyblockSimplified$critterFinder(g, deltaTracker);
+        skyblockSimplified$floorDrops(g, deltaTracker);
+        skyblockSimplified$abilityTimers(g, deltaTracker);
+        skyblockSimplified$partyHighlight(g, deltaTracker);
+        skyblockSimplified$inventoryOverlay(g, deltaTracker);
+        skyblockSimplified$dungeonMap(g, deltaTracker);
+        skyblockSimplified$dungeonRooms(g, deltaTracker);
+        skyblockSimplified$livid(g, deltaTracker);
+        skyblockSimplified$phaseTimer(g, deltaTracker);
+        skyblockSimplified$fireFreeze(g, deltaTracker);
+        skyblockSimplified$terracotta(g, deltaTracker);
+        skyblockSimplified$giantHp(g, deltaTracker);
+        skyblockSimplified$guardianHp(g, deltaTracker);
+        skyblockSimplified$mobHighlight(g, deltaTracker);
+        skyblockSimplified$ghostHunter(g, deltaTracker);
+        skyblockSimplified$fairySouls(g, deltaTracker);
+        skyblockSimplified$lookingAt(g, deltaTracker);
+        skyblockSimplified$springBoots(g, deltaTracker);
+        skyblockSimplified$miningRoutes(g, deltaTracker);
+        skyblockSimplified$laneAreas(g, deltaTracker);
+        skyblockSimplified$pickobolus(g, deltaTracker);
+        skyblockSimplified$effectiveBlocks(g, deltaTracker);
+        skyblockSimplified$chatWaypoints(g, deltaTracker);
+        skyblockSimplified$frozenCorpses(g, deltaTracker);
+        skyblockSimplified$stoppedMinions(g, deltaTracker);
+        skyblockSimplified$dungeonTraps(g, deltaTracker);
+        skyblockSimplified$miningHelpers(g, deltaTracker);
+        skyblockSimplified$gemstoneProfit(g, deltaTracker);
+        skyblockSimplified$nucleusRun(g, deltaTracker);
+        skyblockSimplified$dungeonProfit(g, deltaTracker);
+        skyblockSimplified$kuudraProfit(g, deltaTracker);
+        skyblockSimplified$glacitCold(g, deltaTracker);
+        skyblockSimplified$pathfinding(g, deltaTracker);
+        skyblockSimplified$secretRoutes(g, deltaTracker);
+        skyblockSimplified$dungeonPuzzles(g, deltaTracker);
+        skyblockSimplified$etherWarp(g, deltaTracker);
+        skyblockSimplified$gardenBlueprint(g, deltaTracker);
+        skyblockSimplified$pestHighlight(g, deltaTracker);
+        skyblockSimplified$chatTabs(g, deltaTracker);
     }
 }

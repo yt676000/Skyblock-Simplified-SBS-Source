@@ -20,8 +20,11 @@ public enum StackTipKind {
     PET(false),
     MINION(false),
     DUNGEON_PASS(false),
+    DUNGEON_QUALITY(false),
     SKILL(true),
-    COLLECTION(true);
+    COLLECTION(true),
+    COUNTER_ENCHANT(false),
+    CAKE_YEAR(false);
 
     private final boolean menuBound;
 

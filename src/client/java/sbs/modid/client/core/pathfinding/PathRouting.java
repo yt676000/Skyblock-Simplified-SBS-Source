@@ -62,6 +62,90 @@ public final class PathRouting {
         return DevMode.ACTIVE && cfg().pathfinding.renderPaths;
     }
 
+    /**
+     * What the renderer asks every frame, answered once per client tick by {@link #refresh()}.
+     *
+     * <p>The three questions walk every config toggle, a dozen store lookups and the dimension's
+     * waypoint list; asked per frame they were the bulk of an idle marker frame's work and garbage,
+     * and nothing they read changes faster than a tick.
+     */
+    record Frame(boolean routing, boolean drawing, List<Waypoint> visible, Inputs inputs) {
+    }
+
+    /**
+     * Everything {@link #computeVisibleWaypoints} reads, so a tick whose inputs did not move keeps
+     * the previous frame instead of filtering and copying the dimension's list again.
+     *
+     * <p>{@code inDimension} is the store's immutable snapshot list and is compared by identity: the
+     * store builds a new one whenever anything in it changes. Nothing here depends on the player's
+     * position, so walking alone never rebuilds the frame.
+     */
+    record Inputs(List<Waypoint> inDimension, boolean drawing, boolean dev, boolean quests,
+                  boolean objectives, boolean map, boolean commissions, boolean onlyRouted,
+                  Waypoint routedCommission) {
+
+        static final Inputs NOT_DRAWING =
+                new Inputs(List.of(), false, false, false, false, false, false, false, null);
+
+        boolean sameAs(Inputs other) {
+            return other != null && inDimension == other.inDimension && drawing == other.drawing
+                    && dev == other.dev && quests == other.quests && objectives == other.objectives
+                    && map == other.map && commissions == other.commissions
+                    && onlyRouted == other.onlyRouted && routedCommission == other.routedCommission;
+        }
+    }
+
+    private static volatile Frame frame = new Frame(false, false, List.of(), Inputs.NOT_DRAWING);
+
+    /**
+     * Recomputes the per-tick answers. Called after {@link PathfindingManager#tick} so the commission
+     * filter in {@link #visibleWaypoints()} sees the target that tick picked.
+     */
+    public static void refresh() {
+        WaypointStore.refresh();
+        frame = next(frame, routing(), drawingWaypoints() ? inputs() : Inputs.NOT_DRAWING);
+    }
+
+    /**
+     * The frame for this tick: {@code previous} itself when neither the routing answer nor any input
+     * of the visible list moved; the previous visible list under a new routing answer when only that
+     * moved; otherwise a freshly computed one. Pure, so the reuse is tested.
+     */
+    static Frame next(Frame previous, boolean routing, Inputs inputs) {
+        boolean sameInputs = inputs.sameAs(previous.inputs());
+        if (sameInputs && previous.routing() == routing) {
+            return previous;
+        }
+        List<Waypoint> visible = sameInputs ? previous.visible()
+                : inputs.drawing() ? List.copyOf(computeVisibleWaypoints(inputs)) : List.of();
+        return new Frame(routing, inputs.drawing(), visible, inputs);
+    }
+
+    /** The visible list's inputs while drawing is on. */
+    private static Inputs inputs() {
+        boolean commissions = commissionRouting();
+        // With "mark all" off only the commission actually being routed to is drawn. The whole set is
+        // still published - the multi-goal search needs every candidate to be able to say which is
+        // nearest by route - so this is a drawing decision made here rather than a smaller set.
+        boolean onlyRouted = commissions && !cfg().miningHelpers.commissionRouteMarkAll;
+        Waypoint routedCommission = onlyRouted
+                ? PathfindingManager.getInstance().target(RouteSource.COMMISSIONS) : null;
+        // DEV-ONLY: personal dev waypoints/routes; player sources have their own terms
+        boolean dev = DevMode.ACTIVE && cfg().pathfinding.renderWaypoints;
+        return new Inputs(WaypointStore.inCurrentDimension(), true, dev, questRouting(),
+                objectiveMarking(), mapMarking(), commissions, onlyRouted, routedCommission);
+    }
+
+    /** {@link #routing()} as of the last client tick - for per-frame callers. */
+    public static boolean routingThisTick() {
+        return frame.routing();
+    }
+
+    /** {@link #drawingWaypoints()} as of the last client tick - for per-frame callers. */
+    public static boolean drawingThisTick() {
+        return frame.drawing();
+    }
+
     /** Whether anything should be routed at all. */
     public static boolean routing() {
         return questRouting() || devRouting() || mapRouting() || objectiveRouting() || fairySoulRouting()
@@ -145,6 +229,9 @@ public final class PathRouting {
                 // Shared Crystal Hollows structures: only while sharing is on (setting, licence,
                 // consent) and the player is in the Hollows; leaving the lobby clears them.
                 || WaypointStore.hasSource(Waypoint.SOURCE_HOLLOWS)
+                // M7 relic markers: published only while the setting is on, in the M7 dragon phase,
+                // and cleared on leaving it.
+                || WaypointStore.hasSource(Waypoint.SOURCE_M7_RELICS)
                 // Diana's three sets: published only while the toolkit is on, in the Hub, with the
                 // ritual awake - and cleared the moment any of that stops being true.
                 || WaypointStore.hasSource(Waypoint.SOURCE_DIANA_BURROW)
@@ -162,7 +249,7 @@ public final class PathRouting {
         return waypoint.isPreset() || waypoint.isGemzie() || waypoint.isPing()
                 || waypoint.isHideyho() || waypoint.isTempleCheese()
                 || waypoint.isHollowsTarget() || waypoint.isDiana() || waypoint.isNpc()
-                || waypoint.isHollowsStructure();
+                || waypoint.isHollowsStructure() || waypoint.isM7Relic();
     }
 
     /** Whether the NPC module wants its objective marker shown. */
@@ -211,18 +298,21 @@ public final class PathRouting {
      * <p>Outside dev mode the personal waypoints stay hidden (they are part of the dev module); what
      * shows is the allowlist below - quest, objective and map markers behind their settings, the
      * publisher-owned sets ({@link #publisherOwned}) and commissions.
+     *
+     * <p>As of the last client tick (see {@link #refresh()}); immutable, and empty while
+     * {@link #drawingThisTick()} is false.
      */
     public static List<Waypoint> visibleWaypoints() {
-        List<Waypoint> inDimension = WaypointStore.inCurrentDimension();
-        boolean commissions = commissionRouting();
-        // With "mark all" off only the commission actually being routed to is drawn. The whole set is
-        // still published - the multi-goal search needs every candidate to be able to say which is
-        // nearest by route - so this is a drawing decision made here rather than a smaller set.
-        Waypoint routedCommission = commissions && !cfg().miningHelpers.commissionRouteMarkAll
-                ? PathfindingManager.getInstance().target(RouteSource.COMMISSIONS) : null;
-        boolean onlyRouted = commissions && !cfg().miningHelpers.commissionRouteMarkAll;
-        // DEV-ONLY: personal dev waypoints/routes; player sources have their own terms
-        if (DevMode.ACTIVE && cfg().pathfinding.renderWaypoints) {
+        return frame.visible();
+    }
+
+    /** Pure over {@code inputs} - every config term and the routed target are read by {@link #inputs()}. */
+    static List<Waypoint> computeVisibleWaypoints(Inputs inputs) {
+        List<Waypoint> inDimension = inputs.inDimension();
+        boolean commissions = inputs.commissions();
+        boolean onlyRouted = inputs.onlyRouted();
+        Waypoint routedCommission = inputs.routedCommission();
+        if (inputs.dev()) {
             // Fairy Souls and dungeon secrets are drawn by their own renderers, with styling this one
             // has no concept of; letting the dev list draw them too would double every marker.
             // Commissions are the exception among the candidate sources: they have no renderer of
@@ -240,9 +330,9 @@ public final class PathRouting {
             return shown;
         }
         List<Waypoint> shown = new ArrayList<>();
-        boolean quests = questRouting();
-        boolean objectives = objectiveMarking();
-        boolean map = mapMarking();
+        boolean quests = inputs.quests();
+        boolean objectives = inputs.objectives();
+        boolean map = inputs.map();
         for (Waypoint waypoint : inDimension) {
             if ((quests && waypoint.isQuest()) || (objectives && waypoint.isObjective())
                     || (map && waypoint.isMap())

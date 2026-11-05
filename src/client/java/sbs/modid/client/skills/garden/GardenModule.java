@@ -109,7 +109,7 @@ public final class GardenModule implements SbsModule {
                 SettingRow.toggle("Spawn Title", () -> cfg().pestSpawnTitle,
                         () -> { cfg().pestSpawnTitle = !cfg().pestSpawnTitle; save(); })
                         .describe("A big text above the crosshair the moment a pest spawns."),
-                SettingRow.toggle("Spawn Sound", () -> cfg().pestSpawnSound,
+                SettingRow.soundToggle("Spawn Sound", () -> cfg().pestSpawnSound,
                         () -> { cfg().pestSpawnSound = !cfg().pestSpawnSound; save(); })
                         .describe("A ping the moment a pest spawns."),
                 SettingRow.label("— How you are told a pest spawned —"),

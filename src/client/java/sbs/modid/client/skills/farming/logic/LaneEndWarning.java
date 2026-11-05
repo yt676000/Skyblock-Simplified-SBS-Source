@@ -17,7 +17,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.alert.Alerts;
 import sbs.modid.client.core.audio.SbsAudio;
 import sbs.modid.client.core.config.ConfigManager;
@@ -46,6 +47,8 @@ import java.util.Locale;
  * farms. While a lane or rectangle is half-marked, it is previewed up to where you stand.
  */
 public final class LaneEndWarning {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     private static final LaneEndWarning INSTANCE = new LaneEndWarning();
 
@@ -416,7 +419,7 @@ public final class LaneEndWarning {
         }
         Camera camera = mc.gameRenderer.mainCamera();
         Vec3 cam = camera.position();
-        Matrix4f vp = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc vp = FrameCamera.viewProjection();
         BlockPos feet = player.blockPosition();
         if (show) {
             Farm here = store().current(feet.getX(), feet.getZ());
@@ -462,7 +465,7 @@ public final class LaneEndWarning {
     }
 
     /** The strip's outline, a centre line, a start block and an end block, and a label over the start. */
-    private static void drawLane(GuiGraphicsExtractor g, Matrix4f vp, Vec3 cam, Lane lane, int color, String label,
+    private static void drawLane(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 cam, Lane lane, int color, String label,
                                  boolean labelled, Font font) {
         double y = lane.y + 0.05;
         double c0 = lane.crossMin;
@@ -486,14 +489,15 @@ public final class LaneEndWarning {
             return;
         }
         Vec3 at = point(lane, lane.start + 0.5, mid, lane.y + 1.6);
-        int[] screen = WorldRender.projectToScreen(vp, cam, at, g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(vp, cam.x, cam.y, cam.z,
+                at.x, at.y, at.z, g.guiWidth(), g.guiHeight(), screen)) {
             String text = lane.rows ? label + " · rows" : label;
             g.text(font, Component.literal(text), screen[0] - font.width(text) / 2, screen[1], color, true);
         }
     }
 
-    private static void marker(GuiGraphicsExtractor g, Matrix4f vp, Vec3 cam, Lane lane, int along, int color) {
+    private static void marker(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 cam, Lane lane, int along, int color) {
         double mid = lane.crossCentre();
         double x0 = lane.worldX(along, mid - 0.5);
         double z0 = lane.worldZ(along, mid - 0.5);

@@ -21,6 +21,7 @@ import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * The F7 / M7 phase-split card: one line per finished phase, the running phase in the accent colour,
@@ -33,6 +34,7 @@ public final class FloorSevenPhaseHud {
     private static final int LINE_GAP = 3;
     private static final int MIN_W = 130;
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     private FloorSevenPhaseHud() {
     }
@@ -90,6 +92,6 @@ public final class FloorSevenPhaseHud {
     }
 
     private static String strip(String text) {
-        return text.replaceAll(SECTION_SIGN + ".", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 }

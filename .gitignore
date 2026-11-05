@@ -72,3 +72,8 @@ code-index.md
 /Development_Stuff/
 /probe/
 /SBS-Scans/
+
+# Local only: the Obsidian vault opened on the repo folder, and the link to the agent's memory
+# folder. Per-machine state that means nothing anywhere else.
+/.obsidian/
+/_claude-memory

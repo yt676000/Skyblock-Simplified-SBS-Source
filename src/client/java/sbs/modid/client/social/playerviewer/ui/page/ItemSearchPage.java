@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 /**
  * Search results across every container of the profile. The shell swaps this in for the selected
@@ -38,8 +39,11 @@ public final class ItemSearchPage implements PvPage {
     private static final String[][] SOURCES = {
             {"inventory", "Inventory"}, {"ender_chest", "Ender Chest"},
             {"accessory_bag", "Accessory Bag"}, {"quiver", "Quiver"},
-            {"potion_bag", "Potion Bag"}, {"fishing_bag", "Fishing Bag"},
+            {"potion_bag", "Potion Bag"}, {"bait_sack", "Bait Sack"},
             {"vault", "Personal Vault"}, {"armor", "Armor"}, {"equipment", "Equipment"}};
+
+    /** A § and whatever follows it - stripped from the searched names. */
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     public ItemSearchPage(Supplier<String> query) {
         this.query = query;
@@ -56,7 +60,7 @@ public final class ItemSearchPage implements PvPage {
         List<JsonObject> hits = new ArrayList<>();
         List<String> sources = new ArrayList<>();
         for (String[] source : SOURCES) {
-            collect(PvDraw.arr(invs, source[0]), source[1], q, hits, sources);
+            collect(PvDraw.arr(invs, PvDraw.containerKey(invs, source[0])), source[1], q, hits, sources);
         }
         int packIndex = 1;
         for (JsonElement pack : PvDraw.arr(invs, "backpacks")) {
@@ -115,8 +119,8 @@ public final class ItemSearchPage implements PvPage {
             }
             JsonObject slot = element.getAsJsonObject();
             // Strip color codes, otherwise they cut search hits apart inside the name.
-            String hay = (PvDraw.str(slot, "name") + " " + PvDraw.str(slot, "id"))
-                    .replaceAll("§.", "").toLowerCase(Locale.ROOT);
+            String hay = FORMATTING.matcher(PvDraw.str(slot, "name") + " " + PvDraw.str(slot, "id"))
+                    .replaceAll("").toLowerCase(Locale.ROOT);
             if (hay.contains(q)) {
                 hits.add(slot);
                 sources.add(source);

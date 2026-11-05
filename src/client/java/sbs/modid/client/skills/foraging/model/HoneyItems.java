@@ -16,6 +16,7 @@ import sbs.modid.client.core.item.SkyblockItem;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * "Is the player holding Honeycomb" - the one item question the honey tree timer asks.
@@ -45,6 +46,8 @@ import java.util.Locale;
  * still add one, and the log says which needle matched.
  */
 public final class HoneyItems {
+
+    private static final Pattern LIST_SEPARATOR = Pattern.compile(",\\s*");
 
     /** What {@code honey.honeycombIds} means when the player has not changed it. */
     public static final String DEFAULT_IDS = "HONEYCOMB, HONEY_COMB";
@@ -111,6 +114,6 @@ public final class HoneyItems {
                 out.add(trimmed);
             }
         }
-        return out.isEmpty() ? List.of(DEFAULT_IDS.split(",\\s*")) : out;
+        return out.isEmpty() ? List.of(LIST_SEPARATOR.split(DEFAULT_IDS)) : out;
     }
 }

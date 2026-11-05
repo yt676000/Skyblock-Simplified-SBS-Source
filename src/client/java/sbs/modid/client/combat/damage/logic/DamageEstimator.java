@@ -93,6 +93,17 @@ public final class DamageEstimator {
         return INSTANCE;
     }
 
+    /**
+     * World leave: hit counts are keyed by entity id, and ids restart with the next world - a
+     * carried count would hand a fresh mob a First Strike / Triple-Strike state it never earned.
+     * The per-mob calibrations are not world state and survive.
+     */
+    public void onWorldChange() {
+        hitCounts.clear();
+        pending = null;
+        estimate = null;
+    }
+
     private static DamageOverlaySettings cfg() {
         return ConfigManager.getInstance().get().damageOverlay;
     }

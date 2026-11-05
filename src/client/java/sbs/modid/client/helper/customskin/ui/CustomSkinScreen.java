@@ -33,6 +33,7 @@ import sbs.modid.client.ui.theme.SBSTheme;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The Custom Skin picker: opened with the module's hotkey while holding an item, it chooses what
@@ -58,6 +59,8 @@ public final class CustomSkinScreen extends Screen {
     private static final int CELL = 20;
     private static final int GRID_GAP = 2;
     private static final int SEARCH_LIMIT = 400;
+    private static final Pattern PLACEHOLDER = Pattern.compile("%%[a-z_]+%%");
+    private static final Pattern FORMATTING = Pattern.compile(String.valueOf((char) 0x00A7) + ".");
 
     /** The palette: the 16 dye colours, then a few common metal/gem tones. */
     private static final int[] PALETTE = {
@@ -149,7 +152,7 @@ public final class CustomSkinScreen extends Screen {
         hexField.setHint(Component.literal("RRGGBB"));
         CustomSkin skin = current();
         if (skin != null && skin.color >= 0) {
-            hexField.setValue(String.format("%06X", skin.color));
+            hexField.setValue(String.format(Locale.ROOT, "%06X", skin.color));
         }
         hexField.setResponder(this::onHexTyped);
         addRenderableWidget(hexField);
@@ -269,8 +272,7 @@ public final class CustomSkinScreen extends Screen {
     }
 
     private static String stripFormatting(String name) {
-        return name.replaceAll("%%[a-z_]+%%", "")
-                .replaceAll(String.valueOf((char) 0x00A7) + ".", "").trim();
+        return FORMATTING.matcher(PLACEHOLDER.matcher(name).replaceAll("")).replaceAll("").trim();
     }
 
     // ------------------------------------------------------------------
@@ -287,7 +289,7 @@ public final class CustomSkinScreen extends Screen {
         if (swatch >= 0) {
             applyColor(PALETTE[swatch]);
             if (hexField != null) {
-                hexField.setValue(String.format("%06X", PALETTE[swatch]));
+                hexField.setValue(String.format(Locale.ROOT, "%06X", PALETTE[swatch]));
             }
             return true;
         }

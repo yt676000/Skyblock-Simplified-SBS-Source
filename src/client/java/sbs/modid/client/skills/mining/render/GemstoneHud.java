@@ -11,7 +11,6 @@ package sbs.modid.client.skills.mining.render;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.network.chat.Component;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig.GemstoneProfitSettings;
 import sbs.modid.client.core.util.NumberDisplay;
@@ -47,6 +46,26 @@ public final class GemstoneHud {
     private static final int PAD = 6;
     private static final int LINE_GAP = 3;
 
+    /** Gap between a row's label and its value. */
+    private static final int COLUMN_GAP = 12;
+
+    /**
+     * The card as last built. Rebuilt only when its key below moves: a gemstone booked or the session
+     * reset, a setting, or the one-second clock the projection, the countdown and the price age read.
+     * Bazaar price refreshes are picked up by that clock. Render thread only.
+     */
+    private static HudCard.Snapshot card;
+    private static int builtTracker = -1;
+    private static long builtSecond = -1;
+    private static boolean builtPerHour;
+    private static boolean builtPerGemstone;
+    private static boolean builtCombine;
+    private static boolean builtVolume;
+    private static int builtFlipper = -1;
+    private static int builtTotalColor;
+    private static int builtProjectionColor;
+    private static int builtWarningColor;
+
     private GemstoneHud() {
     }
 
@@ -67,15 +86,34 @@ public final class GemstoneHud {
         if (!SkillIslands.miningAllowed() || !tracker.hasData()) {
             return;
         }
+        int version = tracker.version();
+        long second = System.currentTimeMillis() / 1000L;
+        if (card == null || version != builtTracker || second != builtSecond
+                || settings.perHour != builtPerHour || settings.perGemstone != builtPerGemstone
+                || settings.combineAdvice != builtCombine || settings.volumeWarning != builtVolume
+                || settings.bazaarFlipperLevel != builtFlipper || settings.totalColor != builtTotalColor
+                || settings.projectionColor != builtProjectionColor
+                || settings.warningColor != builtWarningColor) {
+            builtTracker = version;
+            builtSecond = second;
+            builtPerHour = settings.perHour;
+            builtPerGemstone = settings.perGemstone;
+            builtCombine = settings.combineAdvice;
+            builtVolume = settings.volumeWarning;
+            builtFlipper = settings.bazaarFlipperLevel;
+            builtTotalColor = settings.totalColor;
+            builtProjectionColor = settings.projectionColor;
+            builtWarningColor = settings.warningColor;
+            card = build(tracker, settings);
+        }
         HudElement.Bounds bounds =
                 HudElement.GEMSTONE_PROFIT.defaultBounds(g.guiWidth(), g.guiHeight());
         HudLayout.begin(g, HudElement.GEMSTONE_PROFIT);
-        draw(g, tracker, settings, (int) bounds.x(), (int) bounds.y());
+        draw(g, card, (int) bounds.x(), (int) bounds.y());
         HudLayout.end(g);
     }
 
-    private static void draw(GuiGraphicsExtractor g, GemstoneTracker tracker,
-                             GemstoneProfitSettings settings, int x, int y) {
+    private static HudCard.Snapshot build(GemstoneTracker tracker, GemstoneProfitSettings settings) {
         Font font = Minecraft.getInstance().font;
         String title = "Gemstones";
         List<Row> rows = new ArrayList<>();
@@ -104,25 +142,32 @@ public final class GemstoneHud {
         }
         rows.add(assumptionsRow(settings));
 
-        // ---- measure against the real content, then draw
-        int lineH = font.lineHeight + LINE_GAP;
-        int contentW = font.width(title);
+        // ---- measure against the real content once, here
+        List<HudCard.Line> lines = new ArrayList<>(rows.size() + 1);
+        lines.add(HudCard.Line.of(font, title, SBSTheme.ACCENT_BRIGHT));
+        int contentW = lines.get(0).leftWidth();
         for (Row row : rows) {
-            contentW = Math.max(contentW, font.width(row.label) + 12 + font.width(row.value));
+            HudCard.Line line = HudCard.Line.of(font, row.label, SBSTheme.TEXT_MUTED, row.value, row.color);
+            lines.add(line);
+            contentW = Math.max(contentW, line.width(COLUMN_GAP));
         }
+        int lineH = font.lineHeight + LINE_GAP;
         int width = Math.max(150, PAD * 2 + contentW);
-        int height = PAD * 2 + lineH * (1 + rows.size()) - LINE_GAP;
-        HudLayout.measure(HudElement.GEMSTONE_PROFIT, x, y, width, height);
-        panel(g, x, y, width, height);
+        int height = PAD * 2 + lineH * lines.size() - LINE_GAP;
+        return new HudCard.Snapshot(List.copyOf(lines), width, height, null);
+    }
 
+    private static void draw(GuiGraphicsExtractor g, HudCard.Snapshot card, int x, int y) {
+        Font font = Minecraft.getInstance().font;
+        HudLayout.measure(HudElement.GEMSTONE_PROFIT, x, y, card.width(), card.height());
+        panel(g, x, y, card.width(), card.height());
+
+        int lineH = font.lineHeight + LINE_GAP;
         int ix = x + PAD;
-        int right = x + width - PAD;
+        int right = x + card.width() - PAD;
         int iy = y + PAD;
-        g.text(font, Component.literal(title), ix, iy, SBSTheme.ACCENT_BRIGHT);
-        iy += lineH;
-        for (Row row : rows) {
-            g.text(font, Component.literal(row.label), ix, iy, SBSTheme.TEXT_MUTED);
-            g.text(font, Component.literal(row.value), right - font.width(row.value), iy, row.color);
+        for (HudCard.Line line : card.rows()) {
+            HudCard.drawLine(g, font, line, ix, right, iy);
             iy += lineH;
         }
     }

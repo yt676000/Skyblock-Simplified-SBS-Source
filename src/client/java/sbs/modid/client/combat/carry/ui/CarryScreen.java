@@ -20,6 +20,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import sbs.modid.client.combat.carry.logic.CarryApi;
+import sbs.modid.client.ui.component.SciFiButton;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
 
@@ -95,6 +96,10 @@ public final class CarryScreen extends Screen {
     private final List<JsonObject> tickets = new ArrayList<>();
     private final List<JsonObject> carriers = new ArrayList<>();
     private String status = "Loading...";
+    /** Shown under the status while it is a consent refusal; see {@code ApiFailure.NO_CONSENT}. */
+    private SciFiButton privacyButton;
+    private String checkedStatus;
+    private boolean statusRefused;
 
     /** Selected ticket + its accumulated chat. */
     private String selectedId;
@@ -140,7 +145,21 @@ public final class CarryScreen extends Screen {
         listTop = panelY + SBSTheme.HEADER_HEIGHT + SBSTheme.SEARCH_HEIGHT * 2 + 14;
         listBottom = panelY + panelH - pad - SBSTheme.SEARCH_HEIGHT * 2 - 10;
         addRenderableOnly(new PanelRenderable());
+        Component privacyLabel = Component.translatable("sbs.api.failure.no_consent.button");
+        privacyButton = new SciFiButton(0, 0, this.font.width(privacyLabel) + 16, SBSTheme.SEARCH_HEIGHT,
+                privacyLabel, () -> sbs.modid.client.ui.settings.PrivacyRows.openSettings(
+                        sbs.modid.client.core.licence.privacy.ConsentScope.CARRY_TICKETS));
+        privacyButton.visible = false;
+        addRenderableWidget(privacyButton);
         refresh();
+    }
+
+    /**
+     * The status line for a failed request. A consent refusal is shown as it is, without the
+     * "Error:" prefix: it is a setting the player chose, not a fault.
+     */
+    private static String errorStatus(String error) {
+        return sbs.modid.client.core.api.ApiFailure.isConsentMessage(error) ? error : "Error: " + error;
     }
 
     // ------------------------------------------------------------------
@@ -151,7 +170,7 @@ public final class CarryScreen extends Screen {
         status = "Loading...";
         CarryApi.getInstance().meta((result, error) -> {
             if (error != null) {
-                status = "Error: " + error;
+                status = errorStatus(error);
                 return;
             }
             categoryLabels.clear();
@@ -176,7 +195,7 @@ public final class CarryScreen extends Screen {
     private void refreshTickets() {
         CarryApi.getInstance().tickets((result, error) -> {
             if (error != null) {
-                status = "Error: " + error;
+                status = errorStatus(error);
                 return;
             }
             tickets.clear();
@@ -296,7 +315,7 @@ public final class CarryScreen extends Screen {
         List<String> tiers = categoryTiers.get(category);
         String tier = tiers.get(createTier % tiers.size());
         CarryApi.getInstance().create(category, tier, noteField.value, (result, error) -> {
-            status = error != null ? "Error: " + error : "Ticket created.";
+            status = error != null ? errorStatus(error) : "Ticket created.";
             noteField.value = "";
             refreshTickets();
             if (error == null && result.has("ticket")) {
@@ -315,7 +334,7 @@ public final class CarryScreen extends Screen {
         chatField.value = "";
         CarryApi.getInstance().chat(id, msg, (result, error) -> {
             if (error != null) {
-                status = "Error: " + error;
+                status = errorStatus(error);
             }
         });
     }
@@ -544,8 +563,24 @@ public final class CarryScreen extends Screen {
                 drawDetail(g, font, mouseX, mouseY);
                 drawCreateRow(g, font, mouseX, mouseY);
             }
-            if (!status.isEmpty()) {
-                g.text(font, Component.literal("§7" + status), listX,
+            String shown = status;
+            if (shown != checkedStatus) {
+                checkedStatus = shown;
+                statusRefused = sbs.modid.client.core.api.ApiFailure.isConsentMessage(shown);
+            }
+            privacyButton.visible = statusRefused;
+            if (statusRefused) {
+                // The board has nothing to show without consent: the message and the way to the
+                // setting take the middle of the panel instead of the one-line status slot.
+                int y = listTop + 8;
+                for (var line : font.split(Component.literal(shown), panelW - pad * 4)) {
+                    g.centeredText(font, line, panelX + panelW / 2, y, SBSTheme.TEXT);
+                    y += font.lineHeight + 2;
+                }
+                privacyButton.setX(panelX + (panelW - privacyButton.getWidth()) / 2);
+                privacyButton.setY(y + 4);
+            } else if (!shown.isEmpty()) {
+                g.text(font, Component.literal("§7" + shown), listX,
                         panelY + panelH - pad - font.lineHeight, SBSTheme.TEXT_MUTED);
             }
         }
@@ -620,7 +655,7 @@ public final class CarryScreen extends Screen {
             if (state.equals("open") && (owner || (!myCarrierIgn.isEmpty() && !mine))) {
                 button(g, font, bx, y, 50, SBSTheme.SEARCH_HEIGHT, "§aClaim", mouseX, mouseY,
                         () -> CarryApi.getInstance().claim(id, (r, e) -> {
-                            status = e != null ? "Error: " + e : "Claimed.";
+                            status = e != null ? errorStatus(e) : "Claimed.";
                             refreshTickets();
                         }));
                 bx += 54;
@@ -628,7 +663,7 @@ public final class CarryScreen extends Screen {
             if (state.equals("claimed") && (claimedByMe || owner)) {
                 button(g, font, bx, y, 56, SBSTheme.SEARCH_HEIGHT, "Unclaim", mouseX, mouseY,
                         () -> CarryApi.getInstance().unclaim(id, (r, e) -> {
-                            status = e != null ? "Error: " + e : "Unclaimed.";
+                            status = e != null ? errorStatus(e) : "Unclaimed.";
                             refreshTickets();
                         }));
                 bx += 60;
@@ -636,7 +671,7 @@ public final class CarryScreen extends Screen {
             if (!state.equals("closed") && (mine || claimedByMe || owner)) {
                 button(g, font, bx, y, 50, SBSTheme.SEARCH_HEIGHT, "§cClose", mouseX, mouseY,
                         () -> CarryApi.getInstance().close(id, (r, e) -> {
-                            status = e != null ? "Error: " + e : "Closed.";
+                            status = e != null ? errorStatus(e) : "Closed.";
                             refreshTickets();
                         }));
             }
@@ -724,7 +759,7 @@ public final class CarryScreen extends Screen {
                 String ign = c.get("ign").getAsString();
                 button(g, font, listX + listW - 46, y + 3, 42, rowH - 8, "§cRemove", mouseX, mouseY,
                         () -> CarryApi.getInstance().adminRemoveCarrier(ign, (r, e) -> {
-                            status = e != null ? "Error: " + e : "Removed " + ign;
+                            status = e != null ? errorStatus(e) : "Removed " + ign;
                             refreshTickets();
                         }));
                 y += rowH;
@@ -754,7 +789,7 @@ public final class CarryScreen extends Screen {
                     String ign = adminIgn.value.trim();
                     CarryApi.getInstance().adminSetCarrier(target, ign, category,
                             adminTiers.value, (r, e) -> {
-                                status = e != null ? "Error: " + e : "Carrier set: " + ign;
+                                status = e != null ? errorStatus(e) : "Carrier set: " + ign;
                                 adminToken.value = "";
                                 refreshTickets();
                             });

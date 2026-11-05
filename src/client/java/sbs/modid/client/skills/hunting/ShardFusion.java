@@ -21,6 +21,7 @@ import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.skills.hunting.model.ShardContext;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The Hunting module's in-menu fusion keys, built around how Hypixel's Fusion Machine actually
@@ -46,6 +47,8 @@ import java.util.Locale;
  * is open - the exact opposite gate of {@link HuntingKeybinds}.
  */
 public final class ShardFusion {
+
+    private static final Pattern COLOUR_CODE = Pattern.compile(String.valueOf((char) 0x00A7) + ".");
 
     /** Hypixel's own "repeat last fusion" button inside the Fusion Box menu (row 6, slot 3). */
     private static final int REPEAT_SLOT = 47;
@@ -136,7 +139,7 @@ public final class ShardFusion {
     }
 
     private static String strip(String text) {
-        return text == null ? "" : text.replaceAll(String.valueOf((char) 0x00A7) + ".", "");
+        return text == null ? "" : COLOUR_CODE.matcher(text).replaceAll("");
     }
 
     private static Component warn(String text) {

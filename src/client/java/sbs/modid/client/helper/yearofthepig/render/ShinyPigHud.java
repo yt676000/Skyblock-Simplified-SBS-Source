@@ -11,7 +11,6 @@ package sbs.modid.client.helper.yearofthepig.render;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.network.chat.Component;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.helper.yearofthepig.logic.ShinyOrbTracker;
 import sbs.modid.client.ui.hud.render.HudCard;
@@ -41,6 +40,15 @@ public final class ShinyPigHud {
     private static final int GAIN_COLOR = 0xFF57D977;
     private static final int LOSS_COLOR = 0xFFE05B5B;
 
+    /**
+     * The card as last built. Rebuilt on a booked event, the number format, or the one-second clock
+     * the market prices are read on. Render thread only.
+     */
+    private static HudCard.Snapshot card;
+    private static int builtTracker = -1;
+    private static long builtSecond = -1;
+    private static boolean builtShorten;
+
     private ShinyPigHud() {
     }
 
@@ -60,6 +68,31 @@ public final class ShinyPigHud {
 
     private static void draw(GuiGraphicsExtractor g, ShinyOrbTracker tracker, int x, int y) {
         Font font = Minecraft.getInstance().font;
+        int version = tracker.version();
+        long second = System.currentTimeMillis() / 1000L;
+        boolean shorten = sbs.modid.client.core.util.NumberDisplay.enabled();
+        if (card == null || version != builtTracker || second != builtSecond || shorten != builtShorten) {
+            builtTracker = version;
+            builtSecond = second;
+            builtShorten = shorten;
+            card = build(font, tracker);
+        }
+        HudCard.Snapshot current = card;
+        HudLayout.measure(HudElement.SHINY_PIG_TRACKER, x, y, current.width(), current.height());
+
+        HudCard.draw(g, x, y, current.width(), current.height());
+
+        int lineH = font.lineHeight + LINE_GAP;
+        int ix = x + PAD;
+        int right = x + current.width() - PAD;
+        int iy = y + PAD;
+        for (HudCard.Line line : current.rows()) {
+            HudCard.drawLine(g, font, line, ix, right, iy);
+            iy += lineH;
+        }
+    }
+
+    private static HudCard.Snapshot build(Font font, ShinyOrbTracker tracker) {
 
         List<String[]> rows = new ArrayList<>();   // [label, value]
         rows.add(new String[] {"Orbs used", String.valueOf(tracker.orbsUsed())});
@@ -127,16 +160,9 @@ public final class ShinyPigHud {
         }
         int width = Math.max(150, PAD * 2 + contentW);
         int height = PAD * 2 + lineH * (1 + rows.size() + dropRows.size() + xpRows.size()) - LINE_GAP;
-        HudLayout.measure(HudElement.SHINY_PIG_TRACKER, x, y, width, height);
 
-        HudCard.draw(g, x, y, width, height);
-
-        int ix = x + PAD;
-        int right = x + width - PAD;
-        int iy = y + PAD;
-
-        g.text(font, Component.literal(title), ix, iy, SBSTheme.ACCENT_BRIGHT);
-        iy += lineH;
+        List<HudCard.Line> lines = new ArrayList<>(1 + rows.size() + dropRows.size() + xpRows.size());
+        lines.add(HudCard.Line.of(font, title, SBSTheme.ACCENT_BRIGHT));
         for (String[] row : rows) {
             boolean isProfit = row[0].equals("Profit") || row[0].equals("Per orb");
             boolean isCost = row[0].equals("Orb cost");
@@ -146,20 +172,15 @@ public final class ShinyPigHud {
             } else if (isProfit) {
                 color = GAIN_COLOR;
             }
-            g.text(font, Component.literal(row[0]), ix, iy, SBSTheme.TEXT_MUTED);
-            g.text(font, Component.literal(row[1]), right - font.width(row[1]), iy, color);
-            iy += lineH;
+            lines.add(HudCard.Line.of(font, row[0], SBSTheme.TEXT_MUTED, row[1], color));
         }
         for (String[] row : dropRows) {
-            g.text(font, Component.literal(row[0]), ix, iy, SBSTheme.TEXT);
-            g.text(font, Component.literal(row[1]), right - font.width(row[1]), iy, GAIN_COLOR);
-            iy += lineH;
+            lines.add(HudCard.Line.of(font, row[0], SBSTheme.TEXT, row[1], GAIN_COLOR));
         }
         for (String[] row : xpRows) {
-            g.text(font, Component.literal(row[0]), ix, iy, SBSTheme.TEXT_MUTED);
-            g.text(font, Component.literal(row[1]), right - font.width(row[1]), iy, SBSTheme.TEXT);
-            iy += lineH;
+            lines.add(HudCard.Line.of(font, row[0], SBSTheme.TEXT_MUTED, row[1], SBSTheme.TEXT));
         }
+        return new HudCard.Snapshot(List.copyOf(lines), width, height, null);
     }
 
     private static String displayName(String itemId) {

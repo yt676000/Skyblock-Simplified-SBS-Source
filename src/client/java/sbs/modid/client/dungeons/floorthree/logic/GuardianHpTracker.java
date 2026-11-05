@@ -91,6 +91,12 @@ public final class GuardianHpTracker {
         return INSTANCE;
     }
 
+    /** World leave: the reference health is keyed by guardian entity id, which a rejoin reassigns. */
+    public void onWorldChange() {
+        maxSeen.clear();
+        guardians = List.of();
+    }
+
     private static SBSConfig.DungeonsSettings cfg() {
         return ConfigManager.getInstance().get().dungeons;
     }

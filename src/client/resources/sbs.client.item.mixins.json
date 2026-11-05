@@ -4,8 +4,10 @@
   "compatibilityLevel": "JAVA_25",
   "client": [
     "CustomSkinArmorMixin",
+    "CustomDataAccessor",
     "CustomSkinModelMixin",
     "EnchantTooltipMixin",
+    "GradientPanesMixin",
     "ItemCooldownsMixin",
     "ItemNameMixin",
     "ItemRarityMixin",

@@ -40,7 +40,8 @@ import java.util.Locale;
  * <ul>
  *   <li>typing filters live (the query is re-run against the index on every keystroke);</li>
  *   <li>the sort button cycles Amount / Price / Name / Location;</li>
- *   <li>left-click opens the item's best location when that storage has a command
+ *   <li>left-click marks the remembered island chests holding the item ({@link ChestMarkers}), or
+ *       else opens its best location when that storage has a command
  *       ({@code /enderchest 3}, {@code /backpack 2}, ...);</li>
  *   <li>right-click stars / unstars an item – favourites sort above everything.</li>
  * </ul>
@@ -77,18 +78,25 @@ public final class StorageSearchScreen extends Screen {
      * settings button, so "Open Item Search" can never be a silent no-op.
      *
      * <p>The search is only useful once storages are indexed, which only happens in "Full UI" mode.
-     * So this raises the Skyblock Menu to Full UI whenever it is lower before showing the screen:
-     * Full UI is a strict superset of the preview modes ({@code StoragePreviewMode} only ever adds
-     * behaviour going up), and the player just asked for the search, so turning on what powers it is
-     * exactly their intent – rather than opening onto a screen that can never fill.
+     * Opening never changes that setting (it once did, and a key press shared with another binding
+     * flipped it on every settings open). Below Full UI the screen shows a notice with a
+     * "Turn on" button instead, so the switch is always the player's own click.
      */
     public static void open() {
-        SBSConfig config = ConfigManager.getInstance().get();
-        if (!config.skyblockMenu.previewMode.indexes()) {
-            config.skyblockMenu.previewMode = sbs.modid.client.helper.storage.StoragePreviewMode.FULL_UI;
-            ConfigManager.getInstance().save();
-        }
         Minecraft.getInstance().setScreenAndShow(new StorageSearchScreen());
+    }
+
+    /** Whether the storage mode lets the index fill; false shows the "Turn on" notice. */
+    static boolean indexingOn() {
+        return ConfigManager.getInstance().get().skyblockMenu.previewMode.indexes();
+    }
+
+    /** The notice's button: the only place this screen raises the mode, on an explicit click. */
+    private void turnOnFullUi() {
+        ConfigManager.getInstance().get().skyblockMenu.setPreviewMode(
+                sbs.modid.client.helper.storage.StoragePreviewMode.FULL_UI, "item search 'Turn on' click");
+        save();
+        rebuildWidgets();
     }
 
     private static SBSConfig.StorageSearchSettings cfg() {
@@ -136,6 +144,24 @@ public final class StorageSearchScreen extends Screen {
         search.setResponder(query -> refresh());
         addRenderableWidget(search);
         setInitialFocus(search);
+
+        // Only while chest markers are out: the one-click way to take them down again.
+        if (ChestMarkers.active()) {
+            int clearW = 120;
+            addRenderableWidget(new sbs.modid.client.ui.component.SciFiButton(
+                    panelX + panelW - pad - clearW, panelY + (SBSTheme.HEADER_HEIGHT - 14) / 2, clearW, 14,
+                    Component.literal("Clear chest markers"), () -> {
+                        ChestMarkers.clear();
+                        rebuildWidgets();
+                    }));
+        }
+
+        if (!indexingOn()) {
+            int buttonW = 80;
+            addRenderableWidget(new sbs.modid.client.ui.component.SciFiButton(
+                    panelX + (panelW - buttonW) / 2, listTop + 28, buttonW, SBSTheme.SEARCH_HEIGHT,
+                    Component.literal("Turn on"), this::turnOnFullUi));
+        }
 
         refresh();
     }
@@ -191,6 +217,23 @@ public final class StorageSearchScreen extends Screen {
             recent.remove(recent.size() - 1);
         }
         save();
+    }
+
+    /**
+     * Left-click: when the item sits in remembered island chests, mark them in the world (and list
+     * the other places in chat); otherwise open its biggest openable location as before.
+     */
+    private void onEntryClicked(StorageIndex.Entry entry) {
+        if (cfg().markChests) {
+            ChestMarkers.Plan plan = ChestMarkers.plan(entry.locations(), StorageIndex.getInstance()::chestPlace);
+            if (!plan.marks().isEmpty()) {
+                recordRecent(search.getValue());
+                ChestMarkers.mark(plan);
+                onClose();   // the marks are in the world - get out of the way
+                return;
+            }
+        }
+        openLocation(entry);
     }
 
     /** Runs the open command of an item's biggest location, if that storage has one. */
@@ -252,7 +295,7 @@ public final class StorageSearchScreen extends Screen {
         if (event.button() == 1) {
             toggleFavorite(entry);
         } else {
-            openLocation(entry);
+            onEntryClicked(entry);
         }
         return true;
     }
@@ -328,7 +371,9 @@ public final class StorageSearchScreen extends Screen {
         private void drawGrid(GuiGraphicsExtractor g, int mouseX, int mouseY) {
             var font = StorageSearchScreen.this.font;
             if (results.isEmpty()) {
-                g.centeredText(font, Component.literal(StorageIndex.getInstance().sourceCount() == 0
+                g.centeredText(font, Component.literal(!indexingOn()
+                                ? "§7Item search needs 'Full UI'."
+                                : StorageIndex.getInstance().sourceCount() == 0
                                 ? "§7Open your storages once so they can be indexed."
                                 : "§7No matching items."),
                         panelX + panelW / 2, listTop + 12, SBSTheme.TEXT_MUTED);

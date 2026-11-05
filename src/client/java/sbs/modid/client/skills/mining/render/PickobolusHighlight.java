@@ -25,7 +25,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
@@ -72,6 +73,7 @@ public final class PickobolusHighlight {
     private static final Pattern LORE_RADIUS = Pattern.compile("(?i)within\\s+a?\\s*(\\d+)\\s*block\\s*radius");
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern COLOUR_CODE = Pattern.compile(SECTION_SIGN + ".");
 
     /** Registry-id fragments that mark a block as ore-like, for the "Ores Only" mode. */
     private static final Set<String> ORE_HINTS = Set.of(
@@ -130,7 +132,7 @@ public final class PickobolusHighlight {
         List<BlockPos> blocks = scan(level, centre, radius, cfg.oresOnly);
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         int color = cfg.color.argb();
 
         if (cfg.showAreaOutline) {
@@ -172,7 +174,7 @@ public final class PickobolusHighlight {
         // a per-line match would silently never find the number.
         StringBuilder joined = new StringBuilder();
         for (Component line : lore.lines()) {
-            joined.append(line.getString().replaceAll(SECTION_SIGN + ".", "")).append(' ');
+            joined.append(COLOUR_CODE.matcher(line.getString()).replaceAll("")).append(' ');
         }
         String text = joined.toString();
         if (!ABILITY.matcher(text).find()) {

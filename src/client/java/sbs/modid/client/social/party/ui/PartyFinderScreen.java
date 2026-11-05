@@ -8,6 +8,8 @@
 
 package sbs.modid.client.social.party.ui;
 
+import sbs.modid.client.core.net.Identity;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
@@ -30,6 +32,7 @@ import sbs.modid.client.social.party.model.PartyTypes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The universal SBS Party Finder: a type sidebar on the left (All / Diana /
@@ -47,6 +50,9 @@ public final class PartyFinderScreen extends Screen {
     private static final int SIDEBAR_W = 86;
     private static final int ROW_H = 24;
     private static final int SEARCH_INSET = 13;
+
+    /** A § and whatever follows it - left out when measuring a row's right-aligned text. */
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     /** Selected sidebar tab: "" = All, a PartyTypes key, or "my" = My Party. Survives reopen. */
     private static String tab = "";
@@ -71,6 +77,11 @@ public final class PartyFinderScreen extends Screen {
 
     private volatile List<JsonObject> parties = List.of();
     private volatile String status = "Loading...";
+    /** Shown under the status line while it is a consent refusal; see {@code ApiFailure.NO_CONSENT}. */
+    private SciFiButton privacyButton;
+    /** The status string {@link #statusRefused} was computed for; compared by identity per frame. */
+    private String checkedStatus;
+    private boolean statusRefused;
 
     public PartyFinderScreen() {
         super(Component.literal("SBS Party Finder"));
@@ -93,6 +104,13 @@ public final class PartyFinderScreen extends Screen {
         listBottom = buttonY - 6;
 
         addRenderableOnly(new PanelRenderable());
+
+        Component privacyLabel = Component.translatable("sbs.api.failure.no_consent.button");
+        privacyButton = new SciFiButton(0, 0, this.font.width(privacyLabel) + 16, SBSTheme.SEARCH_HEIGHT,
+                privacyLabel, () -> sbs.modid.client.ui.settings.PrivacyRows.openSettings(
+                        sbs.modid.client.core.licence.privacy.ConsentScope.PARTY_FINDER));
+        privacyButton.visible = false;
+        addRenderableWidget(privacyButton);
 
         if (isMyPartyTab()) {
             initMyParty();
@@ -144,13 +162,15 @@ public final class PartyFinderScreen extends Screen {
         chatBox.setBordered(false);
         chatBox.setMaxLength(256);
         chatBox.setTextColor(SBSTheme.TEXT);
-        chatBox.setHint(Component.literal("Message your party... (Enter)"));
+        chatBox.setHint(Component.literal(PartyFinderApi.chatAllowed()
+                ? "Message your party... (Enter)" : PartyFinderApi.CHAT_LICENCE_ONLY));
+        chatBox.setEditable(PartyFinderApi.chatAllowed());
         addRenderableWidget(chatBox);
 
         // Leader toggle: auto-fire /party invite for everyone who joins the SBS party.
         addRenderableWidget(new sbs.modid.client.ui.component.SciFiToggleButton(
                 sidebarX, buttonY, SIDEBAR_W, SBSTheme.SEARCH_HEIGHT,
-                Component.literal("Auto Inv"),
+                Component.literal("Join Notice"),
                 () -> sbs.modid.client.core.config.ConfigManager.getInstance().get().partyFinder.autoInvite,
                 () -> {
                     var cfg = sbs.modid.client.core.config.ConfigManager.getInstance();
@@ -179,7 +199,7 @@ public final class PartyFinderScreen extends Screen {
 
     private void refresh() {
         if (!PartyFinderApi.ready()) {
-            status = "Need a world + licence token (Licence Token module).";
+            status = "Need a world + Party Finder consent.";
             return;
         }
         status = "Loading...";
@@ -234,16 +254,13 @@ public final class PartyFinderScreen extends Screen {
         if (party == null) {
             return;
         }
-        StringBuilder names = new StringBuilder();
         String self = PartyFinderApi.selfName();
         for (var element : party.getAsJsonArray("members")) {
             String name = element.getAsJsonObject().get("name").getAsString();
             if (!name.equalsIgnoreCase(self)) {
-                names.append(' ').append(name);
+                // Fixed template over a validated name; anything else is skipped.
+                Identity.partyInvite(name).ifPresent(command -> SBSCommands.run("/" + command));
             }
-        }
-        if (!names.isEmpty()) {
-            SBSCommands.run("/party invite" + names);
         }
     }
 
@@ -424,10 +441,22 @@ public final class PartyFinderScreen extends Screen {
             g.outline(iconX, iconY, 5, 5, SBSTheme.ACCENT);
             g.fill(iconX + 4, iconY + 4, iconX + 6, iconY + 6, SBSTheme.ACCENT);
 
+            int statusY = listTop + 8;
             if (!status.isEmpty()) {
-                g.centeredText(font, Component.literal(status),
-                        contentX + contentW / 2, listTop + 8, SBSTheme.TEXT_MUTED);
+                // Wrapped: a consent message is a full sentence and outruns the content column.
+                for (var line : font.split(Component.literal(status), contentW - 8)) {
+                    g.centeredText(font, line, contentX + contentW / 2, statusY, SBSTheme.TEXT_MUTED);
+                    statusY += font.lineHeight + 2;
+                }
             }
+            String shown = status;
+            if (shown != checkedStatus) {
+                checkedStatus = shown;
+                statusRefused = sbs.modid.client.core.api.ApiFailure.isConsentMessage(shown);
+            }
+            privacyButton.visible = statusRefused;
+            privacyButton.setX(contentX + (contentW - privacyButton.getWidth()) / 2);
+            privacyButton.setY(statusY + 4);
             List<JsonObject> current = parties;
             int visible = Math.max(1, (listBottom - listTop) / ROW_H);
             for (int row = 0; row < visible; row++) {
@@ -452,7 +481,7 @@ public final class PartyFinderScreen extends Screen {
                 String right = party.get("member_count").getAsInt() + "/" + party.get("size").getAsInt()
                         + (own ? " §byou" : meet ? " §a✔" : " §c✘");
                 g.text(font, Component.literal(right),
-                        contentX + contentW - 5 - font.width(right.replaceAll("§.", "")),
+                        contentX + contentW - 5 - font.width(FORMATTING.matcher(right).replaceAll("")),
                         y + 3, SBSTheme.TEXT_MUTED);
                 String note = str(party, "note", "");
                 String mode = str(party, "mode", "");

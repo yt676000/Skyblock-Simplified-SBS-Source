@@ -87,12 +87,24 @@ final class ChronomatronSolver {
         }
     }
 
-    boolean allowsClick(int index) {
-        return model.allowsClick(index, System.currentTimeMillis());
+    boolean allowsClick(int index, long now) {
+        return model.allowsClick(index, now);
     }
 
-    void onClick(int index) {
-        model.onClick(index, System.currentTimeMillis());
+    void onClick(int index, long now) {
+        model.onClick(index, now);
+    }
+
+    void configureGuard(int vetoLimit, long staleMs) {
+        model.configureGuard(vetoLimit, staleMs);
+    }
+
+    boolean guardPaused() {
+        return model.guardPaused();
+    }
+
+    String guardDebug(long now) {
+        return model.guardDebug(now);
     }
 
     String debug() {

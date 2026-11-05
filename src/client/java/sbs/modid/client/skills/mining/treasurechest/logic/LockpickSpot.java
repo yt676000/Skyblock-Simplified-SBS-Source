@@ -46,13 +46,18 @@ public final class LockpickSpot {
      * or {@code null} when the particle is not this chest's.
      */
     public static Spot locate(int bx, int by, int bz, double px, double py, double pz) {
-        double grow = TreasureChestSignals.PARTICLE_GROWTH;
-        if (px < bx - grow || px > bx + 1 + grow
-                || py < by - grow || py > by + 1 + grow
-                || pz < bz - grow || pz > bz + 1 + grow) {
+        if (!inside(bx, by, bz, px, py, pz)) {
             return null;
         }
         return new Spot(px, py, pz, nearestFace(bx, by, bz, px, py, pz));
+    }
+
+    /** Whether a particle at {@code (px, py, pz)} is within the chest block grown by the burst margin. */
+    public static boolean inside(int bx, int by, int bz, double px, double py, double pz) {
+        double grow = TreasureChestSignals.PARTICLE_GROWTH;
+        return px >= bx - grow && px <= bx + 1 + grow
+                && py >= by - grow && py <= by + 1 + grow
+                && pz >= bz - grow && pz <= bz + 1 + grow;
     }
 
     private static Face nearestFace(int bx, int by, int bz, double px, double py, double pz) {

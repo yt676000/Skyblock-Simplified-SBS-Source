@@ -62,6 +62,7 @@ public final class HudLayoutStore {
 
     private void load() {
         loaded = true;
+        HudLayout.invalidateTransforms();
         Path path = SBSFiles.hudLayoutFile();
         try {
             if (Files.exists(path)) {
@@ -101,6 +102,7 @@ public final class HudLayoutStore {
                     layout.put(id, transform);
                 }
             });
+            HudLayout.invalidateTransforms();
             save();
             SkyblockSimplifiedSBS.LOGGER.info("[SBS] Migrated {} HUD element(s) to gui/hud_layout.json", legacy.size());
         }

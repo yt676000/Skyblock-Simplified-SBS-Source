@@ -15,6 +15,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import sbs.modid.client.core.dev.PacketThreadCheck;
 import sbs.modid.client.core.dev.scanner.ServerScanner;
 
 /**
@@ -30,11 +31,13 @@ public class ServerScannerMenuMixin {
 
     @Inject(method = "handleOpenScreen", at = @At("TAIL"))
     private void skyblockSimplified$scannerOpen(ClientboundOpenScreenPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("ServerScannerMenuMixin.scannerOpen");
         ServerScanner.onOpenScreen(packet);
     }
 
     @Inject(method = "handleContainerClose", at = @At("TAIL"))
     private void skyblockSimplified$scannerClose(ClientboundContainerClosePacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("ServerScannerMenuMixin.scannerClose");
         ServerScanner.onServerClose(packet.getContainerId());
     }
 }

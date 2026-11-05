@@ -20,8 +20,10 @@ import sbs.modid.client.economy.recipe.logic.SkyBlockItemCatalog;
 import sbs.modid.client.skills.fishing.model.FishingData;
 import sbs.modid.client.skills.fishing.render.FishingAlert;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -63,6 +65,9 @@ import java.util.regex.Pattern;
  *       found/caught ...") are recognised but never booked – the item always arrives physically
  *       (inventory or sack) and that channel books it once; treasure <b>coins</b> have no
  *       physical arrival and stay booked from their chat line.</li>
+ *   <li><b>Loot share</b>: "LOOT SHARE You received loot for assisting ..." names no item; it opens
+ *       a {@link LootShareWindow} in which the sack summary, the inventory and the shard lines book
+ *       the share's loot, tagged for the HUD's "LS" marker.</li>
  *   <li><b>Baits</b> are the cost side, never loot: the inventory diff books a bait as used when
  *       its stack <b>actually shrinks</b> while fishing, and its Bazaar value is subtracted from
  *       the session profit. Counting "one per bite" instead would overstate the cost – bait-save
@@ -80,6 +85,10 @@ import java.util.regex.Pattern;
  * lowest BIN – so sea creature drops like armor pieces and rare AH-only items are valued too.
  */
 public final class FishingTracker {
+
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
+    private static final Pattern NON_ID_CHARS = Pattern.compile("[^A-Z0-9_]");
+    private static final Pattern NON_DIGITS = Pattern.compile("[^0-9]");
 
     private static final FishingTracker INSTANCE = new FishingTracker();
 
@@ -129,10 +138,6 @@ public final class FishingTracker {
      */
     private static final long REMOVAL_TTL_MS = 90_000L;
 
-    /** Two shard lines of DIFFERENT kinds for the same shard within this window are one shard, not
-     *  two – generous, because the Hunting Box transfer line can lag its catch by several seconds. */
-    private static final long SHARD_DEDUPE_MS = 10_000L;
-
     /**
      * Ticks the open Fishing Bag's content must stay non-empty and unchanged before it is believed.
      * The server streams a container's content in AFTER the screen itself opens – on the open tick
@@ -167,35 +172,26 @@ public final class FishingTracker {
     private static final Pattern BAITS_REMAINING = Pattern.compile(
             "Baits?\\s+Remaining:?\\s*([\\d,]+)", Pattern.CASE_INSENSITIVE);
 
-    /**
-     * After this long with no cast / bite / catch the session clock freezes – the tracker "pauses"
-     * so a break at the bazaar or afk time never dilutes the per-hour rate. Also caps a single
-     * accrual step, so a lag spike can never dump a chunk of idle time into the session at once.
-     */
-    private static final long PAUSE_AFTER_MS = 10_000L;
+    /** How many cast edges of a session are logged one by one before the log thins out. */
+    private static final int CAST_LOG_FIRST = 5;
+    /** After {@link #CAST_LOG_FIRST}, every this-many-th cast edge is logged. */
+    private static final int CAST_LOG_EVERY = 50;
 
     // ------------------------------------------------------------------
     // Chat loot patterns (matched on plain text, colour codes already stripped).
-    // The shapes match the Hypixel lines they parse.
+    // The shapes match the Hypixel lines they parse. Shard lines live in ShardLines.
     // ------------------------------------------------------------------
 
     /**
-     * "🎣 GOOD CATCH! You caught a Shinyfish Shard!" / "You caught x2 Bal Shards!" – deliberately
-     * unanchored: the fishing variant carries an icon + "GOOD CATCH!" prefix (seen live), the
-     * hunting variant does not. Amount forms "2", "x2" and "2x" all parse.
+     * An item-stash withdrawal ("/pickupstash"): the items land in the inventory like a pickup, but
+     * they are old items, never a drop. Wording NOT verified in game (no stash line in any captured
+     * log), so the match is a tolerant "stash" phrase and only ever suppresses, never books.
      */
-    private static final Pattern SHARD_CAUGHT = Pattern.compile(
-            "You caught(?: an?)?(?: x?(\\d+)x?)? (.+?) Shards?!");
-    /** "You sent a Tide Shard to your Hunting Box." / "You sent 3 Tide Shards to your ..." – the
-     *  AUTHORITY on how many shards a catch produced; amount forms "3", "x3" and "3x" all parse.
-     *  The trailing punctuation is left open on purpose, a reworded ending must not lose the line. */
-    private static final Pattern SHARD_BOXED = Pattern.compile(
-            "You sent (?:an? )?(?:x?(\\d+)x? )?(.+?) Shards? to your Hunting Box");
-    /** "LOOT SHARE You received a Bal Shard for assisting ..." – shards you get are income too. */
-    private static final Pattern SHARD_SHARED = Pattern.compile(
-            "LOOT SHARE You received (?:an? )?(?:x?(\\d+)x? )?(.+?) Shards? for assisting");
-    /** Every shard line, tried in order; all bind (amount?, name) as groups 1 and 2. */
-    private static final Pattern[] SHARD_LINES = {SHARD_CAUGHT, SHARD_BOXED, SHARD_SHARED};
+    private static final Pattern STASH_PICKUP = Pattern.compile(
+            "(?i)(?:picked up|from your) .*stash");
+
+    /** How long a stash line keeps inventory gains from counting. */
+    private static final long STASH_SETTLE_MS = 3_000L;
 
     /** "GOOD CATCH! You found a Fish Bait!" / "GOOD CATCH! You caught a Flexbone!" (also GREAT /
      *  OUTSTANDING). Recognition only – the physical arrival (inventory or sack) books the item. */
@@ -239,6 +235,44 @@ public final class FishingTracker {
     /** When the last "Double Hook!" line arrived, or 0 once its catch has claimed it. */
     private long doubleHookAt;
 
+    /** Bumped on every change to what the HUD shows - its rebuild key, compared for equality only. */
+    private volatile int revision;
+
+    /** Rare sea-creature drops, item id -> count, booked only behind an eligible kill. */
+    private final Map<String, Integer> rareDrops = new LinkedHashMap<>();
+    /** Rare-drop item id -> the creature the latest booking was attributed to (for the HUD). */
+    private final Map<String, String> rareDropSource = new HashMap<>();
+
+    /** Times Fished, the session clock and the Reel Timer - everything the bobber edge drives. */
+    private final CastSession castSession = new CastSession();
+    /** Shard chat lines and their once-only rule. */
+    private final ShardLines shardLines = new ShardLines();
+    /** When the latest "LOOT SHARE You received loot for assisting" line arrived. */
+    private final LootShareWindow lootShare = new LootShareWindow();
+    /** Item id -> how many of its booked count arrived as loot-share loot (the HUD's "LS" marker). */
+    private final Map<String, Integer> lootShareCounts = new HashMap<>();
+    /** Whether onTick has run since the last time it was found idle - for the "tick running" log. */
+    private boolean tickRunningLogged;
+    /** Optional per-tick readers switched off after a failure, so the cast counters keep running. */
+    // A constant, not PART_NAMES.length: INSTANCE is built before the later static arrays exist.
+    private final boolean[] partOff = new boolean[PART_COUNT];
+    private static final int PART_COUNT = 5;
+    private static final String[] PART_NAMES =
+            {"bite marker", "rod bait display", "bait sack", "sea creature deaths", "golden fish"};
+    private static final int PART_BITE = 0;
+    private static final int PART_BAIT_DISPLAY = 1;
+    private static final int PART_BAIT_SACK = 2;
+    private static final int PART_DEATHS = 3;
+    private static final int PART_GOLDEN = 4;
+    /** Whether a cast's fluid contact has been logged once this session ([SBS][Fishing] reel). */
+    private boolean landLogged;
+    private boolean noLandLogged;
+    /** Throttle on the unexplained-pickup log. */
+    private long lastUnexplainedLogAt;
+
+    /** Until this moment inventory gains are a stash withdrawal, never loot. */
+    private long stashSettleUntil;
+
     /**
      * The three channels a physical drop can reach the tracker through. The same drop can be
      * reported by more than one - a rare-drop chat line AND the "[Sacks]" summary for the catch that
@@ -279,15 +313,6 @@ public final class FishingTracker {
     /** Until this moment gains are still the just-closed menu settling, never loot. */
     private long containerClosedSettleUntil;
 
-    /** The last shard line's shard, so a caught+boxed pair for one shard counts once. */
-    private String lastShardName = "";
-    private long lastShardAt;
-    /** Which of {@link #SHARD_LINES} the last shard line matched – a repeat of the SAME line kind
-     *  is a second shard (two quick catches), only a DIFFERENT kind is the same shard re-announced. */
-    private int lastShardPattern = -1;
-    /** How many of that shard the last line booked – the re-announcement may know of MORE. */
-    private int lastShardAmount;
-
     /** Sea creature name -> how many YOU caught this session. */
     private final Map<String, Integer> creatures = new LinkedHashMap<>();
     /** Item id -> how many were gained this session. */
@@ -295,9 +320,9 @@ public final class FishingTracker {
     /** Bait id -> how many catches consumed one – the cost the profit subtracts, one per bite. */
     private final Map<String, Integer> baitsUsed = new LinkedHashMap<>();
     /**
-     * Bait id -> how many the last-seen Fishing Bag held. Baits kept in the bag never touch the
+     * Bait id -> how many the last-seen Bait Sack (or old Fishing Bag) held. Baits kept in the bag never touch the
      * inventory, so the inventory scan alone reads them as zero; refreshed by {@link #captureBaitSack}
-     * whenever the Fishing Bag menu is open, and added to the loose baits by {@link #remainingBaits()}.
+     * whenever the Bait Sack menu is open, and added to the loose baits by {@link #remainingBaits()}.
      * Kept across lobby swaps like the storage index, since the bag is account-wide and rarely open.
      */
     private final Map<String, Integer> baitSackReserve = new LinkedHashMap<>();
@@ -334,8 +359,6 @@ public final class FishingTracker {
     /** Throttle for the {@code [SBS][Fishing] bait display} tuning log. */
     private long lastBaitDisplayLogAt;
 
-    /** Whether the bobber was out last tick – a false->true edge is a cast ({@link #onCast}). */
-    private boolean bobberOut;
     /** Whether the Fishing Bag screen was open last tick – a closed->open edge arms a reconcile. */
     private boolean baitBagWasOpen;
     /** Whether THIS opening of the bag has reconciled yet – armed on the open edge, done once the
@@ -349,30 +372,46 @@ public final class FishingTracker {
     /** Set by {@link #reset()}: the next bag look only re-baselines, it must not book the old
      *  session's consumption into the fresh one. */
     private boolean skipNextBaitReconcile;
+    /** The container screen whose title was last classified, so the title is checked once per screen. */
+    private net.minecraft.client.gui.screens.Screen lastBaitScreen;
+    private String lastBaitTitle = "";
+    /** Whether {@link #lastBaitScreen} is the bait store ({@link BaitSackReader#isBaitStoreTitle}). */
+    private boolean lastBaitTitleIsStore;
+    /** Whether {@link #lastBaitScreen} is one the {@link BaitSackProbe} logs. */
+    private boolean lastBaitTitleProbed;
+    private final BaitSackProbe baitSackProbe = new BaitSackProbe();
+    /**
+     * When a bait was last seen being consumed (rod display, loose stack shrink, sack reconcile). An
+     * observation newer than the favourite's read that names another bait means the favourite is no
+     * longer what is being used (unfavourited in between) - observations always beat the rule.
+     */
+    private long lastObservedBaitAt;
+    /** The bait the last cast booked on credit, and when - a loose shrink right after takes it back. */
+    private String lastEstimateBait;
+    private long lastEstimateAt;
+    /** How long after a cast's estimate a loose-stack shrink is still that same cast's bait. */
+    private static final long ESTIMATE_UNDO_MS = 3_000L;
 
     /** Last seen count per item id, the baseline the diff works against. */
-    private final Map<String, Integer> lastCounts = new HashMap<>();
+    private Map<String, Integer> lastCounts = new HashMap<>();
+    /** The other half of the double buffer {@link #countInventory} fills, so a diff allocates no map. */
+    private Map<String, Integer> scratchCounts = new HashMap<>();
     private boolean baselineReady;
+    /** {@link sbs.modid.client.core.tick.InventoryChanges#revision} the baseline was read at. */
+    private int countedRevision = -1;
+    /** When {@link #onTick} last ran; a gap means the gate skipped ticks and the baseline is stale. */
+    private long lastTickAt;
+    /** Longer than this between ticks and the next tick rebases instead of diffing. */
+    private static final long TICK_GAP_REBASE_MS = 1_000L;
 
     /** Last moment the player demonstrably fished: cast, bite, creature caught. A bobber merely
      *  sitting in the water is deliberately NOT activity – it must not hold the session clock's
-     *  pause off while the player waits afk ({@link #accrueActiveTime}). */
+     *  window open while the player waits afk. The session clock keeps its own events
+     *  ({@link CastSession}). */
     private volatile long lastActivityAt;
 
     /** Last bite or catch message – the moments fishing actually hands the player an item. */
     private volatile long lastLootEventAt;
-
-    /** Bites reeled this session, counted by {@link BiteIndicator} ("Times Fished"). */
-    private int timesFished;
-
-    /**
-     * Session time that actually counts, in milliseconds: it accrues only while the player is
-     * fishing and freezes once {@link #PAUSE_AFTER_MS} pass with no cast / bite / catch, so a break
-     * at the bazaar or afk never dilutes the "per hour" rate. {@link #accrueActiveTime} does the work.
-     */
-    private long activeMillis;
-    /** Wall-clock of the previous accrual tick, 0 before the first – the base for each delta. */
-    private long lastAccrualAt;
 
     private FishingTracker() {
         for (Channel channel : Channel.values()) {
@@ -412,15 +451,24 @@ public final class FishingTracker {
         if (FishingData.isDoubleHook(message)) {
             lastActivityAt = System.currentTimeMillis();
             doubleHookAt = lastActivityAt;
+            castSession.onActivity(lastActivityAt, pauseMs());
+            return;
+        }
+        if (LootShareWindow.isLootShareLine(message)) {
+            onLootShareLine();
             return;
         }
         if (component != null && message.startsWith("[Sacks]")) {
-            onSackMessage(component);
+            onSackMessage(message, component);
             return;
         }
         // Purchases are booked as suppression only (never loot): the bought item lands in the
         // inventory just like a drop, and would otherwise count as profit.
         if (onPurchaseLine(message)) {
+            return;
+        }
+        if (STASH_PICKUP.matcher(message).find()) {
+            stashSettleUntil = System.currentTimeMillis() + STASH_SETTLE_MS;
             return;
         }
         if (onShardLine(message) || onDropLine(message)) {
@@ -436,7 +484,9 @@ public final class FishingTracker {
         if (creature != null) {
             lastActivityAt = System.currentTimeMillis();
             lastLootEventAt = lastActivityAt;
+            castSession.onActivity(lastActivityAt, pauseMs());
             creatures.merge(creature, consumeDoubleHook() ? 2 : 1, Integer::sum);
+            revision++;
             FishingAlert.getInstance().trigger(creature);
         }
     }
@@ -458,45 +508,47 @@ public final class FishingTracker {
      * the tracker ends up showing what actually landed in the box.
      */
     private boolean onShardLine(String message) {
-        for (int i = 0; i < SHARD_LINES.length; i++) {
-            Matcher matcher = SHARD_LINES[i].matcher(message);
-            if (!matcher.find()) {
-                continue;
-            }
-            String name = matcher.group(2).trim();
-            int amount = parseCount(matcher.group(1));
-            long now = System.currentTimeMillis();
-            // Only the Hunting Box transfer line ever RE-announces a shard: it always FOLLOWS the
-            // catch / loot-share line of the same catch, so a box line naming the last shard within
-            // the window books just the shortfall (the pair totals whatever the larger line said).
-            // Catch and loot-share lines always open a NEW booking - a second "You caught a Tide
-            // Shard!" right after a box line is a second catch, not an echo; treating any
-            // different-kind pair as one (the old rule) swallowed quick same-shard catches once
-            // the window grew to cover the box line's lag.
-            boolean topUp = SHARD_LINES[i] == SHARD_BOXED
-                    && lastShardPattern >= 0 && SHARD_LINES[lastShardPattern] != SHARD_BOXED
-                    && name.equalsIgnoreCase(lastShardName)
-                    && now - lastShardAt < SHARD_DEDUPE_MS;
-            if (topUp) {
-                lastShardAt = now;
-                if (recentFishingActivity() && amount > lastShardAmount) {
-                    bookLoot("SHARD_" + normalizeId(name), amount - lastShardAmount, Channel.CHAT);
-                    lastShardAmount = amount;
-                }
-                return true;
-            }
-            lastShardName = name;
-            lastShardAt = now;
-            lastShardPattern = i;
-            lastShardAmount = 0;
-            // A shard charmed on land is hunting, not fishing - recognised but not booked.
-            if (recentFishingActivity()) {
-                bookLoot("SHARD_" + normalizeId(name), amount, Channel.CHAT);
-                lastShardAmount = amount;
-            }
-            return true;
+        long now = System.currentTimeMillis();
+        // A shard charmed on land is hunting, not fishing - recognised but not booked. Inside a
+        // loot share's window the shard is that share's loot, fishing recently or not.
+        boolean inWindow = lootShare.covers(now);
+        // The shard variant of the loot share line is itself loot-share loot (booked only while
+        // fishing, like any shard line outside a window).
+        boolean sharedLoot = inWindow || message.startsWith("LOOT SHARE");
+        ShardLines.Booking booking = shardLines.onLine(message, now, inWindow || recentFishingActivity());
+        if (booking == null) {
+            return false;
         }
-        return false;
+        if (booking.amount() > 0) {
+            bookLoot("SHARD_" + normalizeId(booking.shardName()), booking.amount(), Channel.CHAT, sharedLoot);
+        }
+        return true;
+    }
+
+    /**
+     * "LOOT SHARE You received loot for assisting &lt;name&gt;!": the loot follows through the sack
+     * summary, the inventory or a Hunting Box line, and {@link LootShareWindow} lets those book it.
+     * Only while fishing - a loot share at a slayer boss is not this tracker's - which is the recent
+     * activity window or a rod in the main hand.
+     */
+    private void onLootShareLine() {
+        Player player = Minecraft.getInstance().player;
+        boolean rodInHand = player != null
+                && player.getMainHandItem().getItem() == net.minecraft.world.item.Items.FISHING_ROD;
+        if (!recentFishingActivity() && !rodInHand) {
+            sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
+                    "[SBS][Fishing] loot share while not fishing - not booked to the fishing session");
+            return;
+        }
+        long now = System.currentTimeMillis();
+        lootShare.open(now);
+        // Activity, so the session clock runs - but not a loot event: the own-catch window would let
+        // any gain through, where a loot share's window only takes sea-creature drops.
+        lastActivityAt = now;
+        castSession.onActivity(now, pauseMs());
+        sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
+                "[SBS][Fishing] loot share - drops for the next {}s count as loot-share loot",
+                LootShareWindow.WINDOW_MS / 1000);
     }
 
     /** Books an RNG drop / treasure line, or returns false when {@code message} is none. */
@@ -535,8 +587,13 @@ public final class FishingTracker {
      * Books the per-item breakdown of a "[Sacks]" message. The visible line only says
      * "+227 items" – the actual items sit in the hover text, one "+24 Raw Fish (Fishing Sack)"
      * line each.
+     *
+     * <p>A summary whose period ("Last Ns") reaches back to a loot share holds that share's loot:
+     * every gained item in it books, tagged as loot share, whatever its id. The summary cannot say
+     * which of its items came from the share and which from the player's own catches in the same
+     * period, so the tag means "includes loot-share loot".
      */
-    private void onSackMessage(Component component) {
+    private void onSackMessage(String message, Component component) {
         if (!recentFishingActivity()) {
             return;   // sacks also fill while farming or mining - not this tracker's business
         }
@@ -544,6 +601,7 @@ public final class FishingTracker {
         collectHoverText(component, hover);
         boolean justFished = justFished();
         long now = System.currentTimeMillis();
+        boolean sharedLoot = lootShare.coversSack(now, LootShareWindow.sackPeriodSeconds(message));
         // ONE amount per (item, sack) within a single message, collapsed by MAX: the hover can sit
         // on more than one styled segment of the chat line, so collectHoverText may deliver the same
         // breakdown twice - summing would book every sacked item double (the flexbone x2 bug).
@@ -551,7 +609,8 @@ public final class FishingTracker {
         Map<String, Integer> perItem = new LinkedHashMap<>();
         Map<String, String> sackOf = new HashMap<>();
         for (String line : hover.toString().split("\n")) {
-            Matcher matcher = SACK_LINE.matcher(line.replaceAll("§.", ""));
+            baitSackProbe.onSackLine(line);   // does sack-fed bait consumption show up here at all?
+            Matcher matcher = SACK_LINE.matcher(COLOUR_CODE.matcher(line).replaceAll(""));
             if (!matcher.find() || matcher.group(1).startsWith("-")) {
                 continue;   // removals are spending, and spending never lowers a session's catch
             }
@@ -583,7 +642,9 @@ public final class FishingTracker {
             // fishing's doing; otherwise the item must look like fishing loot (or sit in a
             // fishing sack), so a farming sack filling mid-session stays out.
             boolean fishingSack = sackOf.get(entry.getKey()).toLowerCase(Locale.ROOT).contains("fishing");
-            if (justFished || fishingSack || FishingData.isFishingLoot(itemId)) {
+            if (sharedLoot) {
+                bookLoot(itemId, amount, Channel.SACK, true);
+            } else if (justFished || fishingSack || FishingData.isFishingLoot(itemId)) {
                 bookLoot(itemId, amount, Channel.SACK);
             }
         }
@@ -639,6 +700,9 @@ public final class FishingTracker {
                 loot.put(itemId, left);
             }
         }
+        if (booked > 0) {
+            revision++;
+        }
         int remaining = count - booked;
         if (remaining > 0) {
             pendingPurchase.merge(itemId, remaining, Integer::sum);
@@ -653,6 +717,11 @@ public final class FishingTracker {
      * channel. A repeat on the SAME channel is never touched, so real doubles stay doubled.
      */
     private void bookLoot(String itemId, int count, Channel channel) {
+        bookLoot(itemId, count, channel, false);
+    }
+
+    /** {@link #bookLoot(String, int, Channel)}, remembering a loot-share booking for the HUD's marker. */
+    private void bookLoot(String itemId, int count, Channel channel, boolean sharedLoot) {
         if (itemId == null || itemId.isEmpty() || count <= 0) {
             return;
         }
@@ -682,7 +751,29 @@ public final class FishingTracker {
         if (net <= 0) {
             return;   // every unit was already booked by another channel - same physical drop
         }
-        loot.merge(itemId, net, Integer::sum);
+        if (sbs.modid.client.skills.fishing.model.SeaCreatureDropTable.isRareDrop(itemId)) {
+            // A creature-specific rare drop counts only behind a sea creature that can drop it and
+            // died next to the player inside the window - whichever channel reported it.
+            String creature = SeaCreatureDrops.getInstance().attribute(itemId, now);
+            if (creature == null) {
+                sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
+                        "[SBS][Fishing][Drop] {} x{} via {} not booked: no eligible sea creature died "
+                                + "within {}s", itemId, net, channel, SeaCreatureDrops.windowMs() / 1000);
+                return;
+            }
+            rareDrops.merge(itemId, net, Integer::sum);
+            rareDropSource.put(itemId, creature);
+            sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
+                    "[SBS][Fishing][Drop] {} x{} via {} booked as a {} drop", itemId, net, channel, creature);
+        } else {
+            loot.merge(itemId, net, Integer::sum);
+        }
+        if (sharedLoot) {
+            lootShareCounts.merge(itemId, net, Integer::sum);
+            sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
+                    "[SBS][Fishing] loot share: {} x{} via {} booked", itemId, net, channel);
+        }
+        revision++;
         recentByChannel.get(channel).merge(itemId, net, Integer::sum);
         recentAtByChannel.get(channel).put(itemId, now);
         // Lifetime drop log: config/sbs/tracker/fishingtracker.txt.
@@ -725,7 +816,7 @@ public final class FishingTracker {
         if (displayName == null) {
             return null;
         }
-        String name = displayName.replaceAll("§.", "").trim();
+        String name = COLOUR_CODE.matcher(displayName).replaceAll("").trim();
         if (name.isEmpty()) {
             return null;
         }
@@ -748,7 +839,7 @@ public final class FishingTracker {
 
     /** "Abyssal Lanternfish" -> "ABYSSAL_LANTERNFISH". */
     private static String normalizeId(String name) {
-        return name.toUpperCase(Locale.ROOT).replace(' ', '_').replaceAll("[^A-Z0-9_]", "");
+        return NON_ID_CHARS.matcher(name.toUpperCase(Locale.ROOT).replace(' ', '_')).replaceAll("");
     }
 
     /** Removes {@code §x} colour codes without the per-call regex compile of String.replaceAll –
@@ -775,7 +866,7 @@ public final class FishingTracker {
             return 1;
         }
         try {
-            return Integer.parseInt(group.replaceAll("[^0-9]", ""));
+            return Integer.parseInt(NON_DIGITS.matcher(group).replaceAll(""));
         } catch (NumberFormatException e) {
             return 1;
         }
@@ -794,23 +885,37 @@ public final class FishingTracker {
         return doubled;
     }
 
-    /** Called by {@link BiteIndicator} on each new bite - the client's one real "you fished" event. */
+    /**
+     * Called by {@link BiteIndicator} on each new bite. Opens the loot window and refines the Reel
+     * Timer; Times Fished counts casts ({@link CastSession}), so it never depends on this marker.
+     */
     public void onBite() {
         if (!enabled()) {
             return;
         }
-        timesFished++;
+        revision++;
         lastActivityAt = System.currentTimeMillis();
         lastLootEventAt = lastActivityAt;
+        castSession.onBite(lastActivityAt, pauseMs());
         // Bait cost is NOT booked here: bait-save effects (the Caster enchant, Stingy Sinker, the
         // Spiked Atrocity talisman, shard buffs) keep the bait on many casts, so "one per bite"
         // would overstate the cost. The inventory diff in onTick books exactly the baits that
         // actually left the stack - a saved bait never shrinks it and so never costs anything.
     }
 
-    /** How many bites were reeled this session ("Times Fished"). */
+    /** Called by {@link BiteIndicator} when the bite marker goes away while the bobber stays out. */
+    void onBiteEnd() {
+        castSession.onBiteEnd(System.currentTimeMillis());
+    }
+
+    /** How many casts this session made ("Times Fished"). */
     public int timesFished() {
-        return timesFished;
+        return castSession.timesFished();
+    }
+
+    /** The session clock's pause length from the settings, in milliseconds. */
+    private static long pauseMs() {
+        return Math.max(10, ConfigManager.getInstance().get().fishing.sessionPauseSec) * 1000L;
     }
 
     /**
@@ -839,13 +944,18 @@ public final class FishingTracker {
     }
 
     /**
-     * The bait the player is currently fishing with: the one most recently consumed, or – before the
-     * first cast this session – whatever bait is visible loose in the inventory, then in the sack.
-     * Drives the bait-counter HUD icon; null when no bait can be found at all.
+     * The bait the player is currently fishing with: the rod display's, else the Bait Sack's favourite
+     * while any of it is left (Hypixel consumes it first), else the one most recently consumed, or –
+     * before the first cast this session – whatever bait is visible loose in the inventory, then in
+     * the sack. Drives the bait-counter HUD icon; null when no bait can be found at all.
      */
     public String currentBaitId() {
         if (baitDisplayActive && displayBaitId != null) {
             return displayBaitId;   // the rod display names exactly the bait now loaded
+        }
+        String favourite = activeFavourite();
+        if (favourite != null && remainingOf(favourite) > 0) {
+            return favourite;
         }
         if (lastConsumedBaitId != null) {
             return lastConsumedBaitId;
@@ -916,27 +1026,68 @@ public final class FishingTracker {
         if (baitDisplaySeen) {
             return;   // the rod bait display books consumption authoritatively – no estimate needed
         }
-        String bait = currentBaitId();
-        if (bait == null || inventoryCountOf(bait) > 0) {
-            return;   // no bait at all, or a loose stack (consumed first) the inventory diff books
+        // The sack's favourite is consumed first while the sack holds it; otherwise the old rule:
+        // a loose stack is consumed first, then the bait in use, then whatever the sack still holds.
+        String favourite = activeFavourite();
+        boolean favouriteFirst = favourite != null && bagRemainingOf(favourite) > 0;
+        String inUse = favouriteFirst ? favourite : currentBaitId();
+        if (inUse == null || inventoryCountOf(inUse) > 0) {
+            return;   // no bait at all, or a loose stack the inventory diff books exactly
         }
-        if (bagRemainingOf(bait) <= 0) {
-            // The remembered bait ran out (or left the bag) - fall over to whatever bait the bag
-            // still holds, so the countdown follows the bait actually being consumed now.
-            bait = null;
-            for (String id : baitSackReserve.keySet()) {
-                if (bagRemainingOf(id) > 0 && inventoryCountOf(id) == 0) {
-                    bait = id;
-                    break;
-                }
-            }
-            if (bait == null) {
-                return;   // the bag (as last seen) is out of baits entirely
-            }
+        String bait = BaitAttribution.castBait(favourite, inUse, baitSackReserve.keySet(),
+                id -> inventoryCountOf(id) > 0 ? 0 : bagRemainingOf(id));
+        if (bait == null) {
+            return;   // the bag (as last seen) is out of baits entirely
         }
         pendingBaitEstimate.merge(bait, 1, Integer::sum);
         baitsUsed.merge(bait, 1, Integer::sum);
         lastConsumedBaitId = bait;
+        lastEstimateBait = bait;
+        lastEstimateAt = System.currentTimeMillis();
+    }
+
+    /**
+     * The stored Bait Sack favourite, unless an observation since it was read named another bait
+     * being consumed (it was unfavourited, or the rule is wrong) – then null, and the old rule decides.
+     */
+    private String activeFavourite() {
+        FavouriteBaitStore store = FavouriteBaitStore.getInstance();
+        String favourite = store.baitId();
+        if (favourite == null) {
+            return null;
+        }
+        boolean contradicted = lastObservedBaitAt > store.readAt() && lastConsumedBaitId != null
+                && !favourite.equals(lastConsumedBaitId);
+        return contradicted ? null : favourite;
+    }
+
+    /**
+     * A loose stack just shrank by {@code lost} of {@code baitId}: that is what the last cast really
+     * consumed, so an estimate the cast booked on credit moments ago is taken back – the diff is the
+     * truth, the estimate only a guess for when the diff sees nothing.
+     */
+    private void undoRecentEstimate(int lost, long now) {
+        if (lastEstimateBait == null || now - lastEstimateAt > ESTIMATE_UNDO_MS) {
+            return;
+        }
+        String id = lastEstimateBait;
+        lastEstimateBait = null;
+        int pending = pendingBaitEstimate.getOrDefault(id, 0);
+        int undo = Math.min(lost, pending);
+        if (undo <= 0) {
+            return;
+        }
+        if (pending - undo == 0) {
+            pendingBaitEstimate.remove(id);
+        } else {
+            pendingBaitEstimate.put(id, pending - undo);
+        }
+        int used = baitsUsed.getOrDefault(id, 0) - undo;
+        if (used <= 0) {
+            baitsUsed.remove(id);
+        } else {
+            baitsUsed.put(id, used);
+        }
     }
 
     /** What the bag (as last seen) still holds of one bait, minus the casts made since that look. */
@@ -1000,6 +1151,7 @@ public final class FishingTracker {
             if (used > 0 && used <= MAX_BAIT_CONSUMED_PER_TICK && recentFishingActivity()) {
                 baitsUsed.merge(displayBaitId, used, Integer::sum);
                 lastConsumedBaitId = displayBaitId;
+                lastObservedBaitAt = System.currentTimeMillis();
             }
         }
         lastDisplayRemaining = displayBaitsRemaining;
@@ -1032,12 +1184,14 @@ public final class FishingTracker {
     }
 
     /**
-     * Refreshes the {@link #baitSackReserve} from the open <b>Fishing Bag</b> ("A useful bag which can
-     * hold all types of fish, bait, and fishing loot", opened via {@code /fishingbag}). The bag holds
-     * fish and loot too, so only the bait stacks are kept. Baits stored here never pass through the
-     * inventory, so without this "Baits Left" would only ever show the loose baits in hand. A no-op
-     * for every other screen; the bottom 36 menu slots are the player inventory and are skipped so
-     * held baits are not counted twice.
+     * Refreshes the {@link #baitSackReserve} from the open <b>Bait Sack</b> (Small / Medium / Large,
+     * which replaced the Fishing Bag on 2026-09-21) or an old <b>Fishing Bag</b> - recognised and read
+     * by {@link BaitSackReader}, which keeps only the bait slots, takes a sack's amount from its
+     * {@code Stored:} lore, and finds the favourite bait ({@link FavouriteBaitStore}). Baits stored
+     * here never pass through the inventory, so without this "Baits Left" would only ever show the
+     * loose baits in hand. A no-op for every other screen; the bottom 36 menu slots are the player
+     * inventory and are skipped so held baits are not counted twice. {@link BaitSackProbe} logs the
+     * menu's real layout while it is still uncaptured.
      *
      * <p>The bag is read EVERY tick it is open, but what is read is only believed once it has
      * SETTLED: the server streams the content in after the screen opens (the open tick shows all
@@ -1053,54 +1207,96 @@ public final class FishingTracker {
     private void captureBaitSack(net.minecraft.client.gui.screens.Screen screen) {
         boolean bagOpen = false;
         if (screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> container) {
-            String title = container.getTitle() == null ? "" : container.getTitle().getString();
-            String lower = title.replaceAll("§.", "").toLowerCase(Locale.ROOT);
-            // Deliberately ONLY the Fishing Bag title: a looser match (any title containing
-            // "bait") also caught Bazaar / AH product pages named after a bait, whose display
-            // stacks then clobbered the reserve with garbage counts.
-            if (lower.contains("fishing bag")) {
-                bagOpen = true;
-                if (!baitBagWasOpen) {
-                    baitBagReconciled = false;   // fresh opening: a reconcile is due once settled
-                    bagStableTicks = 0;
-                    lastBagContent = null;
-                }
+            if (screen != lastBaitScreen) {
+                // Title checks once per screen, not per tick: most open containers are not the sack.
+                lastBaitScreen = screen;
+                lastBaitTitle = container.getTitle() == null ? "" : container.getTitle().getString();
+                lastBaitTitleIsStore = BaitSackReader.isBaitStoreTitle(lastBaitTitle);
+                lastBaitTitleProbed = BaitSackProbe.probes(lastBaitTitle);
+            }
+            if (lastBaitTitleIsStore || lastBaitTitleProbed) {
                 net.minecraft.world.inventory.AbstractContainerMenu menu = container.getMenu();
-                int containerSlots = Math.max(0, menu.getItems().size() - 36);
-                Map<String, Integer> content = new LinkedHashMap<>();
-                Map<String, Integer> baits = new LinkedHashMap<>();
-                for (int i = 0; i < containerSlots; i++) {
-                    ItemStack stack = menu.getSlot(i).getItem();
-                    if (stack == null || stack.isEmpty()) {
-                        continue;
-                    }
-                    String id = SkyblockItem.id(stack);
-                    // The settle fingerprint spans EVERY item (fish, loot, UI arrows) - a bag whose
-                    // baits stream in last must not read as "settled and bait-free" early.
-                    content.merge(id != null ? id : stack.getHoverName().getString(),
-                            stack.getCount(), Integer::sum);
-                    if (FishingData.isBait(id)) {
-                        baits.merge(id, stack.getCount(), Integer::sum);
-                    }
+                List<BaitSackReader.SlotView> slots = slotViews(menu);
+                if (lastBaitTitleProbed) {
+                    baitSackProbe.onTick(lastBaitTitle, menu.slots.size(), slots);
                 }
-                if (baitBagReconciled) {
-                    // Settled earlier this opening: mirror the bag live.
-                    baitSackReserve.clear();
-                    baitSackReserve.putAll(baits);
-                } else {
-                    bagStableTicks = !content.isEmpty() && content.equals(lastBagContent)
-                            ? bagStableTicks + 1 : 0;
-                    lastBagContent = content;
-                    if (bagStableTicks >= BAG_SETTLE_TICKS) {
-                        reconcileBaitConsumption(baits);
-                        baitSackReserve.clear();
-                        baitSackReserve.putAll(baits);
-                        baitBagReconciled = true;
-                    }
+                // Deliberately ONLY the exact store titles (BaitSackReader): a looser match (any
+                // title containing "bait") also caught Bazaar / AH product pages named after a
+                // bait, whose display stacks then clobbered the reserve with garbage counts.
+                if (lastBaitTitleIsStore) {
+                    bagOpen = true;
+                    readBaitStore(BaitSackReader.read(slots));
                 }
             }
+        } else {
+            lastBaitScreen = null;
         }
         baitBagWasOpen = bagOpen;
+    }
+
+    /** One tick's look into the open store: settle, then reconcile once, then mirror live. */
+    private void readBaitStore(BaitSackReader.Reading reading) {
+        if (!baitBagWasOpen) {
+            baitBagReconciled = false;   // fresh opening: a reconcile is due once settled
+            bagStableTicks = 0;
+            lastBagContent = null;
+        }
+        if (baitBagReconciled) {
+            // Settled earlier this opening: mirror the bag live, favourite included (shift-click).
+            baitSackReserve.clear();
+            baitSackReserve.putAll(reading.baits());
+            rememberFavourite(reading);
+            return;
+        }
+        bagStableTicks = !reading.content().isEmpty() && reading.content().equals(lastBagContent)
+                ? bagStableTicks + 1 : 0;
+        lastBagContent = reading.content();
+        if (bagStableTicks >= BAG_SETTLE_TICKS) {
+            reconcileBaitConsumption(reading.baits(), reading.favourite());
+            baitSackReserve.clear();
+            baitSackReserve.putAll(reading.baits());
+            rememberFavourite(reading);
+            baitBagReconciled = true;
+        }
+    }
+
+    /**
+     * Stores the favourite the settled sack shows. A sack with no recognisable marker keeps the stored
+     * one - the marker is unverified, and "none found" may be "marker not understood" - unless that
+     * bait is no longer in the sack at all, in which case it can no longer be consumed first.
+     */
+    private void rememberFavourite(BaitSackReader.Reading reading) {
+        FavouriteBaitStore store = FavouriteBaitStore.getInstance();
+        String favourite = reading.favourite();
+        if (favourite == null) {
+            String stored = store.baitId();
+            if (stored == null || reading.baits().containsKey(stored)) {
+                return;
+            }
+        }
+        store.set(favourite, System.currentTimeMillis());
+    }
+
+    /** The menu's own slots (the player inventory below left out) as the reader's plain views. */
+    private static List<BaitSackReader.SlotView> slotViews(net.minecraft.world.inventory.AbstractContainerMenu menu) {
+        List<BaitSackReader.SlotView> out = new ArrayList<>();
+        int containerSlots = Math.max(0, menu.slots.size() - 36);
+        for (int i = 0; i < containerSlots; i++) {
+            ItemStack stack = menu.getSlot(i).getItem();
+            if (stack == null || stack.isEmpty()) {
+                continue;
+            }
+            List<String> lore = new ArrayList<>();
+            var loreComponent = stack.get(net.minecraft.core.component.DataComponents.LORE);
+            if (loreComponent != null) {
+                for (Component line : loreComponent.lines()) {
+                    lore.add(strip(line.getString()));
+                }
+            }
+            out.add(new BaitSackReader.SlotView(i, SkyblockItem.id(stack),
+                    strip(stack.getHoverName().getString()), stack.getCount(), lore, stack.hasFoil()));
+        }
+        return out;
     }
 
     /**
@@ -1111,8 +1307,12 @@ public final class FishingTracker {
      * upward when more was consumed than casts were seen, downward when bait-save effects (Caster,
      * Stingy Sinker, Spiked Atrocity) made the estimate run hot. A count that GREW is a refill and
      * only re-baselines. The estimate ledger starts fresh either way, against the new baseline.
+     *
+     * <p>The per-bait drops are exact, so the favourite changes no count here; it only names the bait
+     * "in use" when it shrank at all - the sack consumes it first, so it is the one being used now even
+     * when a bait that ran out earlier in the closed period dropped by more.
      */
-    private void reconcileBaitConsumption(Map<String, Integer> found) {
+    private void reconcileBaitConsumption(Map<String, Integer> found, String favourite) {
         if (skipNextBaitReconcile) {
             skipNextBaitReconcile = false;
             pendingBaitEstimate.clear();
@@ -1131,6 +1331,10 @@ public final class FishingTracker {
                 biggestConsumed = consumed;
                 lastConsumedBaitId = id;   // the bait that actually shrank is the one in use
             }
+            if (consumed > 0 && id.equals(favourite)) {
+                biggestConsumed = Integer.MAX_VALUE;   // the favourite, once it shrank, names the bait in use
+                lastConsumedBaitId = id;
+            }
             int diff = consumed - estimated;
             if (diff > 0) {
                 baitsUsed.merge(id, diff, Integer::sum);
@@ -1143,7 +1347,11 @@ public final class FishingTracker {
                 }
             }
         }
+        if (biggestConsumed > 0) {
+            lastObservedBaitAt = System.currentTimeMillis();
+        }
         pendingBaitEstimate.clear();
+        lastEstimateBait = null;
     }
 
     /** Whether the player fished recently enough for item gains to count as fishing loot. */
@@ -1159,6 +1367,19 @@ public final class FishingTracker {
      */
     public boolean sessionIdle() {
         return lastActivityAt == 0 || System.currentTimeMillis() - lastActivityAt > IDLE_HIDE_MS;
+    }
+
+    /**
+     * The tick gate's question beyond "bobber out / rod in hand / menu open": whether {@link #onTick}
+     * could change anything right now - fishing activity inside {@link #ACTIVITY_WINDOW_MS} or a
+     * Golden Fish clock running. Slot changes alone are NOT a reason: Hypixel resends inventory slots
+     * constantly, and outside the activity window gains are never booked and the removal ledger is
+     * never read ({@link #onSackMessage} returns early), so the tick has nothing to do. The window
+     * outlives putting the rod away, so a sack line right after still finds its removals; a tick
+     * after a skipped stretch rebases the baseline instead of diffing ({@link #TICK_GAP_REBASE_MS}).
+     */
+    public boolean needsTick() {
+        return recentFishingActivity() || GoldenFishTracker.getInstance().busy();
     }
 
     /** Whether a bite/catch just happened – the moments fishing actually hands the player items. */
@@ -1183,39 +1404,93 @@ public final class FishingTracker {
             GoldenFishTracker.getInstance().onNoPlayer();
             return;
         }
-        BiteIndicator.getInstance().onTick(player);
-        // Read Hypixel's rod bait display (slot 9 "Baits Remaining: N") FIRST: it is the authority on
-        // the bait count, and once seen it drives consumption so the estimate paths below stand down.
-        readBaitDisplay(player);
-        // Snapshot the Bait Sack whenever its menu is open, so "Baits Left" counts the bulk reserve
-        // and not just the baits loose in the inventory.
-        captureBaitSack(sbs.modid.client.core.api.GuiStateManager.getInstance().getCurrentScreen());
-        // Only the CAST (deploy edge) marks activity, not the bobber merely being out: a bobber
-        // left sitting in the water is waiting or afk, and marking it every tick held the session
-        // clock's 10s pause off forever - the "timer keeps counting while I'm not fishing" bug.
-        // Bites and catches refresh activity on their own, so real fishing never pauses.
-        boolean bobber = player.fishing != null;
-        if (bobber && !bobberOut) {
-            lastActivityAt = System.currentTimeMillis();
-            onCast();   // deploy edge: one cast just happened, one bag-fed bait consumed
-        }
-        GoldenFishTracker.getInstance().onTick(player, bobber, bobberOut);
-        bobberOut = bobber;
-        Map<String, Integer> current = countInventory(player);
         long now = System.currentTimeMillis();
-        accrueActiveTime(now);
-        if (!baselineReady) {
-            lastCounts.putAll(current);
-            baselineReady = true;
-            settleUntil = now + JOIN_SETTLE_MS;   // the inventory is still streaming in after the join
-            return;
+        // Once per game session, and again whenever the gate let the task resume after a minute off.
+        if (!tickRunningLogged || now - lastTickAt > 60_000L) {
+            tickRunningLogged = true;
+            sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
+                    "[SBS][Fishing] tick running (bobber {}, timesFished={}, session {}s)",
+                    player.fishing != null ? "out" : "in", castSession.timesFished(),
+                    castSession.sessionMillis(now, pauseMs()) / 1000);
         }
-        // Post-join settle: a lobby / island swap re-sends the whole inventory over several ticks;
-        // absorb it into the baseline without counting so it never reads as one enormous catch.
-        if (now < settleUntil) {
-            lastCounts.clear();
-            lastCounts.putAll(current);
-            return;
+        // The cast counters come FIRST and depend on nothing but the bobber: Times Fished, the session
+        // clock and the Reel Timer used to run after five other readers, so one failing reader (or a
+        // bite marker never seen) left all of them at 0 while chat-booked catches kept counting.
+        boolean bobber = player.fishing != null;
+        boolean wasOut = castSession.bobberOut();
+        var hook = player.fishing;
+        boolean inFluid = hook != null && (hook.isInWater() || hook.isInLava());
+        CastSession.Edge edge = castSession.onTick(bobber, inFluid, now, pauseMs(),
+                ConfigManager.getInstance().get().fishing.reelRollingCasts);
+        if (edge == CastSession.Edge.CAST) {
+            // Only the CAST marks activity, not the bobber merely being out: a bobber left in the
+            // water is waiting or afk. Bites and catches refresh activity on their own.
+            lastActivityAt = now;
+            revision++;
+            logCastEdge(now);
+            if (!partOff[PART_BAIT_SACK]) {
+                try {
+                    onCast();   // one bag-fed bait consumed on credit
+                } catch (RuntimeException e) {
+                    partFailed(PART_BAIT_SACK, e);
+                }
+            }
+        } else if (edge == CastSession.Edge.REEL) {
+            revision++;
+            long sample = castSession.lastReelSample();
+            ReelTimer reel = castSession.reelTimer();
+            if (sample >= 0 && !reel.landed() && !noLandLogged) {
+                noLandLogged = true;
+                sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
+                        "[SBS][Fishing] reel: no water/lava contact seen on this cast - wait timed from "
+                                + "the bobber's spawn ({} ms)", sample);
+            }
+        }
+        if (castSession.landedThisTick() && !landLogged) {
+            landLogged = true;
+            sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
+                    "[SBS][Fishing] reel: bobber reported {} contact - waits are timed from landing",
+                    hook != null && hook.isInLava() ? "lava" : "water");
+        }
+        // The optional readers. Each is fenced on its own: a failure switches that one reader off and
+        // logs it, and the counters above and the loot diff below keep running.
+        if (!partOff[PART_BITE]) {
+            try {
+                BiteIndicator.getInstance().onTick(player);
+            } catch (RuntimeException e) {
+                partFailed(PART_BITE, e);
+            }
+        }
+        // Hypixel's rod bait display (slot 9 "Baits Remaining: N") is the authority on the bait
+        // count; once seen it drives consumption so the estimate paths stand down.
+        if (!partOff[PART_BAIT_DISPLAY]) {
+            try {
+                readBaitDisplay(player);
+            } catch (RuntimeException e) {
+                partFailed(PART_BAIT_DISPLAY, e);
+            }
+        }
+        // The Bait Sack whenever its menu is open, so "Baits Left" counts the bulk reserve.
+        if (!partOff[PART_BAIT_SACK]) {
+            try {
+                captureBaitSack(sbs.modid.client.core.api.GuiStateManager.getInstance().getCurrentScreen());
+            } catch (RuntimeException e) {
+                partFailed(PART_BAIT_SACK, e);
+            }
+        }
+        if (!partOff[PART_DEATHS]) {
+            try {
+                SeaCreatureDrops.getInstance().onTick(player, now);
+            } catch (RuntimeException e) {
+                partFailed(PART_DEATHS, e);
+            }
+        }
+        if (!partOff[PART_GOLDEN]) {
+            try {
+                GoldenFishTracker.getInstance().onTick(player, bobber, wasOut);
+            } catch (RuntimeException e) {
+                partFailed(PART_GOLDEN, e);
+            }
         }
         // Gains inside a container screen are the player moving items (storage, bazaar, trades),
         // never a drop - they are absorbed into the baseline below without counting. The guard
@@ -1227,9 +1502,32 @@ public final class FishingTracker {
             containerClosedSettleUntil = now + CONTAINER_SETTLE_MS;
         }
         containerWasOpen = containerOpen;
-        boolean menuSettling = containerOpen || now < containerClosedSettleUntil;
+        // The gate skipped ticks (not fishing): whatever moved meanwhile was not fishing's doing, and
+        // diffing against that stale baseline would book it the moment the next cast reopens the gate.
+        boolean rebase = now - lastTickAt > TICK_GAP_REBASE_MS;
+        lastTickAt = now;
+        int revision = sbs.modid.client.core.tick.InventoryChanges.revision();
+        if (baselineReady && !rebase && revision == countedRevision) {
+            return;   // no slot packet since the last diff: the inventory and so the diff are unchanged
+        }
+        countedRevision = revision;
+        Map<String, Integer> current = countInventory(player);
+        if (!baselineReady) {
+            swapBaseline(current);
+            baselineReady = true;
+            settleUntil = now + JOIN_SETTLE_MS;   // the inventory is still streaming in after the join
+            return;
+        }
+        // Post-join settle: a lobby / island swap re-sends the whole inventory over several ticks;
+        // absorb it into the baseline without counting so it never reads as one enormous catch.
+        if (now < settleUntil || rebase) {
+            swapBaseline(current);
+            return;
+        }
+        boolean menuSettling = containerOpen || now < containerClosedSettleUntil || now < stashSettleUntil;
         boolean fishingActive = recentFishingActivity();
         boolean justFished = justFished();
+        boolean sharedLoot = lootShare.covers(now);
         for (Map.Entry<String, Integer> entry : current.entrySet()) {
             int before = lastCounts.getOrDefault(entry.getKey(), 0);
             int gained = entry.getValue() - before;
@@ -1244,9 +1542,24 @@ public final class FishingTracker {
             // whatever else lands in the inventory between casts never becomes "profit".
             // bookLoot dedups against the chat / sack channels, so a drop announced there AND
             // picked up here counts once.
-            if (gained > 0 && !menuSettling && !FishingData.isNeverLoot(entry.getKey())
-                    && (justFished || (fishingActive && FishingData.isFishingLoot(entry.getKey())))) {
-                bookLoot(entry.getKey(), gained, Channel.INVENTORY);
+            if (gained <= 0 || menuSettling) {
+                continue;
+            }
+            String gainedId = entry.getKey();
+            if (sbs.modid.client.skills.fishing.model.SeaCreatureDropTable.isRareDrop(gainedId)) {
+                // A rare drop is judged by the kill behind it, not by the bite window: the Magma Lord
+                // Fragment of 2026-10-08 was picked up 35s after the last spawn line, mid-fight with
+                // the rod away, and the old two-tier rule refused it. bookLoot applies the gate.
+                bookLoot(gainedId, gained, Channel.INVENTORY, sharedLoot);
+            } else if (sharedLoot && FishingData.isFishingLoot(gainedId)) {
+                // A loot share's window takes known sea-creature drops only: the share names no item,
+                // so anything else picked up in those seconds is not provably its loot.
+                bookLoot(gainedId, gained, Channel.INVENTORY, true);
+            } else if (!FishingData.isNeverLoot(gainedId)
+                    && (justFished || (fishingActive && FishingData.isFishingLoot(gainedId)))) {
+                bookLoot(gainedId, gained, Channel.INVENTORY);
+            } else {
+                logUnexplainedPickup(gainedId, gained, now);
             }
         }
         // Inventory REMOVALS feed the transfer ledger: an item that leaves the inventory (auto-
@@ -1275,20 +1588,68 @@ public final class FishingTracker {
                 }
                 int lost = entry.getValue() - current.getOrDefault(entry.getKey(), 0);
                 if (lost > 0 && lost <= MAX_BAIT_CONSUMED_PER_TICK) {
+                    undoRecentEstimate(lost, now);   // the cast's credit guess was wrong, this is real
                     baitsUsed.merge(entry.getKey(), lost, Integer::sum);
                     lastConsumedBaitId = entry.getKey();   // the bait actually in use right now
+                    lastObservedBaitAt = now;
                 }
             }
         }
         // Replace wholesale: an item that left the inventory must lower the baseline too, or
         // picking it back up would count a second time.
-        lastCounts.clear();
-        lastCounts.putAll(current);
+        swapBaseline(current);
     }
 
-    /** Every SkyBlock item currently in the player's inventory, id -> total count. */
+    /**
+     * The debug trail for the cast counters: the first {@link #CAST_LOG_FIRST} cast edges of a
+     * session one by one, then every {@link #CAST_LOG_EVERY}-th, so a log shows at a glance whether
+     * casts are seen at all without one line per cast all day.
+     */
+    private void logCastEdge(long now) {
+        int casts = castSession.timesFished();
+        if (casts <= CAST_LOG_FIRST || casts % CAST_LOG_EVERY == 0) {
+            sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
+                    "[SBS][Fishing] cast edge #{} timesFished={} session={}s reelSamples={}",
+                    casts, casts, castSession.sessionMillis(now, pauseMs()) / 1000,
+                    castSession.reelTimer().samples());
+        }
+    }
+
+    /** One optional per-tick reader threw: switch it off for the game session, say so once. */
+    private void partFailed(int part, RuntimeException e) {
+        partOff[part] = true;
+        sbs.modid.SkyblockSimplifiedSBS.LOGGER.error(
+                "[SBS][Fishing] {} failed and is off until restart; the fishing counters keep running: {}",
+                PART_NAMES[part], e.toString(), e);
+    }
+
+    /**
+     * A gain nothing booked, right after an eligible sea-creature death: the drop table may be
+     * missing this creature's drop. Logged (throttled) so one trip fills the table - never booked.
+     */
+    private void logUnexplainedPickup(String itemId, int gained, long now) {
+        if (now - lastUnexplainedLogAt < 2_000L) {
+            return;
+        }
+        String creature = SeaCreatureDrops.getInstance().recentDeath(now);
+        if (creature != null) {
+            lastUnexplainedLogAt = now;
+            sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
+                    "[SBS][Fishing][Drop] unexplained pickup {} x{} after a {} died nearby - not booked",
+                    itemId, gained, creature);
+        }
+    }
+
+    /** Makes {@code current} (the scratch map) the baseline; the old baseline becomes the scratch. */
+    private void swapBaseline(Map<String, Integer> current) {
+        scratchCounts = lastCounts;
+        lastCounts = current;
+    }
+
+    /** Every SkyBlock item currently in the player's inventory, id -> total count, in the scratch map. */
     private Map<String, Integer> countInventory(Player player) {
-        Map<String, Integer> counts = new HashMap<>();
+        Map<String, Integer> counts = scratchCounts;
+        counts.clear();
         var inventory = player.getInventory();
         for (int i = 0; i < inventory.getContainerSize(); i++) {
             ItemStack stack = inventory.getItem(i);
@@ -1343,12 +1704,27 @@ public final class FishingTracker {
         if (COIN_ID.equals(itemId)) {
             return 1;   // treasure coins are already coins
         }
+        double npc = npcPrice(itemId);
         BazaarPriceCache.BzPrice value = BazaarPriceCache.getInstance().get(itemId);
         if (value != null && value.sell() > 0) {
-            return value.sell();
+            // Never below the NPC: Lump of Magma, Moogma Pelt and Pyroclastic Scale instasell for a
+            // few coins against a 50-coin NPC price (quick_status, 2026-10-08), and the NPC is the
+            // better sale for those.
+            return Math.max(value.sell(), npc);
         }
         Long lbin = sbs.modid.client.economy.prices.LbinCache.getInstance().getLbin(itemId);
-        return lbin == null ? 0 : lbin;
+        if (lbin != null && lbin > 0) {
+            return Math.max(lbin, npc);
+        }
+        // No Bazaar buyer and no auction: Chum's instasell is 0 (no buy orders), so the NPC is the
+        // only price there is.
+        return npc;
+    }
+
+    /** The NPC sell price from the item catalogue, 0 when the item has none. */
+    private static double npcPrice(String itemId) {
+        SkyBlockItemCatalog.Entry entry = SkyBlockItemCatalog.getInstance().byId(itemId);
+        return entry == null || !(entry.npcSellPrice > 0) ? 0 : entry.npcSellPrice;
     }
 
     /**
@@ -1391,46 +1767,76 @@ public final class FishingTracker {
         for (Map.Entry<String, Integer> entry : loot.entrySet()) {
             total += price(entry.getKey()) * entry.getValue();
         }
+        for (Map.Entry<String, Integer> entry : rareDrops.entrySet()) {
+            total += price(entry.getKey()) * entry.getValue();
+        }
         return total - baitCost();
     }
 
+    /** Rare sea-creature drops this session, item id -> count. */
+    public Map<String, Integer> rareDrops() {
+        return rareDrops;
+    }
+
+    /** The creature the latest booking of {@code itemId} was attributed to, or null. */
+    public String rareDropSource(String itemId) {
+        return rareDropSource.get(itemId);
+    }
+
+    /** What one rare drop's count is worth this session. */
+    public double rareValueOf(String itemId) {
+        return price(itemId) * rareDrops.getOrDefault(itemId, 0);
+    }
+
+    /** The cast-to-bite timer. */
+    public ReelTimer reelTimer() {
+        return castSession.reelTimer();
+    }
+
+    /** How many of {@code itemId}'s booked count were loot-share loot (0: none - no "LS" marker). */
+    public int lootShareCount(String itemId) {
+        return lootShareCounts.getOrDefault(itemId, 0);
+    }
+
+    /** Changes whenever a count the HUD shows changes; compare for equality only. */
+    public int revision() {
+        return revision;
+    }
+
     /**
-     * Advances the session clock by the time since the last tick, but only while the player is
-     * demonstrably fishing: once {@link #PAUSE_AFTER_MS} pass with no cast / bite / catch the clock
-     * freezes, so "Time" and "Per Hour" reflect time fished, not time logged in. The per-tick delta
-     * is capped at the same window, so a lag spike or a briefly unfocused client cannot add idle time.
+     * Session length in milliseconds, counting only the time the player was actually fishing: gaps
+     * between casts, reels, bites and catches up to the "Session Pause" setting
+     * ({@link FishingSessionClock}). Computed from event timestamps, so it is right even on a frame
+     * where the tick task did not run.
      */
-    private void accrueActiveTime(long now) {
-        if (lastAccrualAt != 0) {
-            long delta = now - lastAccrualAt;
-            if (delta > 0 && delta <= PAUSE_AFTER_MS && now - lastActivityAt < PAUSE_AFTER_MS) {
-                activeMillis += delta;
-            }
-        }
-        lastAccrualAt = now;
-    }
-
-    /** Session length in milliseconds, counting only the time the player was actually fishing. */
     public long sessionMillis() {
-        return activeMillis;
+        return castSession.sessionMillis(System.currentTimeMillis(), pauseMs());
     }
 
-    /** Profit extrapolated to an hour; 0 until the session is long enough to mean anything. */
+    /** Profit extrapolated to an hour of fished time; 0 until the session is long enough to mean anything. */
     public double profitPerHour() {
-        long millis = sessionMillis();
-        if (millis < 5_000) {
-            return 0;   // the first seconds would extrapolate one drop into billions
-        }
-        return totalProfit() / (millis / 3_600_000.0);
+        return castSession.perHour(totalProfit(), System.currentTimeMillis(), pauseMs());
     }
 
     public int totalCreatures() {
-        return creatures.values().stream().mapToInt(Integer::intValue).sum();
+        int total = 0;
+        for (int count : creatures.values()) {
+            total += count;
+        }
+        return total;
     }
 
     /** Clears the session (counts, value and the clock). */
     public void reset() {
         creatures.clear();
+        rareDrops.clear();
+        rareDropSource.clear();
+        castSession.reset();
+        shardLines.reset();
+        lootShare.reset();
+        lootShareCounts.clear();
+        SeaCreatureDrops.getInstance().resetSession();
+        revision++;
         doubleHookAt = 0;
         loot.clear();
         baitsUsed.clear();
@@ -1444,14 +1850,13 @@ public final class FishingTracker {
         recentRemovedAt.clear();
         lastCounts.clear();
         baselineReady = false;
-        timesFished = 0;
-        activeMillis = 0;
-        lastAccrualAt = 0;
         // The bag baseline (last-seen counts) survives - it is a real-world snapshot, not session
         // data - but the cast estimates belong to the cleared session, and the next bag look must
         // only re-baseline instead of booking the old session's consumption into the fresh one.
         pendingBaitEstimate.clear();
         skipNextBaitReconcile = true;
+        lastEstimateBait = null;
+        lastObservedBaitAt = 0;
         // The rod display baseline belongs to the old session too: drop it so the drop across the
         // reset is never booked, and re-detect the display fresh on the next tick.
         baitDisplaySeen = false;

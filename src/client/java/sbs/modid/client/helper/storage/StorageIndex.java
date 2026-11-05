@@ -56,6 +56,7 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
 
     private static final Pattern FIRST_NUMBER = Pattern.compile("([0-9]+)");
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     /** Player-inventory slots to index: main + hotbar (0..35). Armor / offhand are not "storage". */
     private static final int INVENTORY_SLOTS = 36;
@@ -70,15 +71,34 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
     private final Map<String, Snapshot> snapshots = new ConcurrentHashMap<>();
 
     /**
+     * Bumped whenever {@link #snapshots} gains, replaces or loses an entry, so a reader that derives
+     * something from every snapshot (the Craft Helper's item counts) can tell nothing changed without
+     * walking them.
+     */
+    private final AtomicInteger revision = new AtomicInteger();
+
+    /**
      * Storage id -> its disk form, kept up to date at capture time. Encoding here, while a level is
      * up, is what lets a write happen anywhere afterwards - a flush on world leave or at shutdown
      * has no registries left to encode with, and would otherwise write every stack without SNBT.
      */
     private final Map<String, PersistedStorage> persisted = new ConcurrentHashMap<>();
 
-    /** Island chests get a stable number in discovery order, keyed by block position. */
-    private final Map<BlockPos, Integer> chestNumbers = new ConcurrentHashMap<>();
-    private final AtomicInteger nextChestNumber = new AtomicInteger(1);
+    /** Island chests: stable "Chest N" numbering per island, see {@link IslandChests}. */
+    private final IslandChests chestNumbers = new IslandChests();
+
+    /** Storage id -> where that island chest stands, for persistence and the search's markers. */
+    private final Map<String, IslandChests.Place> chestPlaces = new ConcurrentHashMap<>();
+
+    /**
+     * When the last world change happened. The stale-chest check waits a while after it: the island
+     * name is read off the tab list, which can still name the island just left while the chunks
+     * around already belong to the new world - and that would wipe every remembered chest.
+     */
+    private volatile long worldChangedAt;
+    private static final long STALE_CHECK_SETTLE_MS = 10_000L;
+    private static final long STALE_CHECK_INTERVAL_MS = 2_000L;
+    private long lastStaleCheckAt;
 
     /**
      * A captured storage.
@@ -209,8 +229,15 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
         }
         Snapshot snapshot = new Snapshot(source, items, System.currentTimeMillis(), menu.getStateId());
         snapshots.put(source.id(), snapshot);
-        if (source.kind() != StorageSource.Kind.CHEST) {   // world-bound, position-keyed: never persisted
-            persisted.put(source.id(), toPersisted(snapshot));
+        revision.incrementAndGet();
+        IslandChests.Place chest = chestPlaces.get(source.id());
+        if (chest != null) {
+            ChestMarkers.onChestOpened(source.id());   // found it: its marker has done its job
+        }
+        // Session-only chests (dungeons, hubs, another player's island) are world-bound and never
+        // persisted; remembered island chests are, with their position alongside.
+        if (source.kind() != StorageSource.Kind.CHEST || (chest != null && chest.persisted())) {
+            persisted.put(source.id(), toPersisted(snapshot, chest));
             saveCache();   // persist so the overview survives a restart (throttled, never dropped)
         }
     }
@@ -221,7 +248,7 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
 
     /** A snapshot flattened for disk: only what is needed to redraw and search it. */
     private record PersistedStorage(String id, String kind, String displayName, String openCommand,
-                                    long capturedAt, List<PersistedItem> items) {
+                                    long capturedAt, List<PersistedItem> items, IslandChests.Persisted chest) {
     }
 
     /**
@@ -276,8 +303,8 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
     }
 
     /**
-     * Loads the cached storages, retrying until it actually succeeds. Only the account-wide families
-     * are persisted (island chests are world-bound and position-keyed, so they are never written),
+     * Loads the cached storages, retrying until it actually succeeds. The account-wide families are
+     * persisted, and island chests only on the player's own islands (see {@link IslandChests}),
      * and each loaded snapshot carries {@code stateId = -1} so the next real capture replaces it.
      *
      * <p><b>A failed load must never latch.</b> Since the profile is resolved from the account's
@@ -378,12 +405,21 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
                     }
                     items.add(stack);
                 }
-                StorageSource source = new StorageSource(ps.id(), ps.displayName(), kind,
-                        ps.openCommand() == null || ps.openCommand().isBlank() ? null : ps.openCommand());
-                snapshots.put(ps.id(), new Snapshot(source, items, ps.capturedAt(), -1));
-                if (kind != StorageSource.Kind.CHEST) {
-                    persisted.put(ps.id(), ps);   // written back as read until it is captured again
+                IslandChests.Place chest = null;
+                if (kind == StorageSource.Kind.CHEST) {
+                    chest = IslandChests.fromDisk(ps.chest());
+                    if (chest == null || !chest.id().equals(ps.id())) {
+                        continue;   // a chest without a usable position can never be marked or verified
+                    }
+                    chestPlaces.put(ps.id(), chest);
+                    chestNumbers.restore(chest);
                 }
+                StorageSource source = new StorageSource(ps.id(),
+                        chest != null ? chest.displayName() : ps.displayName(), kind,
+                        ps.openCommand() == null || ps.openCommand().isBlank() ? null : ps.openCommand());
+                revision.incrementAndGet();
+                snapshots.put(ps.id(), new Snapshot(source, items, ps.capturedAt(), -1));
+                persisted.put(ps.id(), ps);   // written back as read until it is captured again
             }
             loaded = true;
             if (decodeFailures > 0) {
@@ -460,7 +496,11 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
     public void reloadProfile() {
         synchronized (this) {
             snapshots.clear();
+            revision.incrementAndGet();
             persisted.clear();
+            chestPlaces.clear();
+            chestNumbers.clear();
+            ChestMarkers.clear();   // another profile's chests
             loaded = false;
             unreadable = false;       // a different profile, a different file
             loadFailureLogged = false;
@@ -481,6 +521,8 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
         if (saveThrottle.pending(System.currentTimeMillis())) {
             writeCache();
         }
+        ChestMarkers.tick();
+        dropVanishedChests();
     }
 
     /**
@@ -542,7 +584,7 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
     }
 
     /** A snapshot's disk form. Needs a level (the SNBT encode), so it runs at capture time. */
-    private static PersistedStorage toPersisted(Snapshot snapshot) {
+    private static PersistedStorage toPersisted(Snapshot snapshot, IslandChests.Place chest) {
         List<PersistedItem> items = new ArrayList<>(snapshot.items().size());
         for (ItemStack stack : snapshot.items()) {
             if (stack == null || stack.isEmpty()) {
@@ -556,7 +598,7 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
         }
         return new PersistedStorage(snapshot.source().id(), snapshot.source().kind().name(),
                 snapshot.source().displayName(), snapshot.source().openCommand(),
-                snapshot.capturedAt(), items);
+                snapshot.capturedAt(), items, chest == null ? null : IslandChests.toDisk(chest));
     }
 
     /**
@@ -618,45 +660,133 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
 
     /**
      * The island chest the player just opened, numbered stably by its block position so "Chest 12"
-     * means the same chest for the whole session. Falls back to a single unnumbered entry when the
-     * position is unknown (the interaction was missed), which is better than inventing a number.
+     * means the same chest every time. On the player's own island it is remembered across worlds and
+     * restarts; elsewhere it lives for this world only (see {@link IslandChests}). A double chest is
+     * one entry whichever half was clicked. Falls back to a single unnumbered entry when the position
+     * is unknown (the interaction was missed), which is better than inventing a number.
      */
     private StorageSource islandChest() {
         BlockPos pos = BlockInteractTracker.recentBlock();
         if (pos == null) {
             return new StorageSource("chest:unknown", "Chest", StorageSource.Kind.CHEST, null);
         }
-        int number = chestNumbers.computeIfAbsent(pos.immutable(), p -> nextChestNumber.getAndIncrement());
-        return new StorageSource("chest:" + pos.getX() + "," + pos.getY() + "," + pos.getZ(),
-                "Chest " + number, StorageSource.Kind.CHEST, null);
+        String island = cfg().rememberIslandChests ? currentIslandKey() : null;
+        IslandChests.Place place = chestNumbers.place(island, pos, otherHalf(pos));
+        chestPlaces.put(place.id(), place);
+        return new StorageSource(place.id(), place.displayName(), StorageSource.Kind.CHEST, null);
+    }
+
+    /** The connected half of a vanilla double chest at {@code pos}, or {@code null}. */
+    private static BlockPos otherHalf(BlockPos pos) {
+        var level = Minecraft.getInstance().level;
+        if (level == null) {
+            return null;
+        }
+        var state = level.getBlockState(pos);
+        if (!(state.getBlock() instanceof net.minecraft.world.level.block.ChestBlock)
+                || state.getValue(net.minecraft.world.level.block.ChestBlock.TYPE)
+                == net.minecraft.world.level.block.state.properties.ChestType.SINGLE) {
+            return null;
+        }
+        return pos.relative(net.minecraft.world.level.block.ChestBlock.getConnectedDirection(state));
+    }
+
+    /**
+     * The island whose chests are remembered that the player stands on now, or {@code null}. Read
+     * from {@link sbs.modid.client.core.location.SkyBlockLocation}, the one location source.
+     */
+    public String currentIslandKey() {
+        if (Minecraft.getInstance().level == null) {
+            return null;
+        }
+        return IslandChests.islandKey(sbs.modid.client.core.location.SkyBlockLocation.island(),
+                cfg().rememberGardenChests);
+    }
+
+    /** The remembered place of an island-chest storage id, or {@code null}. */
+    public IslandChests.Place chestPlace(String id) {
+        return chestPlaces.get(id);
+    }
+
+    /**
+     * Forgets remembered chests whose block is no longer a chest - broken or moved on the island.
+     * Only checked in loaded chunks, on the chest's own island, and not right after a world change
+     * (see {@link #worldChangedAt}). Cheap: one block-state read per chest, every two seconds.
+     */
+    private void dropVanishedChests() {
+        long now = System.currentTimeMillis();
+        if (chestPlaces.isEmpty() || now - lastStaleCheckAt < STALE_CHECK_INTERVAL_MS
+                || now - worldChangedAt < STALE_CHECK_SETTLE_MS) {
+            return;
+        }
+        lastStaleCheckAt = now;
+        var level = Minecraft.getInstance().level;
+        String island = currentIslandKey();
+        if (level == null || island == null) {
+            return;
+        }
+        boolean dropped = false;
+        for (IslandChests.Place place : IslandChests.on(island, chestPlaces.values())) {
+            BlockPos pos = place.pos();
+            if (!level.hasChunkAt(pos)
+                    || level.getBlockState(pos).getBlock() instanceof net.minecraft.world.level.block.ChestBlock) {
+                continue;
+            }
+            String id = place.id();
+            chestPlaces.remove(id);
+            snapshots.remove(id);
+            persisted.remove(id);
+            ChestMarkers.onChestOpened(id);
+            dropped = true;
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Storage] forgot {} on {} at {}: no chest there any more",
+                    place.displayName(), island, pos.toShortString());
+        }
+        if (dropped) {
+            saveCache();
+        }
     }
 
     /** Drops everything – the full manual reset. Not called automatically; see {@link #onWorldChange}. */
     public void clear() {
         snapshots.clear();
+        revision.incrementAndGet();
         persisted.clear();
+        chestPlaces.clear();
         chestNumbers.clear();
-        nextChestNumber.set(1);
     }
 
     /**
      * Called when the player leaves a world (lobby switch, disconnect). Drops only the storages
-     * bound to <b>that</b> world – the island chests, whose {@link BlockPos} keys and numbering
-     * would otherwise collide with containers of the next world ("Chest 12" from your island
-     * showing stale contents inside a dungeon). The account-wide storages – Ender Chest, Backpacks,
-     * Sacks, Vault, Museum – survive every Hypixel transfer, so wiping them here would just throw
-     * away valid snapshots on each of the many lobby switches a session has.
+     * bound to <b>that</b> world – the session-only chests, whose {@link BlockPos} keys and numbering
+     * would otherwise collide with containers of the next world ("Chest 12" from a hub showing stale
+     * contents inside a dungeon). Remembered island chests are keyed by their island and survive, as
+     * do the account-wide storages – Ender Chest, Backpacks, Sacks, Vault, Museum – which outlive
+     * every Hypixel transfer; wiping them here would throw away valid snapshots on each lobby switch.
      */
     public void onWorldChange() {
         flushPending();
-        snapshots.values().removeIf(s -> s.source().kind() == StorageSource.Kind.CHEST);
-        chestNumbers.clear();
-        nextChestNumber.set(1);
+        worldChangedAt = System.currentTimeMillis();
+        snapshots.values().removeIf(s -> s.source().kind() == StorageSource.Kind.CHEST
+                && !isRemembered(s.source().id()));
+        revision.incrementAndGet();
+        chestPlaces.values().removeIf(place -> !place.persisted());
+        chestNumbers.forgetSession();
+    }
+
+    private boolean isRemembered(String id) {
+        IslandChests.Place place = chestPlaces.get(id);
+        return place != null && place.persisted();
     }
 
     /** How many storages are currently indexed (the player inventory is live and not counted). */
     public int sourceCount() {
         return snapshots.size();
+    }
+
+    /** Changes whenever any snapshot is added, replaced or dropped; see {@link #revision}. */
+    public int revision() {
+        loadCache();
+        return revision.get();
     }
 
     /** The most recent snapshot of a given storage, or {@code null}. */
@@ -769,7 +899,7 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
 
     private static boolean matches(ItemStack stack, String name, String key, String needle,
                                    boolean searchLore) {
-        if (name.toLowerCase(Locale.ROOT).contains(needle) || key.toLowerCase(Locale.ROOT).contains(needle)) {
+        if (StorageSearchText.of(stack).contains(needle) || key.toLowerCase(Locale.ROOT).contains(needle)) {
             return true;
         }
         if (!searchLore) {
@@ -844,14 +974,12 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
     }
 
     static String strip(String text) {
-        return text.replaceAll(SECTION_SIGN + ".", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 
     /** Menu chrome that is decoration, not stored items: filler panes and navigation buttons. */
     private static boolean isChrome(ItemStack stack) {
-        String path = net.minecraft.core.registries.BuiltInRegistries.ITEM
-                .getKey(stack.getItem()).getPath();
-        if (path.contains("glass_pane")) {
+        if (sbs.modid.client.core.item.MenuFiller.isPane(stack)) {
             return true;
         }
         String name = strip(stack.getHoverName().getString()).trim().toLowerCase(Locale.ROOT);

@@ -16,6 +16,7 @@ import sbs.modid.client.core.tracker.TrackerStore;
 
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Shards caught this session, wherever you are - the all-island counterpart to {@code SafariTracker}.
@@ -43,6 +44,8 @@ import java.util.Set;
  * is kept, not ended - leaving is not finishing.
  */
 public final class HuntingSessionTracker {
+
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
 
     private static final HuntingSessionTracker INSTANCE = new HuntingSessionTracker();
 
@@ -107,7 +110,7 @@ public final class HuntingSessionTracker {
         if (raw == null || !enabled()) {
             return;
         }
-        String line = raw.replaceAll("§.", "");
+        String line = COLOUR_CODE.matcher(raw).replaceAll("");
         long now = System.currentTimeMillis();
 
         var booked = parser.accept(line, now);

@@ -208,8 +208,13 @@ public final class FishingData {
         return RARITIES.getOrDefault(creature, SeaCreatureRarity.COMMON);
     }
 
-    /** The exact double-hook lines (colour-stripped); a spacing variant has been seen in the wild. */
+    /**
+     * The exact double-hook lines (colour-stripped); a spacing variant has been seen in the wild.
+     * Hypixel uses more than one wording: the bare "It's a Double Hook!" arrived before a Fire Eel in
+     * the 2026-10-08 Crimson Isle session, alongside the "Woot woot!" form a minute later.
+     */
     private static final Set<String> DOUBLE_HOOK_LINES = Set.of(
+            "It's a Double Hook!",
             "It's a Double Hook! Woot woot!",
             "It's a Double Hook ! Woot woot!",
             "Double Hook! Woot woot!");
@@ -277,7 +282,9 @@ public final class FishingData {
         }
         String lower = line.toLowerCase(Locale.ROOT);
         if (lower.contains("shard") || lower.contains("you died") || lower.contains("slain by")
-                || lower.contains("thrown by") || lower.contains("immune")) {
+                || lower.contains("thrown by") || lower.contains("immune")
+                || line.indexOf('➡') >= 0) {
+            // '➡' is the Bestiary level-up arrow ("Lord Jawbus VII ➡ VIII"), never a spawn.
             return;
         }
         for (String fragment : SPAWNISH_FRAGMENTS) {

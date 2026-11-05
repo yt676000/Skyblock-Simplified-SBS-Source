@@ -47,7 +47,7 @@ public enum HitboxCategory {
      *
      * @param self          the local player itself
      * @param playerShaped  rendered as a player (an {@code Avatar})
-     * @param realPlayer    on the tab list ({@code RealPlayers.isRealPlayer})
+     * @param realPlayer    any player-list entry ({@code RealPlayers.hasPlayerListEntry})
      * @param armorStand    an armour stand
      * @param item          a dropped item
      * @param projectile    an arrow, pearl, fireball ...

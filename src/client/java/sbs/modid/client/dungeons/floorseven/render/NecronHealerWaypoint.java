@@ -16,7 +16,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.render.WorldRender;
 import sbs.modid.client.dungeons.floorseven.logic.FloorSevenPhaseTimer;
@@ -37,6 +38,8 @@ import sbs.modid.client.dungeons.run.logic.DungeonStateManager;
  * {@link FloorSevenPhaseTimer}, which tracks the fight regardless of whether its HUD card is on.
  */
 public final class NecronHealerWaypoint {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     /** The spot itself, as given: the block the healer mines. */
     private static final Vec3 SPOT = new Vec3(54.5, 63.7, 114.5);
@@ -67,7 +70,7 @@ public final class NecronHealerWaypoint {
             return; // no visual contact - nothing is drawn
         }
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
 
         double x = Math.floor(SPOT.x);
         double y = Math.floor(SPOT.y);
@@ -76,9 +79,9 @@ public final class NecronHealerWaypoint {
         WorldRender.boxEdges(g, viewProjection, camPos, x, y, z, x + 1, y + 1, z + 1, COLOR, 2);
 
         Font font = minecraft.font;
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos,
-                new Vec3(SPOT.x, y + 1.4, SPOT.z), g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                SPOT.x, y + 1.4, SPOT.z, g.guiWidth(), g.guiHeight(), screen)) {
             String text = LABEL + " §7" + Math.round(camPos.distanceTo(SPOT)) + "m";
             g.centeredText(font, Component.literal(text), screen[0], screen[1], 0xFFFFFFFF);
         }

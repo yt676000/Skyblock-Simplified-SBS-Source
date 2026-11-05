@@ -53,6 +53,15 @@ import java.util.regex.Pattern;
  */
 public final class MayorVoteTracker implements ProfileScopedStore {
 
+    // The two patterns sit above INSTANCE: the constructor registers with ProfileContext, which may
+    // load the profile (and parse with them) before the rest of the class is initialised.
+
+    /** A section sign and the code char after it. */
+    private static final Pattern FORMATTING = Pattern.compile(String.valueOf((char) 0x00A7) + ".");
+
+    /** Everything a candidate name may not carry. */
+    private static final Pattern NAME_JUNK = Pattern.compile("[^A-Za-z0-9' ]");
+
     private static final MayorVoteTracker INSTANCE = new MayorVoteTracker();
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
@@ -513,12 +522,12 @@ public final class MayorVoteTracker implements ProfileScopedStore {
     }
 
     private static String strip(String text) {
-        return text == null ? "" : text.replaceAll(SECTION_SIGN + ".", "");
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("");
     }
 
     /** Candidate names end up in chat and on the sidebar, so they are whitelisted, never trusted. */
     private static String sanitize(String raw) {
-        String clean = strip(raw).replaceAll("[^A-Za-z0-9' ]", "").trim();
+        String clean = NAME_JUNK.matcher(strip(raw)).replaceAll("").trim();
         return clean.length() > 24 ? clean.substring(0, 24) : clean;
     }
 

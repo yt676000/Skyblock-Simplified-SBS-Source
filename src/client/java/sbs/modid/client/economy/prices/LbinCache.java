@@ -78,9 +78,27 @@ public final class LbinCache {
         SkyblockSimplifiedSBS.LOGGER.info("[SBS] LBIN cache refresh scheduled every {} s (when enabled).", PERIOD_SECONDS);
     }
 
-    /** Lowest BIN for a SkyBlock id, or {@code null} if unknown. */
+    /**
+     * Lowest BIN for a key, or {@code null} if unknown: the live crawl first, then the last price
+     * {@link BackupPrices} saw (see {@link #isLive} to tell the two apart).
+     */
     public Long getLbin(String skyblockId) {
+        if (skyblockId == null) {
+            return null;
+        }
+        Long live = lbin.get(skyblockId);
+        return live != null && live > 0 ? live : BackupPrices.getInstance().ahFallback(skyblockId);
+    }
+
+    /** Lowest BIN from the live crawl only, never a backup. */
+    public Long getLiveLbin(String skyblockId) {
         return skyblockId == null ? null : lbin.get(skyblockId);
+    }
+
+    /** Whether {@link #getLbin} answers this key from the live crawl. */
+    public boolean isLive(String skyblockId) {
+        Long live = getLiveLbin(skyblockId);
+        return live != null && live > 0;
     }
 
     /** Kicks off a refresh right now (used when the "Show LBIN" toggle is switched on). */
@@ -99,7 +117,13 @@ public final class LbinCache {
             boolean fishingNeedsIt = cfg.fishing.enabled && cfg.fishing.profitTracker;
             boolean minionsNeedIt = sbs.modid.client.economy.minions.logic.MinionCalcService.wantsAhPrices();
             // The Nucleus Run tracker values AH-only bundle drops (Pickonimbus, Prehistoric Egg).
-            boolean nucleusNeedsIt = cfg.nucleusRun.enabled;
+            boolean nucleusNeedsIt = cfg.nucleusRun.enabled
+                    // Dungeon Profit values AH-only chest loot, but only while a run is on.
+                    || (cfg.dungeonProfit.enabled
+                            && sbs.modid.client.dungeons.run.logic.DungeonStateManager.getInstance().inDungeon())
+                    // Kuudra Profit values AH-only chest loot (attribute armour, books) in the Hollow.
+                    || (cfg.kuudraProfit.enabled
+                            && sbs.modid.client.combat.kuudra.logic.KuudraTracker.getInstance().inHollow());
             // The local AH flip ranking and the local Similar Auctions list both read the live
             // index this crawl builds, so either one wanting it is a reason to run.
             boolean localAuctionsNeedIt =
@@ -128,6 +152,7 @@ public final class LbinCache {
         building = new LiveAuctionIndex.Builder();
         accumulate(first, map);
         this.lbin = Map.copyOf(map); // publish immediately – first prices show within seconds
+        PriceVersion.bump();
 
         int totalPages = Math.min(first.totalPages, MAX_PAGES);
         for (int page = 1; page < totalPages; page++) {
@@ -138,14 +163,17 @@ public final class LbinCache {
             // Publish incrementally so tooltips fill in while the (long) crawl is still running.
             if (page % 10 == 0) {
                 this.lbin = Map.copyOf(map);
+                PriceVersion.bump();
                 SkyblockSimplifiedSBS.LOGGER.info("[SBS][LBIN] Progress: {} / {} page(s), {} item(s) so far.",
                         page, totalPages, map.size());
             }
         }
 
         this.lbin = Map.copyOf(map);
+        PriceVersion.bump();
         building.publish(System.currentTimeMillis());
         building = null;
+        BackupPrices.getInstance().observeLbin(this.lbin);
         SkyblockSimplifiedSBS.LOGGER.info(
                 "[SBS][LBIN] Cached lowest BIN for {} item(s) across {} page(s); live index holds {}.",
                 map.size(), totalPages, LiveAuctionIndex.getInstance().snapshot().size());

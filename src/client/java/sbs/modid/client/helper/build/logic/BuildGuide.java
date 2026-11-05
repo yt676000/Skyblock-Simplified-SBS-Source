@@ -11,7 +11,7 @@ package sbs.modid.client.helper.build.logic;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import sbs.modid.client.core.build.logic.Hologram;
 import sbs.modid.client.core.build.logic.HologramManager;
 import sbs.modid.client.core.build.model.StateStrings;
@@ -134,7 +134,7 @@ public final class BuildGuide {
     }
 
     /** The pulsing box around the next missing block. Called from the HUD render pass. */
-    public static void renderHighlight(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos) {
+    public static void renderHighlight(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos) {
         if (!active()) {
             return;
         }

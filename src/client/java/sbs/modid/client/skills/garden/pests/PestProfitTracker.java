@@ -45,6 +45,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Pest Profit: pests killed this session and on this profile, what they dropped, and what that is
@@ -66,6 +67,9 @@ import java.util.Map;
  * {@link PestLedger#TRAP_MS} window after that are trap loot.
  */
 public final class PestProfitTracker implements ProfileScopedStore {
+
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
+    private static final Pattern NON_ID_CHARS = Pattern.compile("[^A-Z0-9_]");
 
     private static final PestProfitTracker INSTANCE = new PestProfitTracker();
 
@@ -265,7 +269,7 @@ public final class PestProfitTracker implements ProfileScopedStore {
             return;
         }
         long now = System.currentTimeMillis();
-        String plain = text.replaceAll("§.", "").trim();
+        String plain = COLOUR_CODE.matcher(text).replaceAll("").trim();
         capture(plain, message, now);
         captureTrap(plain, message, now);
 
@@ -328,6 +332,15 @@ public final class PestProfitTracker implements ProfileScopedStore {
         if (source == PestLedger.Source.TRAP) {
             SkyblockSimplifiedSBS.LOGGER.info("[SBS][PestTraps] trap loot: {} x{}", itemId, amount);
         }
+    }
+
+    /**
+     * Whether a kill or trap capture window is open: then every line is logged, matching or not.
+     * Both windows only close as time passes, so a "no" here is still a "no" inside {@link #onChat}.
+     */
+    public boolean isCapturing(long now) {
+        return (lastKillAt != 0 && now - lastKillAt <= CAPTURE_MS && captured < CAPTURE_LIMIT)
+                || (now <= trapCaptureUntil && trapCaptured < TRAP_CAPTURE_LIMIT);
     }
 
     /** Logs the lines right after a trap interaction, menu or collection. */
@@ -572,7 +585,7 @@ public final class PestProfitTracker implements ProfileScopedStore {
         if (displayName == null) {
             return null;
         }
-        String name = displayName.replaceAll("§.", "").trim();
+        String name = COLOUR_CODE.matcher(displayName).replaceAll("").trim();
         if (name.isEmpty()) {
             return null;
         }
@@ -584,7 +597,7 @@ public final class PestProfitTracker implements ProfileScopedStore {
         if (entry != null) {
             return entry.id;
         }
-        String constructed = name.toUpperCase(Locale.ROOT).replace(' ', '_').replaceAll("[^A-Z0-9_]", "");
+        String constructed = NON_ID_CHARS.matcher(name.toUpperCase(Locale.ROOT).replace(' ', '_')).replaceAll("");
         return constructed.isEmpty() ? null : constructed;
     }
 

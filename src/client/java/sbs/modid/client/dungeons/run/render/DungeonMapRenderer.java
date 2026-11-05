@@ -12,8 +12,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.PlayerFaceExtractor;
-import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.world.entity.player.PlayerSkin;
 import org.joml.Matrix3x2fStack;
 import sbs.modid.client.core.config.ConfigManager;
@@ -22,6 +20,7 @@ import sbs.modid.client.core.dev.RoomMapReader;
 import sbs.modid.client.core.dev.RoomMapReader.MapSnapshot;
 import sbs.modid.client.core.dev.RoomMapReader.MapTile;
 import sbs.modid.client.dungeons.events.DungeonEvents;
+import sbs.modid.client.dungeons.puzzle.render.PuzzleChecklistRenderer;
 import sbs.modid.client.dungeons.run.logic.DungeonRunRegistry;
 import sbs.modid.client.dungeons.run.logic.DungeonStateManager;
 import sbs.modid.client.dungeons.run.model.DungeonState;
@@ -50,7 +49,9 @@ import java.util.Set;
  *
  * <p>Everything drawn here comes from cached state: {@link DungeonState} refreshes the map snapshot on
  * block events only, and names/counters come from {@link DungeonRunRegistry} which the room tracker
- * fills in the client tick – the per-frame cost is pure drawing.
+ * fills in the client tick. Room grouping is cached per snapshot ({@link MapCache}) and each group
+ * keeps its wrapped label and counter text until the registry's values change, so a frame without a
+ * change allocates nothing for rooms or labels.
  */
 public final class DungeonMapRenderer {
 
@@ -81,21 +82,26 @@ public final class DungeonMapRenderer {
     /** The blood door is red on the real map. */
     private static final int DOOR_BLOOD = TILE_BLOOD;
 
+    /**
+     * Room groups of the last drawn snapshot. Rebuilt only when {@link DungeonState#snapshot()}
+     * returns a different instance: a snapshot is immutable and replaced on every change, so
+     * reference identity is an exact change test. Render thread only.
+     */
+    private static MapCache cache;
+
     private DungeonMapRenderer() {
     }
 
+    /** The room groups derived from one snapshot. */
+    private record MapCache(MapSnapshot snapshot, List<RoomGroup> groups) {
+    }
+
     /**
-     * Called every HUD frame; updates the (block-gated) state and draws the map when appropriate.
-     *
-     * <p><b>The state update runs before every one of the checks below, and must stay there.</b>
-     * {@link DungeonState#updateIfMoved()} is the only producer of the map snapshot, and the room
-     * locator, the run's cleared/total room counts (the Explore score) and the wither-door boxes all
-     * read it. Skipping it because the map is not being drawn would quietly break three features
-     * that have nothing to do with this HUD element.
+     * Called every HUD frame; draws the map when appropriate. Read-only: the snapshot is produced on
+     * the client tick by {@link DungeonState#tick}, whether or not this element is drawn.
      */
     public static void render(GuiGraphicsExtractor g) {
         DungeonState state = DungeonState.getInstance();
-        state.updateIfMoved();
 
         SBSConfig.DungeonsSettings cfg = ConfigManager.getInstance().get().dungeons;
         if (!cfg.sbsDungeonMap) {
@@ -122,6 +128,7 @@ public final class DungeonMapRenderer {
         if (snapshot != null) {
             drawMap(g, x + PAD, y + PAD, snapshot);
         }
+        PuzzleChecklistRenderer.render(g, x, y + PANEL_SIZE, PANEL_SIZE, cfg.puzzleChecklist);
         HudLayout.end(g);
     }
 
@@ -137,10 +144,14 @@ public final class DungeonMapRenderer {
         int originX = baseX + (CONTENT - span(cellsX)) / 2; // centre the painted area in the panel
         int originY = baseY + (CONTENT - span(cellsZ)) / 2;
 
+        MapCache current = cache;
+        if (current == null || current.snapshot() != snapshot) {
+            current = new MapCache(snapshot, groupRooms(snapshot));
+            cache = current;
+        }
+
         // Pass 1: tiles, same-room bridges (full edge) and door connectors (thin, centred).
-        Map<Long, MapTile> byCell = new HashMap<>();
         for (MapTile tile : snapshot.tiles()) {
-            byCell.put(tileKey(tile.cellX(), tile.cellZ()), tile);
             int tx = tileX(originX, snapshot, tile.cellX());
             int ty = tileY(originY, snapshot, tile.cellZ());
             if (tx + CELL > baseX + CONTENT + 1 || ty + CELL > baseY + CONTENT + 1) {
@@ -170,7 +181,7 @@ public final class DungeonMapRenderer {
         // Pass 2: one label (name + secrets counter) per visited room group. The name comes from the
         // database match the tracker made when the room was entered; rooms whose colour already names
         // them (fairy) are labelled without a match.
-        for (RoomGroup group : groupRooms(byCell)) {
+        for (RoomGroup group : current.groups()) {
             DungeonRunRegistry.RunRoom run = runOf(group);
             String name = run != null ? run.name() : null;
             if (name == null) {
@@ -184,7 +195,7 @@ public final class DungeonMapRenderer {
             int top = tileY(originY, snapshot, group.minCellZ);
             int right = tileX(originX, snapshot, group.maxCellX) + CELL;
             int bottom = tileY(originY, snapshot, group.maxCellZ) + CELL;
-            drawLabel(g, font, name, run, group.state, (left + right) / 2, (top + bottom) / 2, right - left);
+            drawLabel(g, font, group, name, run, (left + right) / 2, (top + bottom) / 2, right - left);
         }
 
         // Pass 3: EVERY player marker, read from the map's own decorations (so party members in far,
@@ -194,7 +205,6 @@ public final class DungeonMapRenderer {
         // pick yourself out. The head stays upright; a small pointer shows each player's facing.
         List<RoomMapReader.PlayerMarker> markers = RoomMapReader.playerMarkers(snapshot);
         if (!markers.isEmpty()) {
-            ClientPacketListener connection = Minecraft.getInstance().getConnection();
             for (RoomMapReader.PlayerMarker marker : markers) {
                 int hx = originX + Math.round((marker.cellX() - snapshot.minCellX()) * (CELL + LANE));
                 int hy = originY + Math.round((marker.cellZ() - snapshot.minCellZ()) * (CELL + LANE));
@@ -202,7 +212,7 @@ public final class DungeonMapRenderer {
                 hy = Math.max(baseY + HEAD / 2, Math.min(baseY + CONTENT - HEAD / 2, hy));
                 int ring = DungeonTeamClasses.colorOf(marker.name(),
                         marker.self() ? MARKER_SELF : MARKER_MATE);
-                PlayerSkin skin = skinFor(connection, marker.name());
+                PlayerSkin skin = DungeonTeamClasses.skinOf(marker.name());
                 drawMarker(g, hx, hy, marker.yawDeg(), ring, marker.self(), skin);
             }
         } else {
@@ -212,28 +222,6 @@ public final class DungeonMapRenderer {
             py = Math.max(baseY, Math.min(baseY + CONTENT - 4, py));
             SciFiRender.roundedRect(g, px, py, 4, 4, 1, MARKER_SELF);
         }
-    }
-
-    /**
-     * A player's skin from the tab list by IGN, tolerating the case differences and roster-derived
-     * (lower-cased) names the marker binding produces: the exact lookup first, then a case-insensitive
-     * scan of every tab entry. {@code null} when the player is unknown (the marker falls back to a
-     * class-coloured square).
-     */
-    private static PlayerSkin skinFor(ClientPacketListener connection, String name) {
-        if (connection == null || name == null || name.isEmpty()) {
-            return null;
-        }
-        PlayerInfo direct = connection.getPlayerInfo(name);
-        if (direct != null) {
-            return direct.getSkin();
-        }
-        for (PlayerInfo info : connection.getOnlinePlayers()) {
-            if (info.getProfile() != null && name.equalsIgnoreCase(info.getProfile().name())) {
-                return info.getSkin();
-            }
-        }
-        return null;
     }
 
     /** Pixel size of a player's head on the map. */
@@ -310,12 +298,15 @@ public final class DungeonMapRenderer {
      * The counter is drawn only for rooms the run registry knows (a colour-implied name like the
      * fairy room carries no secret data).
      */
-    private static void drawLabel(GuiGraphicsExtractor g, Font font, String name,
-                                  DungeonRunRegistry.RunRoom run, RoomMapReader.RoomState state,
-                                  int centerX, int centerY, int widthPx) {
-        List<String> lines = wrap(font, name, (int) (widthPx / LABEL_SCALE));
-        String counter = run == null ? null
-                : run.secretsFound() + "/" + (run.secretsTotal() >= 0 ? run.secretsTotal() : "?");
+    private static void drawLabel(GuiGraphicsExtractor g, Font font, RoomGroup group, String name,
+                                  DungeonRunRegistry.RunRoom run, int centerX, int centerY, int widthPx) {
+        if (!name.equals(group.labelName)) {   // a room is named once; re-wrap only then
+            group.labelName = name;
+            group.labelLines = wrap(font, name, (int) (widthPx / LABEL_SCALE));
+        }
+        List<String> lines = group.labelLines;
+        String counter = run == null ? null : group.counter(run.secretsFound(), run.secretsTotal());
+        RoomMapReader.RoomState state = group.state;
         int totalLines = lines.size() + (counter != null ? 1 : 0);
         float textHeight = totalLines * LABEL_LINE_HEIGHT * LABEL_SCALE;
 
@@ -374,10 +365,34 @@ public final class DungeonMapRenderer {
         final List<Long> cells = new ArrayList<>(4);
         /** The group's map colour (all tiles of one room share it) – drives {@link #impliedName}. */
         byte colour;
+
+        /** The name {@link #labelLines} was wrapped from; the group's pixel width never changes. */
+        String labelName;
+        List<String> labelLines;
+        private int counterFound = Integer.MIN_VALUE;
+        private int counterTotal = Integer.MIN_VALUE;
+        private String counterText;
+
+        /** "found/total" ("found/?" while the total is unknown), rebuilt only when a number changes. */
+        String counter(int found, int total) {
+            if (found != counterFound || total != counterTotal) {
+                counterFound = found;
+                counterTotal = total;
+                counterText = found + "/" + (total >= 0 ? total : "?");
+            }
+            return counterText;
+        }
     }
 
-    /** Groups explored tiles into rooms by following the same-room joins (both directions). */
-    private static List<RoomGroup> groupRooms(Map<Long, MapTile> byCell) {
+    /**
+     * Groups explored tiles into rooms by following the same-room joins (both directions). Runs once
+     * per snapshot, from {@link #drawMap} when the snapshot instance changes.
+     */
+    private static List<RoomGroup> groupRooms(MapSnapshot snapshot) {
+        Map<Long, MapTile> byCell = new HashMap<>();
+        for (MapTile tile : snapshot.tiles()) {
+            byCell.put(tileKey(tile.cellX(), tile.cellZ()), tile);
+        }
         List<RoomGroup> groups = new ArrayList<>();
         Set<Long> visited = new HashSet<>();
         for (MapTile start : byCell.values()) {

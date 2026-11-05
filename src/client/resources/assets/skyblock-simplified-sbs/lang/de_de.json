@@ -5,12 +5,18 @@
 
   "sbs.privacy.button.accept_all": "Alles erlauben",
   "sbs.privacy.button.decline_all": "Nichts erlauben",
-  "sbs.privacy.button.website": "%s öffnen (öffnet deinen Browser)",
-  "sbs.privacy.button.website.describe": "Öffnet die Website von SkyBlock Simplified in deinem normalen Webbrowser, außerhalb von Minecraft. Minecraft fragt vorher nach und lässt dich die Adresse auch nur kopieren, statt sie zu öffnen.",
+  "sbs.privacy.button.website": "Datenschutzerklärung auf %s öffnen (öffnet deinen Browser)",
+  "sbs.privacy.button.website.describe": "Öffnet die Datenschutzerklärung von SkyBlock Simplified in deinem normalen Webbrowser, außerhalb von Minecraft. Minecraft fragt vorher nach und lässt dich die Adresse stattdessen kopieren.",
 
-  "sbs.privacy.label.notice": "Die vollständige Datenschutzerklärung liegt als PRIVACY.md beim Mod, das Impressum als LEGAL-NOTICE.md. Beide im Repository des Mods.",
   "sbs.privacy.label.contact_website": "Fragen, Beschwerden und Datenschutzanfragen: info@codecreative.store, oder unser Discord.",
   "sbs.privacy.label.stored": "Deine Antworten werden pro Minecraft-Konto in config/sbs/license/privacy/ gespeichert und gelten für alle Konfigurationsprofile.",
+  "sbs.privacy.policy.current": "Version der Datenschutzerklärung: %s",
+  "sbs.privacy.policy.accepted": "Deine Auswahl hast du zuletzt unter Version %s getroffen, am %s.",
+  "sbs.privacy.policy.accepted_unknown": "Deine Auswahl hast du zuletzt am %s getroffen, bevor Versionen gespeichert wurden.",
+  "sbs.privacy.policy.none": "Du hast noch keine Auswahl getroffen.",
+  "sbs.privacy.policy.outdated": "Die Datenschutzerklärung hat sich seitdem geändert. Prüfe deine Auswahl unten.",
+  "sbs.privacy.policy_update.title": "SkyBlock Simplified: die Datenschutzerklärung wurde aktualisiert",
+  "sbs.privacy.policy_update.body": "Prüfe deine Auswahl unter Lizenz-Token > Privatsphäre & Daten. Optionale Funktionen, die du unter der vorigen Version erlaubt hattest, bleiben bis dahin aus.",
   "sbs.privacy.label.details_hint": "Fahre über eine Zeile, um zu sehen, was genau gesendet wird, wer es erhält und wie lange es gespeichert bleibt.",
 
   "sbs.privacy.support.title": "Support & Fehlermeldungen",
@@ -65,10 +71,10 @@
   "sbs.privacy.scope.presence_nearby.decline": "Es ändert sich nichts. Bis die neue Fassung erscheint, werden über anderen Spielern keine Abzeichen angezeigt.",
 
   "sbs.privacy.scope.party_finder.title": "Gruppensuche",
-  "sbs.privacy.scope.party_finder.data": "Dein Name und deine UUID, die Gruppe, in der du bist, sowie die Anforderungen und SkyBlock-Werte, nach denen gefiltert wird.",
+  "sbs.privacy.scope.party_finder.data": "Dein Name und deine UUID, die Gruppe, in der du bist, sowie die Anforderungen und SkyBlock-Werte, nach denen gefiltert wird. Ohne Lizenz: ein kostenloser Token, ausgestellt für deine Minecraft-UUID, nachdem das Spiel dein Konto bei Mojang bestätigt hat (dieselbe Prüfung wie beim Betreten eines Servers).",
   "sbs.privacy.scope.party_finder.why": "Damit Gruppen gelistet, nach deinen Anforderungen zugeordnet und anderen suchenden Spielern angezeigt werden können.",
   "sbs.privacy.scope.party_finder.recipients": "Der SBS-Server und andere SBS-Nutzer, die die Gruppenliste durchsehen.",
-  "sbs.privacy.scope.party_finder.retention": "Eine Gruppe wird 30 Minuten nach der letzten Aktivität entfernt. Zum Filtern abgerufene Werte werden 15 Minuten zwischengespeichert.",
+  "sbs.privacy.scope.party_finder.retention": "Eine Gruppe wird 30 Minuten nach der letzten Aktivität entfernt. Zum Filtern abgerufene Werte werden 15 Minuten zwischengespeichert. Ein kostenloser Token ist 30 Tage gültig; sein Eintrag (als Hash gespeichert, mit deiner UUID) wird 30 Tage nach Ablauf gelöscht. Gehashte IP-Adressen für Missbrauchslimits werden 48 Stunden aufbewahrt.",
   "sbs.privacy.scope.party_finder.decline": "Die Gruppensuche ist nicht verfügbar. Das Gruppensystem von Hypixel ist davon unberührt.",
 
   "sbs.privacy.scope.carry_tickets.title": "Carry-Tickets",
@@ -79,10 +85,10 @@
   "sbs.privacy.scope.carry_tickets.decline": "Das Carry-Board ist nicht verfügbar.",
 
   "sbs.privacy.scope.profile_data.title": "Profil-, Item- und Statistikabfragen",
-  "sbs.privacy.scope.profile_data.data": "Deine SkyBlock-Profil-ID, aus Inventar und Sammlungen abgeleitete Daten sowie jeder Spielername, den du im Profil-Viewer nachschlägst.",
+  "sbs.privacy.scope.profile_data.data": "Deine SkyBlock-Profil-ID, aus Inventar und Sammlungen abgeleitete Daten sowie jeder Spielername, den du im Profil-Viewer nachschlägst. Ohne Lizenz: ein kostenloser Token, ausgestellt für deine Minecraft-UUID, nachdem das Spiel dein Konto bei Mojang bestätigt hat (dieselbe Prüfung wie beim Betreten eines Servers).",
   "sbs.privacy.scope.profile_data.why": "Damit der Server deine Werte berechnen, deine Items bewerten und Flips für dich ermitteln kann. Zur Bewertung gesendete Items werden vorher um ihre eindeutige Item-ID und den Zeitstempel bereinigt.",
   "sbs.privacy.scope.profile_data.recipients": "Der SBS-Server. Er ruft die Hypixel-API mit seinem eigenen Schlüssel für dich ab.",
-  "sbs.privacy.scope.profile_data.retention": "Abgerufene Profile werden 15 Minuten zwischengespeichert. Item-Bewertungen werden nicht deinem Konto zugeordnet gespeichert.",
+  "sbs.privacy.scope.profile_data.retention": "Abgerufene Profile werden 15 Minuten zwischengespeichert. Item-Bewertungen werden nicht deinem Konto zugeordnet gespeichert. Ein kostenloser Token ist 30 Tage gültig; sein Eintrag (als Hash gespeichert, mit deiner UUID) wird 30 Tage nach Ablauf gelöscht. Gehashte IP-Adressen für Missbrauchslimits werden 48 Stunden aufbewahrt.",
   "sbs.privacy.scope.profile_data.decline": "Item-Bewertung, Profil-Viewer und personalisierte Flips sind nicht verfügbar. Reine Marktpreise funktionieren weiter – dafür wird nichts über dich benötigt.",
   "sbs.privacy.scope.hollows_structures.title": "Crystal-Hollows-Strukturen teilen",
   "sbs.privacy.scope.hollows_structures.data": "Die ID der Crystal-Hollows-Lobby, in der du bist (z. B. mini24CD), welche Struktur du betreten hast, ihre Mitte und den Bereich, den du darin abgelaufen bist, aus wie vielen Positionen er besteht, und deine Mod-Version. Nie dein Name, deine UUID oder dein Chat.",
@@ -99,5 +105,18 @@
   "sbs.privacy.scope.diagnostics.decline": "Es ändert sich nichts – einen Absturzmelder gibt es noch nicht.",
 
   "sbs.privacy.migration.title": "SkyBlock Simplified: deine Datenschutz-Einstellungen",
-  "sbs.privacy.migration.body": "Dieses Update ergänzt eine Kontrolle pro Zweck darüber, was der Mod sendet. Alles beginnt ausgeschaltet – auch Funktionen, die vorher an waren. Öffne Lizenz-Token > Privatsphäre & Daten, um zu wählen."
+  "sbs.privacy.migration.body": "Dieses Update ergänzt eine Kontrolle pro Zweck darüber, was der Mod sendet. Alles beginnt ausgeschaltet – auch Funktionen, die vorher an waren. Öffne Lizenz-Token > Privatsphäre & Daten, um zu wählen.",
+
+  "sbs.api.failure.no_consent": "Diese Funktion ist in deinen Datenschutz-Einstellungen ausgeschaltet. Schalte sie unter Licence Token > Privatsphäre & Daten ein.",
+  "sbs.api.failure.no_consent.scope": "\"%s\" ist in deinen Datenschutz-Einstellungen ausgeschaltet. Schalte es unter Licence Token > Privatsphäre & Daten ein.",
+  "sbs.api.failure.no_consent.headline": "Lokaler Modus - schwächer und ungenauer. Das Server-Ranking ist in deinen Datenschutz-Einstellungen ausgeschaltet (Licence Token > Privatsphäre & Daten).",
+  "sbs.api.failure.no_consent.button": "Datenschutz-Einstellungen öffnen",
+  "sbs.api.failure.offline": "Der Server ist nicht erreichbar. Prüfe deine Internetverbindung.",
+  "sbs.api.failure.no_licence": "Lokales Ranking. Eine Lizenz schaltet das volle Server-Ranking frei.",
+  "sbs.api.failure.no_licence.headline": "Lokales Ranking, auf deinem Rechner berechnet. Eine Lizenz schaltet das volle Server-Ranking frei.",
+  "sbs.api.failure.free_access": "Der PlayerViewer ist vorübergehend nicht verfügbar. Versuche es in ein paar Minuten erneut.",
+  "sbs.pv.refresh": "Aktualisieren",
+  "sbs.pv.refresh.cooldown": "Aktualisieren (%ss)",
+  "sbs.pv.updated.now": "Gerade aktualisiert",
+  "sbs.pv.updated.minutes": "Vor %s Min. aktualisiert"
 }

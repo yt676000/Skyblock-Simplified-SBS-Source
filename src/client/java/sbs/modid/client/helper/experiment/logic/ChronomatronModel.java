@@ -56,9 +56,11 @@ final class ChronomatronModel {
     static final long LATE_FLASH_MS = 100L;
 
     /**
-     * During input a button lighting up is the echo of a click (~150 ms after it). One that lights
-     * with no click tracked within this window means the click hook missed it: the cursor follows
-     * the echo instead of waiting on a button that is long done.
+     * During input a button lighting up is the echo of a click (~150 ms after it). A click the hook
+     * saw but could not count (the slot did not resolve to the next button) is counted by its echo
+     * within this window. An edge with no player click before it is never a click: the last flash
+     * of the show lands in the same tick as the clock, and counting it put the cursor one button
+     * ahead (Server Scanner 2026-10-05, rounds 4 and 5).
      */
     static final long CLICK_ECHO_MS = 400L;
 
@@ -83,6 +85,8 @@ final class ChronomatronModel {
     private boolean passive;
     private int lastLit = -1;
     private long lastClickAt = Long.MIN_VALUE / 2;
+    /** A player click seen during input and not counted yet; only its echo may count it. */
+    private boolean clickPending;
 
     void reset() {
         sequence.clear();
@@ -102,6 +106,7 @@ final class ChronomatronModel {
         passive = false;
         lastLit = -1;
         lastClickAt = Long.MIN_VALUE / 2;
+        clickPending = false;
     }
 
     /** One frame of the menu at {@code now} ms: {@code board[slot]}, {@code null} for empty. */
@@ -151,6 +156,7 @@ final class ChronomatronModel {
             phaseAt = now;
             clickIndex = 0;
             passive = false;
+            clickPending = false;
             valve.reset();
         }
         if (timer && !timerBefore && phase == Phase.SHOW) {
@@ -158,6 +164,7 @@ final class ChronomatronModel {
             phaseAt = now;
             phase = Phase.INPUT;
             clickIndex = 0;
+            clickPending = false;
             valve.reset();
             adoptShow();
         }
@@ -173,9 +180,10 @@ final class ChronomatronModel {
                 show.add(anchor);   // the last flash landed a moment after the clock
                 lastFlashAt = now;
                 adoptShow();
-            } else if (phase == Phase.INPUT && now - lastClickAt > CLICK_ECHO_MS
+            } else if (phase == Phase.INPUT && clickPending && lastClickAt > timerAt
+                    && now - lastClickAt <= CLICK_ECHO_MS
                     && clickIndex < sequence.size() && sequence.get(clickIndex) == anchor) {
-                advance();   // an echo with no tracked click: the hook missed it, resync
+                advance();   // the echo of a click the hook saw but could not resolve
             }
         }
         lastLit = lit.size() == 1 ? lit.iterator().next() : -1;
@@ -285,36 +293,56 @@ final class ChronomatronModel {
         }
         boolean correct = phase == Phase.INPUT
                 ? clickIndex >= sequence.size() || sequence.get(clickIndex).equals(anchor)
-                : MisclickValve.idle(now, phaseAt, lastFlashAt);
+                : valve.quiet(now, phaseAt, lastFlashAt);
         if (correct) {
             valve.allowed();
             return true;
         }
-        if (valve.veto(slot)) {
+        if (valve.veto(slot, now)) {
             passive = true;
             return true;
         }
         return false;
     }
 
-    /** The player clicked {@code slot} at {@code now}: advances when it was the next button. */
+    /**
+     * The player clicked {@code slot} at {@code now}: advances when it was the next button. A click
+     * on a slot that does not resolve (the menu was mid-update) is held for its echo instead.
+     */
     void onClick(int slot, long now) {
-        Integer anchor = anchors.get(slot);
-        if (anchor == null) {
+        if (phase != Phase.INPUT) {
             return;
         }
+        Integer anchor = anchors.get(slot);
         lastClickAt = now;
-        if (phase == Phase.INPUT && clickIndex < sequence.size() && sequence.get(clickIndex).equals(anchor)) {
+        clickPending = true;
+        if (anchor != null && clickIndex < sequence.size() && sequence.get(clickIndex).equals(anchor)) {
             advance();
         }
     }
 
     private void advance() {
+        clickPending = false;   // one click, however many of its click and echo are seen
         clickIndex++;
         valve.allowed();
         if (clickIndex >= sequence.size()) {
             phase = Phase.DONE;   // wait for the round boundary, never re-arm on a dark board
         }
+    }
+
+    /** Applies the player's guard settings (see {@link MisclickValve#configure}). */
+    void configureGuard(int vetoLimit, long staleMs) {
+        valve.configure(vetoLimit, staleMs);
+    }
+
+    /** Whether the guard stood down for this round while input is still going on - the "paused" chip. */
+    boolean guardPaused() {
+        return passive && phase == Phase.INPUT;
+    }
+
+    String guardDebug(long now) {
+        return "phase=" + phase + " passive=" + passive + " next=" + next() + " "
+                + valve.describe(now) + " idleMs=" + (now - Math.max(phaseAt, lastFlashAt));
     }
 
     String debug() {

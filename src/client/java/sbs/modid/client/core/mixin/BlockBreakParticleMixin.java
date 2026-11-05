@@ -37,7 +37,7 @@ public abstract class BlockBreakParticleMixin {
 
     @Inject(method = "addDestroyBlockEffect", at = @At("HEAD"), cancellable = true)
     private void sbs$hideBreakDust(BlockPos pos, BlockState state, CallbackInfo ci) {
-        if (ParticleFilter.blockDustHidden()) {
+        if (ParticleFilter.blockDustHidden() || !sbs.modid.client.helper.particles.ParticleLimiter.admitBlockBreak()) {
             ci.cancel();
         }
     }

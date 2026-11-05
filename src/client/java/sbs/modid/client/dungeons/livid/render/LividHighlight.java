@@ -15,7 +15,8 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.render.WorldRender;
@@ -31,6 +32,8 @@ import sbs.modid.client.dungeons.livid.logic.LividTracker;
  * certain in both cases.
  */
 public final class LividHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     private LividHighlight() {
     }
@@ -48,7 +51,7 @@ public final class LividHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
 
         AABB box = id.candidate().entity().getBoundingBox();
         int color = id.candidate().color();
@@ -65,11 +68,12 @@ public final class LividHighlight {
                 id.candidate().label() + (id.confirmed() ? "" : " ?"), color);
     }
 
-    private static void drawLabel(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void drawLabel(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                                   AABB box, String label, int color) {
-        Vec3 top = new Vec3((box.minX + box.maxX) / 2, box.maxY + 0.6, (box.minZ + box.maxZ) / 2);
-        int[] screen = WorldRender.projectToScreen(vp, camPos, top, g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                (box.minX + box.maxX) / 2, box.maxY + 0.6, (box.minZ + box.maxZ) / 2,
+                g.guiWidth(), g.guiHeight(), screen)) {
             g.text(font, Component.literal(label), screen[0] - font.width(label) / 2, screen[1], color);
         }
     }

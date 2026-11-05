@@ -15,7 +15,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.VoxelShape;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.render.WorldRender;
@@ -56,7 +57,7 @@ public final class EtherWarpRenderer {
             return;
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
 
         int rgb = !target.valid() && cfg.markInvalid ? INVALID_RGB : cfg.highlightColor.rgb();
         int alpha = clamp(cfg.highlightOpacity, 10, 100) * 255 / 100;

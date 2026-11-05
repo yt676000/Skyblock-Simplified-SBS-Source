@@ -16,7 +16,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.render.WorldRender;
 import sbs.modid.client.dungeons.spiritbear.logic.SpiritBearTracker;
@@ -27,6 +28,8 @@ import sbs.modid.client.dungeons.spiritbear.logic.SpiritBearTracker;
  * looking. Pure view over {@link SpiritBearTracker}'s tick cache.
  */
 public final class SpiritBearHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     private static final int COLOR_BEAR = 0xFFFFC020;
 
@@ -46,7 +49,7 @@ public final class SpiritBearHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
 
         AABB box = bear.getBoundingBox();
@@ -54,9 +57,10 @@ public final class SpiritBearHighlight {
                 box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, COLOR_BEAR, 3);
         WorldRender.tracerToBox(g, viewProjection, camPos, box, COLOR_BEAR, 3);
 
-        Vec3 top = new Vec3((box.minX + box.maxX) / 2, box.maxY + 0.5, (box.minZ + box.maxZ) / 2);
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos, top, g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                (box.minX + box.maxX) / 2, box.maxY + 0.5, (box.minZ + box.maxZ) / 2,
+                g.guiWidth(), g.guiHeight(), screen)) {
             g.centeredText(font, Component.literal("Spirit Bear"), screen[0], screen[1], COLOR_BEAR);
         }
     }

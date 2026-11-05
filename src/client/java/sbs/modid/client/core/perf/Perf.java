@@ -33,6 +33,10 @@ import java.util.Map;
  * {@link TierScheduler.Tier#NORMAL} or {@link TierScheduler.Tier#BACKGROUND} while SBS's tick
  * total is over budget. HUD drawing is measured but never shed: skipping a card's draw makes it
  * flicker; cards degrade by caching their text (see the spec).
+ *
+ * <p><b>Counts.</b> While the overlay is open, {@link CacheCounter}s ({@link #counter}) record cache
+ * hits / misses / invalidations and every section records the runs {@link #allowTick} or
+ * {@link #skip} skipped; both are rolled once a second by {@link #endTick}.
  */
 public final class Perf {
 
@@ -43,6 +47,10 @@ public final class Perf {
     public static final class Section implements AutoCloseable {
         final int id;
         long start;
+        /** This run's allocation baseline - per section, so nested sections do not overwrite it. */
+        long allocStart;
+        /** Runs skipped by {@link #allowTick} or {@link #skip}: channel 0. */
+        final CountWindow skips = new CountWindow(1);
 
         Section(int id) {
             this.id = id;
@@ -85,8 +93,19 @@ public final class Perf {
 
     /** Allocation tracking (only while the overlay is open: the MXBean call is not free). */
     static volatile boolean allocTracking;
-    private static long allocStart;
     private static final java.lang.management.ThreadMXBean THREADS = ManagementFactory.getThreadMXBean();
+
+    /**
+     * Whether cache counters and skip counts record anything (while the overlay is open) - the one
+     * read a {@link CacheCounter} call or {@link #skip} makes when it is off. A plain field, not
+     * volatile: written and read on the client thread only, so the JIT may hoist it out of a loop.
+     */
+    static boolean counting;
+    /** The thread counts are accepted from (the one that turned counting on); others are dropped. */
+    static Thread countingThread;
+    private static final Object COUNTER_LOCK = new Object();
+    private static volatile CacheCounter[] counters = new CacheCounter[0];
+    private static long lastRollSecond = Long.MIN_VALUE;
 
     private Perf() {
     }
@@ -121,7 +140,7 @@ public final class Perf {
             section = register(name, kind, tier);
         }
         if (allocTracking) {
-            allocStart = threadAllocated();
+            section.allocStart = threadAllocated();
         }
         section.start = System.nanoTime();
         return section;
@@ -139,7 +158,99 @@ public final class Perf {
         if (section == null) {
             section = register(name, Kind.TICK, tier);
         }
-        return tickScheduler.allow(section.id, tier, System.currentTimeMillis());
+        boolean allowed = tickScheduler.allow(section.id, tier, System.currentTimeMillis());
+        if (!allowed && counting && Thread.currentThread() == countingThread) {
+            section.skips.pending[0]++;
+        }
+        return allowed;
+    }
+
+    /**
+     * A run of tick section {@code name} that a feature's own gate skipped (nothing changed, not on
+     * the right island, ...). While the overlay is closed this is one read of a static flag - no
+     * lookup, no clock, nothing allocated; open, one lookup of the constant name. Client thread.
+     */
+    // BOOKMARK(merge 2026-10-05): kept the cache-counters skip counting; the tick-context-gates duplicate was dropped.
+    public static void skip(String name) {
+        if (counting) {
+            countSkip(name, Kind.TICK);
+        }
+    }
+
+    /** {@link #skip(String)} for a section that is not a tick section ({@link Kind#FRAME}). */
+    public static void skip(String name, Kind kind) {
+        if (counting) {
+            countSkip(name, kind);
+        }
+    }
+
+    private static void countSkip(String name, Kind kind) {
+        if (Thread.currentThread() != countingThread) {
+            return;
+        }
+        Section section = BY_NAME.get(name);
+        if (section == null) {
+            section = register(name, kind, TierScheduler.Tier.CRITICAL);
+        }
+        section.skips.pending[0]++;
+    }
+
+    // ------------------------------------------------------------------ cache counters
+
+    /**
+     * The counter for cache {@code name}, created on first use; the same handle for the same name.
+     * Keep it in a {@code static final} field - this call is for class init, not per lookup.
+     */
+    public static CacheCounter counter(String name) {
+        synchronized (COUNTER_LOCK) {
+            for (CacheCounter c : counters) {
+                if (c.name().equals(name)) {
+                    return c;
+                }
+            }
+            CacheCounter c = new CacheCounter(name);
+            CacheCounter[] next = java.util.Arrays.copyOf(counters, counters.length + 1);
+            next[counters.length] = c;
+            counters = next;
+            return c;
+        }
+    }
+
+    /** Whether counters and skips are being recorded (the overlay is open). */
+    public static boolean counting() {
+        return counting;
+    }
+
+    /** Every cache's published figures, thrashing ones first, then by name. */
+    public static List<CacheCounter.Stats> counterStats() {
+        List<CacheCounter.Stats> out = new ArrayList<>();
+        for (CacheCounter c : counters) {
+            out.add(c.stats());
+        }
+        out.sort((a, b) -> a.thrashing() != b.thrashing()
+                ? (a.thrashing() ? -1 : 1) : a.name().compareTo(b.name()));
+        return out;
+    }
+
+    /** Rolls every counter and skip window into its next second; client thread, from {@link #endTick}. */
+    static void rollCounters(long nowMs) {
+        long second = Math.floorDiv(nowMs, 1000L);
+        if (second == lastRollSecond) {
+            return;
+        }
+        lastRollSecond = second;
+        for (CacheCounter c : counters) {
+            c.window.roll(nowMs);
+        }
+        for (Section s : BY_NAME.values()) {
+            s.skips.roll(nowMs);
+        }
+    }
+
+    /** Turns counting on for the calling thread (the client thread), or off. */
+    static void setCounting(boolean on) {
+        countingThread = on ? Thread.currentThread() : null;
+        counting = on;
     }
 
     private static Section register(String name, Kind kind, TierScheduler.Tier tier) {
@@ -162,6 +273,10 @@ public final class Perf {
 
     /** Start of a frame's HUD pass: closes the previous frame. */
     public static void endFrame() {
+        lastMarkersDrawn = markersDrawn;
+        lastMarkersCulled = markersCulled;
+        markersDrawn = 0;
+        markersCulled = 0;
         if (!enabled()) {
             return;
         }
@@ -176,6 +291,9 @@ public final class Perf {
 
     /** Start of a client tick: closes the previous tick, feeds the budget. */
     public static void endTick() {
+        if (counting) {
+            rollCounters(System.currentTimeMillis());
+        }
         if (!enabled()) {
             return;
         }
@@ -246,6 +364,18 @@ public final class Perf {
         }
     }
 
+    /**
+     * Whether this JVM measures per-thread allocation at all; without it the allocation column stays
+     * off instead of showing zeros.
+     */
+    private static final boolean ALLOC_SUPPORTED = THREADS instanceof com.sun.management.ThreadMXBean sun
+            && sun.isThreadAllocatedMemorySupported() && sun.isThreadAllocatedMemoryEnabled();
+
+    /** Whether the overlay can show allocation per section on this JVM. */
+    public static boolean allocationSupported() {
+        return ALLOC_SUPPORTED;
+    }
+
     private static long threadAllocated() {
         if (THREADS instanceof com.sun.management.ThreadMXBean sun) {
             return sun.getCurrentThreadAllocatedBytes();
@@ -257,7 +387,17 @@ public final class Perf {
 
     /** One row of the report. */
     public record Row(String name, Kind kind, TierScheduler.Tier tier, RollingStats.Summary last5,
-                      RollingStats.Summary last60, double allocMbPerSec) {
+                      RollingStats.Summary last60, double allocMbPerSec,
+                      double skippedPerSec5, double skippedPerSec60) {
+
+        /** Skipped runs per executed run over the last 5 s; 0 when nothing was skipped. */
+        public double skipRatio5() {
+            if (skippedPerSec5 <= 0) {
+                return 0;
+            }
+            double ran = last5.callsPerSec();
+            return ran > 0 ? skippedPerSec5 / ran : Double.POSITIVE_INFINITY;
+        }
     }
 
     /** Every section with its 5 s and 60 s figures, worst p95 (5 s) first. */
@@ -267,8 +407,9 @@ public final class Perf {
         for (int id = 0; id < NAMES.size(); id++) {
             RollingStats.Summary five = STATS.get(id).summary(5, now);
             double alloc = allocWindowSec > 0 ? allocBytes[id] / 1e6 / allocWindowSec : 0;
+            CountWindow.Snapshot skipped = BY_NAME.get(NAMES.get(id)).skips.snapshot();
             out.add(new Row(NAMES.get(id), KINDS.get(id), TIERS.get(id), five,
-                    STATS.get(id).summary(60, now), alloc));
+                    STATS.get(id).summary(60, now), alloc, skipped.perSec5(0), skipped.perSec60(0)));
         }
         out.sort((a, b) -> Double.compare(b.last5().p95Ms(), a.last5().p95Ms()));
         return out;
@@ -299,7 +440,8 @@ public final class Perf {
             java.util.Arrays.fill(allocBytes, 0);
             allocSince = System.currentTimeMillis();
         }
-        allocTracking = on;
+        allocTracking = on && ALLOC_SUPPORTED;
+        setCounting(on);
     }
 
     /** Called by the overlay every frame so the per-second allocation figures have a window. */
@@ -315,8 +457,42 @@ public final class Perf {
         FRAME_TIME.reset();
         java.util.Arrays.fill(allocBytes, 0);
         allocSince = System.currentTimeMillis();
+        for (CacheCounter c : counters) {
+            c.window.reset();
+        }
+        for (Section s : BY_NAME.values()) {
+            s.skips.reset();
+        }
     }
 
+    // BOOKMARK(merge 2026-10-05): ported from the main-checkout WIP (countMarker / countStaleDrop).
+
+    // ------------------------------------------------------------------ marker culling
+
+    // Render thread only: plain ints, rolled over by endFrame.
+    private static int markersDrawn;
+    private static int markersCulled;
+    private static int lastMarkersDrawn;
+    private static int lastMarkersCulled;
+
+    /** One world marker (waypoint, hologram cell) that passed or failed the view test this frame. */
+    public static void countMarker(boolean drawn) {
+        if (drawn) {
+            markersDrawn++;
+        } else {
+            markersCulled++;
+        }
+    }
+
+    /** Markers drawn in the last finished frame. */
+    public static int markersDrawn() {
+        return lastMarkersDrawn;
+    }
+
+    /** Markers rejected by the view test in the last finished frame. */
+    public static int markersCulled() {
+        return lastMarkersCulled;
+    }
     // ------------------------------------------------------------------ global counters
 
     private static final java.util.concurrent.atomic.AtomicLong NETWORK_CALLS = new java.util.concurrent.atomic.AtomicLong();
@@ -338,5 +514,16 @@ public final class Perf {
 
     public static long diskWrites() {
         return DISK_WRITES.get();
+    }
+
+    private static final java.util.concurrent.atomic.AtomicLong STALE_DROPS = new java.util.concurrent.atomic.AtomicLong();
+
+    /** Counted when async work finishes for a world that has since been left; any thread. */
+    public static void countStaleDrop() {
+        STALE_DROPS.incrementAndGet();
+    }
+
+    public static long staleDrops() {
+        return STALE_DROPS.get();
     }
 }

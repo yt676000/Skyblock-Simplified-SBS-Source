@@ -69,18 +69,27 @@ public final class AccessoriesPage implements PvPage {
         int pad = 6;
         int y = ctx.y + 4;
         long owned = PvDraw.arr(acc, "owned").size();
+        // Lower tiers consumed by an upgrade the player holds: neither owned cells nor missing.
+        long upgraded = PvDraw.num(acc, "covered_by_upgrade");
         long total = PvDraw.num(acc, "catalogue_total");
-        g.text(ctx.font, Component.literal("§7Owned §f" + owned + "§8/" + total), ctx.x + pad, y,
-                SBSTheme.TEXT);
 
-        // MP reads right-aligned; the two values are labelled so they can't be confused.
+        // MP reads right-aligned; the two values are labelled so they can't be confused. When both
+        // do not fit, the peak goes first, then the owned label is cut - the MP value never is.
         String mp = "§7MP §d" + PvDraw.num(acc, "mp_computed")
                 + (acc.has("mp_highest") ? " §8(peak " + PvDraw.num(acc, "mp_highest") + ")" : "");
+        String ownedText = "§7Owned §f" + owned + "§8/" + total
+                + (upgraded > 0 ? " §8(+" + upgraded + " lower tiers upgraded)" : "");
+        int room = ctx.width - pad * 2 - 8;
+        if (ctx.font.width(ownedText) + ctx.font.width(mp) > room) {
+            mp = "§7MP §d" + PvDraw.num(acc, "mp_computed");
+        }
+        ownedText = PvDraw.trim(ctx.font, ownedText, room - ctx.font.width(mp));
+        g.text(ctx.font, Component.literal(ownedText), ctx.x + pad, y, SBSTheme.TEXT);
         g.text(ctx.font, Component.literal(mp), ctx.right() - pad - ctx.font.width(mp), y,
                 SBSTheme.TEXT);
         y += ctx.font.lineHeight + 3;
         PvDraw.bar(g, ctx.x + pad, y, ctx.width - pad * 2,
-                total > 0 ? owned / (double) total : 0, SBSTheme.ACCENT);
+                total > 0 ? Math.min(1, (owned + upgraded) / (double) total) : 0, SBSTheme.ACCENT);
         y += 4;
         String power = PvDraw.str(acc, "power");
         if (!power.isEmpty()) {
@@ -162,7 +171,7 @@ public final class AccessoriesPage implements PvPage {
 
     private void drawCell(GuiGraphicsExtractor g, PvContext ctx, JsonObject acc, int x, int y) {
         boolean owned = acc.has("owned") && acc.get("owned").getAsBoolean();
-        boolean viaUpgrade = acc.has("via_upgrade") && acc.get("via_upgrade").getAsBoolean();
+        String supersededBy = PvDraw.str(acc, "superseded_by");
         String rarity = PvDraw.str(acc, "rarity");
         String color = PvDraw.TIER_COLOR.getOrDefault(rarity, "§f");
         // Both owned and missing cells now show the real icon; the rarity-coloured border keeps the
@@ -184,10 +193,10 @@ public final class AccessoriesPage implements PvPage {
             tip.add(Component.literal("§7" + PvDraw.pretty(rarity)
                     + (acc.has("recomb") && acc.get("recomb").getAsBoolean() ? " §d(recomb)" : "")));
             tip.add(Component.literal("§7Magical Power §d" + PvDraw.num(acc, "mp")));
-            // "Owned via a higher tier" (you upgraded this one away) reads differently from a true miss.
-            tip.add(Component.literal(owned
-                    ? (viaUpgrade ? "§aowned §8(upgraded tier)" : "§aowned")
-                    : "§cmissing"));
+            // A held lower rung adds nothing while a higher rung of its ladder is in the bag too.
+            tip.add(Component.literal(!owned ? "§cmissing"
+                    : supersededBy.isEmpty() ? "§aowned"
+                    : "§aowned §8(no MP: " + PvDraw.pretty(supersededBy) + " counts)"));
             tip.add(Component.literal("§8" + PvDraw.str(acc, "id")));
             PvDraw.tooltip(g, ctx.font, tip, ctx.mouseX, ctx.mouseY);
         }

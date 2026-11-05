@@ -11,10 +11,12 @@ package sbs.modid.client.core.mixin;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
+import net.minecraft.network.protocol.game.ClientboundSetPlayerInventoryPacket;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import sbs.modid.client.core.dev.PacketThreadCheck;
 import sbs.modid.client.core.dev.scanner.ServerScanner;
 import sbs.modid.client.skills.hunting.logic.AttributeMenuReader;
 
@@ -45,6 +47,10 @@ public class ContainerContentMixin {
     @Inject(method = "handleContainerContent", at = @At("TAIL"))
     private void skyblockSimplified$contentChanged(ClientboundContainerSetContentPacket packet,
                                                    CallbackInfo ci) {
+        // BOOKMARK(merge 2026-10-05): packet-hook-threads check + tick-context-gates InventoryChanges, both kept.
+        PacketThreadCheck.check("ContainerContentMixin.contentChanged");
+        // Tick gates of features with an inventory baseline (core/tick/InventoryChanges).
+        sbs.modid.client.core.tick.InventoryChanges.mark();
         AttributeMenuReader.getInstance().onContainerUpdated();
         // Server Scanner (dev): the packet's items as a diff. One boolean read while dev mode is off.
         ServerScanner.onContainerContent(packet);
@@ -54,8 +60,18 @@ public class ContainerContentMixin {
     @Inject(method = "handleContainerSetSlot", at = @At("TAIL"))
     private void skyblockSimplified$slotChanged(ClientboundContainerSetSlotPacket packet,
                                                 CallbackInfo ci) {
+        PacketThreadCheck.check("ContainerContentMixin.slotChanged");
+        // Tick gates of features with an inventory baseline (core/tick/InventoryChanges).
+        sbs.modid.client.core.tick.InventoryChanges.mark();
         AttributeMenuReader.getInstance().onContainerUpdated();
         // Server Scanner (dev): the slot's old -> new. One boolean read while dev mode is off.
         ServerScanner.onContainerSetSlot(packet);
+    }
+
+    /** One slot of the player's own inventory, sent outside any menu. */
+    @Inject(method = "handleSetPlayerInventory", at = @At("TAIL"))
+    private void skyblockSimplified$playerSlotChanged(ClientboundSetPlayerInventoryPacket packet,
+                                                      CallbackInfo ci) {
+        sbs.modid.client.core.tick.InventoryChanges.mark();
     }
 }

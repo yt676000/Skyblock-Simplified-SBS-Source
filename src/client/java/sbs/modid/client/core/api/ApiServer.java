@@ -31,7 +31,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * external developer tooling (overlays, tutorials, automation).
  *
  * <p><b>Security:</b> binds strictly to {@code 127.0.0.1} – never reachable from the
- * network.
+ * network. <b>Off by default</b>: started and stopped only through {@link #setEnabled}, which
+ * follows the "Local API Server" setting ({@code SBSConfig.localApi.enabled}).
  *
  * <p><b>Separation:</b> reads only the immutable {@link GuiState} snapshot and writes
  * only to {@link HighlightManager}. Never touches Minecraft objects; runs on its own
@@ -54,7 +55,12 @@ public final class ApiServer {
     private static ApiServer instance;
 
     private final Gson gson = new GsonBuilder().create();
-    private HttpServer server;
+    private volatile HttpServer server;
+
+    /** Whether the server is bound and serving; read every tick by the capture gate. */
+    public boolean running() {
+        return server != null;
+    }
 
     public static synchronized ApiServer getInstance() {
         if (instance == null) {
@@ -63,7 +69,47 @@ public final class ApiServer {
         return instance;
     }
 
+    /**
+     * Starts and stops happen here rather than on the caller's thread: binding the socket and
+     * {@link #startOnDaemonThread} can block for up to five seconds, which must never land on the
+     * client thread when the settings toggle is clicked. Its own single thread (not
+     * {@code SbsExecutors.worker()}) because order matters - on, off, on clicked quickly must end
+     * running. Daemon, like every thread the mod starts.
+     */
+    private final ExecutorService control = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "SBS-API-Control");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /** The state the user last asked for; every queued task applies the latest, not its own. */
+    private volatile boolean wanted;
+
+    private boolean shutdownHookAdded;   // guarded by this
+
     private ApiServer() {
+    }
+
+    /**
+     * Applies the "Local API Server" setting: starts the server when {@code enabled}, stops it when
+     * not. Safe from any thread and returns at once; the work runs on {@link #control}.
+     */
+    public void setEnabled(boolean enabled) {
+        wanted = enabled;
+        control.execute(this::applyWanted);
+    }
+
+    /** The state last requested through {@link #setEnabled}. */
+    public boolean enabled() {
+        return wanted;
+    }
+
+    private void applyWanted() {
+        if (wanted) {
+            start();
+        } else {
+            stop();
+        }
     }
 
     public synchronized void start() {
@@ -77,24 +123,29 @@ public final class ApiServer {
 // ENDPOINT: http://127.0.0.1:<PORT>/{gui,slots,state,highlight} - INBOUND, not outbound
 // METHOD: GET for reads, POST for /highlight
 // PURPOSE: A local developer API that lets external tooling on the same machine read the open
-//   Minecraft screen. Off unless the user switches it on.
+//   Minecraft screen. Off by default: it runs only while the "Local API Server" setting (SBS
+//   Settings, config key localApi.enabled) is on, and stops when that is switched off.
 // DATA SENT: Nothing leaves the machine. This is a listener, not a client, and it makes no
 //   outbound request of any kind.
-// DATA RECEIVED: Requests from localhost only. The POST body for /highlight is a JSON list of
-//   slot numbers, parsed with Gson and used only to draw a highlight.
+// DATA RECEIVED: Requests from localhost only, addressed by Host and carrying no Origin. The
+//   POST body for /highlight is a JSON list of slot numbers (64 KiB cap, local.highlight
+//   schema), used only to draw a highlight.
 // SAFETY DECLARATION: BOUND STRICTLY TO 127.0.0.1 (see HOST above), so it is not reachable
 //   from the network or the internet - no port is exposed and nothing is forwarded. It exposes
 //   the contents of the open screen to software the user is already running locally; it
 //   transmits nothing anywhere, collects no credentials, and reads only an immutable snapshot.
 // ============================================================================
             server = HttpServer.create(new InetSocketAddress(HOST, PORT), 0);
-            server.createContext("/gui", this::handleGui);
-            server.createContext("/slots", this::handleSlots);
-            server.createContext("/state", this::handleState);
-            server.createContext("/highlight", this::handleHighlight);
+            server.createContext("/gui", guarded(this::handleGui));
+            server.createContext("/slots", guarded(this::handleSlots));
+            server.createContext("/state", guarded(this::handleState));
+            server.createContext("/highlight", guarded(this::handleHighlight));
             server.setExecutor(daemonPool());
             startOnDaemonThread(server);
-            Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "SBS-API-Shutdown"));
+            if (!shutdownHookAdded) {   // once per JVM, not once per toggle
+                Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "SBS-API-Shutdown"));
+                shutdownHookAdded = true;
+            }
             SkyblockSimplifiedSBS.LOGGER.info("[SBS] Local API server running at http://{}:{}", HOST, PORT);
         } catch (IOException e) {
             SkyblockSimplifiedSBS.LOGGER.error("[SBS] Could not start local API server on {}:{}", HOST, PORT, e);
@@ -132,6 +183,23 @@ public final class ApiServer {
         }
     }
 
+    /**
+     * Accepts a request only when it is addressed to this listener by name ({@code Host} is
+     * {@code 127.0.0.1:PORT} or {@code localhost:PORT}) and carries no {@code Origin} header, so a
+     * web page in a local browser cannot read or drive it.
+     */
+    private com.sun.net.httpserver.HttpHandler guarded(com.sun.net.httpserver.HttpHandler handler) {
+        return exchange -> {
+            String host = exchange.getRequestHeaders().getFirst("Host");
+            boolean hostOk = (HOST + ":" + PORT).equals(host) || ("localhost:" + PORT).equals(host);
+            if (!hostOk || exchange.getRequestHeaders().containsKey("Origin")) {
+                respond(exchange, 403, Map.of("error", "forbidden"));
+                return;
+            }
+            handler.handle(exchange);
+        };
+    }
+
     private static ExecutorService daemonPool() {
         AtomicInteger counter = new AtomicInteger();
         return Executors.newFixedThreadPool(2, runnable -> {
@@ -146,6 +214,7 @@ public final class ApiServer {
     // ------------------------------------------------------------------
 
     private void handleGui(HttpExchange exchange) {
+        GuiStateManager.getInstance().awaitFresh();
         GuiState s = GuiStateManager.getInstance().getState();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("isOpen", s.isOpen());
@@ -158,6 +227,7 @@ public final class ApiServer {
     }
 
     private void handleSlots(HttpExchange exchange) {
+        GuiStateManager.getInstance().awaitFresh();
         GuiState s = GuiStateManager.getInstance().getState();
         List<Map<String, Object>> slots = new ArrayList<>();
         for (GuiState.SlotInfo slot : s.slots()) {
@@ -179,6 +249,7 @@ public final class ApiServer {
     }
 
     private void handleState(HttpExchange exchange) {
+        GuiStateManager.getInstance().awaitFresh();
         GuiState s = GuiStateManager.getInstance().getState();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("player", s.player());
@@ -199,8 +270,15 @@ public final class ApiServer {
             return;
         }
         try {
-            String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            HighlightRequest request = gson.fromJson(requestBody, HighlightRequest.class);
+            String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+            if (contentType == null || !contentType.toLowerCase(java.util.Locale.ROOT).startsWith("application/json")) {
+                respond(exchange, 415, Map.of("error", "Use Content-Type: application/json"));
+                return;
+            }
+            byte[] raw = sbs.modid.client.core.net.SecureHttp.limit(exchange.getRequestBody(), 64 * 1024).readAllBytes();
+            String requestBody = new String(raw, StandardCharsets.UTF_8);
+            HighlightRequest request = sbs.modid.client.core.net.validation.MessageSchemas.parse(
+                    sbs.modid.client.core.net.validation.MessageTypes.LOCAL_HIGHLIGHT, requestBody, HighlightRequest.class);
             List<Integer> slots = (request != null && request.slots != null) ? request.slots : List.of();
             HighlightManager.getInstance().setHighlighted(slots);
             Map<String, Object> body = new LinkedHashMap<>();

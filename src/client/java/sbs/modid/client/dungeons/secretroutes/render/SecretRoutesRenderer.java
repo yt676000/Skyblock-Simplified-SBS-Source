@@ -18,7 +18,8 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.dungeons.secretroutes.logic.SecretRoutesManager;
@@ -43,6 +44,9 @@ import java.util.List;
  * buffer, so an occluded point can only be found by clipping camera→point and is merely dimmed.
  */
 public final class SecretRoutesRenderer {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
+    private static final int[] SCREEN_B = new int[2];
 
     private static final double BEAM_HEIGHT = 2.5;
     private static final int BEAM_SLICES = 5;
@@ -89,7 +93,7 @@ public final class SecretRoutesRenderer {
 
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
 
         if (cfg.showPathfinding) {
@@ -108,7 +112,7 @@ public final class SecretRoutesRenderer {
     // Movement line: recorded trail, else the waypoints joined in order
     // ------------------------------------------------------------------
 
-    private static void drawMovementLine(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawMovementLine(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                          List<Vec3> trail, List<SecretRoutesManager.RenderWaypoint> waypoints,
                                          SBSConfig.SecretRoutesSettings cfg) {
         int rgb = ConfigManager.getInstance().get().pathfinding.pathRgb();
@@ -131,7 +135,7 @@ public final class SecretRoutesRenderer {
     // Waypoints
     // ------------------------------------------------------------------
 
-    private static void drawWaypoints(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawWaypoints(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                       Font font, List<SecretRoutesManager.RenderWaypoint> waypoints,
                                       SBSConfig.SecretRoutesSettings cfg, Minecraft minecraft, Camera camera) {
         double breath = breath();
@@ -154,12 +158,13 @@ public final class SecretRoutesRenderer {
     }
 
     /** Number tag (always) plus the description (when enabled), stacked above the marker. */
-    private static void drawLabel(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos, Font font,
+    private static void drawLabel(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos, Font font,
                                   SecretWaypoint waypoint, Vec3 base, int rgb, boolean dim,
                                   SBSConfig.SecretRoutesSettings cfg) {
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos,
-                base.add(0.5, BEAM_HEIGHT + 0.4, 0.5), g.guiWidth(), g.guiHeight());
-        if (screen == null) {
+        int[] screen = SCREEN;
+        if (!WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                base.x + 0.5, base.y + BEAM_HEIGHT + 0.4, base.z + 0.5,
+                g.guiWidth(), g.guiHeight(), screen)) {
             return;
         }
         int color = argb(rgb, dim ? 120 : 255);
@@ -175,14 +180,14 @@ public final class SecretRoutesRenderer {
     // Breaker blocks
     // ------------------------------------------------------------------
 
-    private static void drawBreakers(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawBreakers(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                      Font font, List<SecretRoutesManager.RenderBreaker> breakers) {
         for (SecretRoutesManager.RenderBreaker breaker : breakers) {
             Vec3 base = breaker.world();
             box(g, viewProjection, camPos, base, 0.02, argb(COLOR_BREAKER, 180), 2);
-            int[] screen = WorldRender.projectToScreen(viewProjection, camPos,
-                    base.add(0.5, 1.1, 0.5), g.guiWidth(), g.guiHeight());
-            if (screen != null) {
+            int[] screen = SCREEN;
+            if (WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                    base.x + 0.5, base.y + 1.1, base.z + 0.5, g.guiWidth(), g.guiHeight(), screen)) {
                 g.centeredText(font, Component.literal(String.valueOf(breaker.order() + 1)),
                         screen[0], screen[1], argb(COLOR_BREAKER, 255));
             }
@@ -237,7 +242,7 @@ public final class SecretRoutesRenderer {
     // Shared drawing helpers (mirrors PathRenderer)
     // ------------------------------------------------------------------
 
-    private static void box(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void box(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                             Vec3 base, double grow, int color, int width) {
         WorldRender.boxEdges(g, viewProjection, camPos,
                 base.x - grow, base.y - grow, base.z - grow,
@@ -245,7 +250,7 @@ public final class SecretRoutesRenderer {
                 color, width);
     }
 
-    private static void drawBeam(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawBeam(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                  Vec3 base, int rgb, boolean dim) {
         double x = base.x + 0.5;
         double z = base.z + 0.5;
@@ -253,16 +258,23 @@ public final class SecretRoutesRenderer {
         int gw = g.guiWidth();
         int gh = g.guiHeight();
         int topAlpha = dim ? 40 : 90;
-        int[] previous = WorldRender.projectToScreen(viewProjection, camPos, new Vec3(x, baseY, z), gw, gh);
+        int[] previous = SCREEN;
+        int[] current = SCREEN_B;
+        boolean previousOk = WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                x, baseY, z, gw, gh, previous);
         for (int i = 1; i <= BEAM_SLICES; i++) {
             double y = baseY + BEAM_HEIGHT * i / BEAM_SLICES;
-            int[] current = WorldRender.projectToScreen(viewProjection, camPos, new Vec3(x, y, z), gw, gh);
-            if (previous != null && current != null) {
+            boolean currentOk = WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                    x, y, z, gw, gh, current);
+            if (previousOk && currentOk) {
                 int alpha = (int) (topAlpha * (1.0 - (double) i / BEAM_SLICES));
                 WorldRender.line(g, previous[0], previous[1], current[0], current[1],
                         argb(rgb, alpha), dim ? 1 : 2);
             }
+            int[] swap = previous;
             previous = current;
+            current = swap;
+            previousOk = currentOk;
         }
     }
 

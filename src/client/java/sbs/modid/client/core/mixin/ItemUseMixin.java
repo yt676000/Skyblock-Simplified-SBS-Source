@@ -36,6 +36,8 @@ public class ItemUseMixin {
     private void skyblockSimplified$onUseItem(Player player, InteractionHand hand,
                                               CallbackInfoReturnable<?> cir) {
         if (player != null) {
+            // Before AbilityCooldowns: it starts the 20 s cooldown on this click, which the Tac Timer asks about.
+            sbs.modid.client.combat.abilitytimers.logic.TacTimerTracker.getInstance().onItemUse(player.getItemInHand(hand));
             AbilityCooldowns.getInstance().onItemUse(player.getItemInHand(hand));
             sbs.modid.client.combat.cooldowns.AbilityReadyAlert.getInstance().onItemUse(player.getItemInHand(hand));
             StatBuffTracker.getInstance().onItemUse(player.getItemInHand(hand));
@@ -72,6 +74,8 @@ public class ItemUseMixin {
     private void skyblockSimplified$onUseItemOn(LocalPlayer player, InteractionHand hand, BlockHitResult hit,
                                                 CallbackInfoReturnable<?> cir) {
         if (player != null) {
+            // Before AbilityCooldowns: it starts the 20 s cooldown on this click, which the Tac Timer asks about.
+            sbs.modid.client.combat.abilitytimers.logic.TacTimerTracker.getInstance().onItemUse(player.getItemInHand(hand));
             AbilityCooldowns.getInstance().onItemUse(player.getItemInHand(hand));
             sbs.modid.client.combat.cooldowns.AbilityReadyAlert.getInstance().onItemUse(player.getItemInHand(hand));
             StatBuffTracker.getInstance().onItemUse(player.getItemInHand(hand));

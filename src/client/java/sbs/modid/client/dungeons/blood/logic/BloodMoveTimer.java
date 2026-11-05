@@ -36,85 +36,66 @@ import java.util.Locale;
  * <p><b>The schedule is read off his own two lines.</b> Anything he says starts the clock, and
  * {@code "Let's see how you can handle this."} is the reference point, because that line is fixed
  * relative to his checks while the one that opened the cycle varies. The gap between the two says
- * which of his checks you are heading for; the checks themselves sit on a three-second grid, the
- * first useful one a good twenty seconds in. So the call-out lands on the first grid mark that still
- * leaves enough time to actually swing - anything closer is a mark you cannot make. The whole
- * measurement repeats per cycle, because that is what camping the room is.
+ * which of his checks you are heading for; the checks themselves sit on a grid. So the call-out
+ * lands on the first grid mark that still leaves enough time to actually swing - anything closer is
+ * a mark you cannot make. The whole measurement repeats per cycle, because that is what camping the
+ * room is.
  *
  * <p><b>Everything is counted on the server's clock, not on yours.</b> Hypixel schedules in ticks,
  * and a blood room mid-spawn is exactly where a server stops managing twenty of them a second. Wall
  * clock in a room running at eighteen ticks drifts about three seconds over the half minute this
  * measures - enough to bucket the gap into the wrong mark and then fire the call-out early on top of
- * it. So the clock here advances by the measured tick rate ({@link ServerStatsTracker}), which
- * cancels both halves of that at once, and falls back to real time whenever the rate is unknown.
+ * it. So the clock advances by the measured tick rate ({@link ServerStatsTracker}), and falls back
+ * to real time whenever the rate is unknown. The arithmetic lives in {@link BloodCampClock}.
  *
  * <p><b>A wrong call is worse than no call</b>, because it costs the kill window it was supposed to
  * find. A gap that is too short means his opening line was never seen (the move line stamped the
  * clock itself); one that is too long means the clock is measuring from something that was not the
  * start of this room. Neither predicts anything, and both say so instead of guessing.
  *
- * <p>The grid, the twenty-four-second floor and the swing window are the numbers the community has
- * measured off Hypixel's own behaviour - there is no second version of them to have. The
- * implementation here is our own.
+ * <p><b>Paused.</b> The grid, the first mark and the swing window were the numbers measured off
+ * Hypixel's behaviour before its 2026-10 patch, which sped up the Watcher's dialogue on every floor
+ * and made him send his summons faster. They are presumed wrong until re-measured, so the prediction
+ * is switched off in code ({@link #TIMING_VERIFIED}); the clock keeps running and
+ * {@link BloodTimingProbe} logs what the new numbers have to be derived from. See
+ * {@code docs/features/blood-camp-move-timing.md}.
  */
 public final class BloodMoveTimer {
 
+    /**
+     * Whether the Watcher's timing constants in {@link BloodCampClock} are known to match the game.
+     *
+     * <p><b>False since Hypixel's 2026-10 patch</b>, which sped up the Watcher's dialogue on all
+     * floors and the spawning of his summons. While false nothing is predicted: no KILL BLOOD flash,
+     * no chat line, no ETA on the card ({@link #etaMs()} is -1), and the settings rows read as
+     * paused. This is a code constant on purpose: existing configs carry {@code campMove = true}, so a
+     * default change would never reach them, and the saved value is left alone so the feature comes
+     * back exactly as the player had it.
+     *
+     * <p>Set back to true only once the grid, the first and last mark and the gap band have been
+     * re-derived from the {@code [SBS][BloodTiming]} logs of enough camps per floor type, and the new
+     * constants are unit-tested against those logged rooms. The rule is in
+     * {@code docs/features/blood-camp-move-timing.md}.
+     */
+    public static final boolean TIMING_VERIFIED = false;
+
+    /** The reason shown on the paused settings rows. */
+    public static final String PAUSED_REASON =
+            "Paused — Hypixel changed the Watcher's timing; being re-measured";
+
     private static final BloodMoveTimer INSTANCE = new BloodMoveTimer();
-
-    /** The Watcher's checks sit on a three-second grid, counted from his opening line. */
-    private static final double GRID_SECONDS = 3.0;
-
-    /** The earliest check worth aiming at - the room is not killable before it. */
-    private static final double FIRST_MARK_SECONDS = 24.0;
-
-    /** The last one that still skips anything; past it he has said his piece anyway. */
-    private static final double LAST_MARK_SECONDS = 36.0;
-
-    /** How much room a mark needs to be worth calling: any less and you cannot finish the mobs. */
-    private static final double LEAD_SECONDS = 2.0;
-
-    /** The flash lands a touch early, so the last hit falls on the mark instead of just behind it. */
-    private static final double ALERT_LEAD_SECONDS = 0.15;
-
-    /** Shorter than this and he was still talking when he cued - that is not a cycle to measure. */
-    private static final double MIN_GAP_SECONDS = 1.0;
-
-    /** Longer than this and the clock is not measuring this room's start. */
-    private static final double MAX_GAP_SECONDS = 34.0;
-
-    /** A clock this old belongs to a room that ended without saying so. */
-    private static final double STALE_SECONDS = 90.0;
-
-    /** Tick rates outside this band are a freeze or a world change, not a room running slow. */
-    private static final double MIN_TPS = 5.0;
-    private static final double FULL_TPS = 20.0;
 
     /** Red for a "go", as the other dungeon call-outs use it - and its own pitch to tell them apart. */
     private static final int ALERT_COLOR = 0xFFFF5555;
     private static final float ALERT_PITCH = 1.8f;
 
     /** The pieces every pattern below is built from: who spoke, and which of his lines it was. */
-    private static final String WATCHER = "(?i)\\[BOSS\\]\\s+The Watcher\\s*:";
+    static final String WATCHER = "(?i)\\[BOSS\\]\\s+The Watcher\\s*:";
     private static final String ANY = ".*";
-    private static final String CUE = "Let.s see how you can handle this";
-    private static final String DONE = "That will be enough for now";
+    static final String CUE = "Let.s see how you can handle this";
+    static final String DONE = "That will be enough for now";
 
-    /** When the Watcher's opening line landed; 0 while no clock is running. */
-    private volatile long openedAt;
-
-    /** Server-seconds since that line - see the class note on why these are not wall-clock seconds. */
-    private volatile double elapsed;
-
-    /** Wall clock of the last step, i.e. what {@link #advance()} last converted. */
-    private long lastStep;
-
-    /** The grid mark to call out at, in server-seconds since the opening line; 0 while none is due. */
-    private volatile double mark;
-
-    /** The measured opening→move gap that produced that mark, or -1 while nothing was measured. */
-    private volatile double gap = -1;
-
-    private volatile boolean fired;
+    private final BloodCampClock clock = new BloodCampClock();
 
     private BloodMoveTimer() {
         // The clock starts on the Watcher opening his mouth, whatever comes out of it. He has a
@@ -136,7 +117,9 @@ public final class BloodMoveTimer {
         // class has to tell the other anything.
         ChatPatternRegistry.getInstance().register(
                 WATCHER + ANY + DONE,
-                matcher -> clear(), "blood move: room over");
+                matcher -> clock.clear(), "blood move: room over");
+        // The measurement probe reads the same lines; touching it here is what registers it.
+        BloodTimingProbe.getInstance();
     }
 
     public static BloodMoveTimer getInstance() {
@@ -147,47 +130,36 @@ public final class BloodMoveTimer {
         return ConfigManager.getInstance().get().blood;
     }
 
-    /** The feature is on, and we are somewhere it means something. */
-    private static boolean enabled() {
-        return cfg().enabled && cfg().campMove && DungeonStateManager.getInstance().inDungeon();
+    /**
+     * The clock runs: the blood helper is on and we are in a dungeon. Independent of the call-out
+     * switch, so the camp cycle is measured even while nothing is called.
+     */
+    private static boolean clockOn() {
+        return cfg().enabled && DungeonStateManager.getInstance().inDungeon();
+    }
+
+    /** A mark is predicted, shown and called: the timing is verified and the player wants the call. */
+    private static boolean predicting() {
+        return TIMING_VERIFIED && cfg().campMove;
     }
 
     // ---- read by the HUD ----------------------------------------------------------------------
 
-    /** Milliseconds until the mark, or -1 when nothing is predicted right now. */
+    /** Milliseconds until the mark, or -1 when nothing is predicted right now (always while paused). */
     public long etaMs() {
-        double due = mark;
-        if (due == 0 || openedAt == 0) {
-            return -1;
-        }
-        double left = due - elapsed;
-        return left <= 0 ? -1 : (long) (left * 1000.0);
+        return clock.etaMs(predicting());
     }
 
     // ---- chat ---------------------------------------------------------------------------------
 
     /**
-     * He spoke: the clock starts over from here.
-     *
-     * <p><b>Every cycle, not just the first.</b> Camping the room means going round this loop again
-     * and again - he talks, he sends mobs, they die, he talks again - and each round has its own
-     * schedule to measure. A clock that armed once and locked would call the first round of the run
-     * and then quietly never again, which for a camping feature is the same as not having one.
-     *
-     * <p>The exception is a call that is already standing: while one is waiting to fire, nothing he
-     * says moves it. That call was measured off a gap that really happened, and a stray taunt in the
-     * middle of the fight must not throw it away seconds before it comes due.
+     * He spoke: the clock starts over from here, every cycle. Camping is this loop again and again,
+     * and a clock that armed once and locked would call the first round and then never again.
      */
     private void onWatcherSpoke() {
-        if (!enabled() || (mark != 0 && !fired)) {
-            return;
+        if (clockOn()) {
+            clock.start(System.currentTimeMillis());
         }
-        openedAt = System.currentTimeMillis();
-        lastStep = openedAt;
-        elapsed = 0;
-        mark = 0;
-        gap = -1;
-        fired = false;
     }
 
     /**
@@ -195,86 +167,46 @@ public final class BloodMoveTimer {
      * points at is worked out, and from here the tick loop only has to wait for it.
      */
     private void onMoveLine() {
-        if (!enabled() || openedAt == 0) {
+        if (!clockOn()) {
             return;
         }
-        // The line arrives between two ticks, so the clock is caught up to this instant rather than
-        // to the last tick - a fifty-millisecond error is a third of the whole call-out lead.
-        advance();
-        double measured = elapsed;
-        gap = measured;
-        if (measured < MIN_GAP_SECONDS || measured >= MAX_GAP_SECONDS) {
-            mark = 0;
+        BloodCampClock.CueResult result = clock.cue(System.currentTimeMillis(), tps(), predicting());
+        if (result == BloodCampClock.CueResult.GAP_OUT_OF_RANGE) {
             say("§8[§bSBS§8]§r §7Blood move §8- no call, this cycle's opening line was missed");
-            return;
+        } else if (result == BloodCampClock.CueResult.MARKED) {
+            say("§8[§bSBS§8]§r §cBlood move §7in §f"
+                    + BloodRoomTracker.seconds((long) ((clock.mark() - clock.gap()) * 1000.0))
+                    + " §8(" + (int) clock.mark() + "s mark)");
         }
-        mark = markAfter(measured);
-        fired = false;
-        say("§8[§bSBS§8]§r §cBlood move §7in §f"
-                + BloodRoomTracker.seconds((long) ((mark - measured) * 1000.0))
-                + " §8(" + (int) mark + "s mark)");
-    }
-
-    /**
-     * The mark to aim at: the first point of his grid that is still far enough away to finish the
-     * room before it, never earlier than his first check and never past his last.
-     */
-    private static double markAfter(double measured) {
-        double earliest = measured + LEAD_SECONDS;
-        double next = (Math.floor(earliest / GRID_SECONDS) + 1) * GRID_SECONDS;
-        return Math.min(LAST_MARK_SECONDS, Math.max(FIRST_MARK_SECONDS, next));
     }
 
     // ---- tick ---------------------------------------------------------------------------------
 
-    /** Called every client tick: advances the clock and fires the call-out when the mark comes up. */
+    /** Called every client tick in the Catacombs: advances the clock and fires the call-out. */
     public void onClientTick() {
-        if (openedAt == 0) {
+        BloodTimingProbe.getInstance().onClientTick();
+        if (!clock.running()) {
             return; // no room, nothing to count - the common case, and it costs one read
         }
-        if (!enabled()) {
-            clear();
+        if (!clockOn()) {
+            clock.clear();
             return;
         }
-        advance();
-        if (elapsed > STALE_SECONDS) {
-            clear(); // a room that ended without its closing line must not time the next one
-            return;
+        if (clock.tick(System.currentTimeMillis(), tps(), predicting())) {
+            DungeonAlert.getInstance().trigger("KILL BLOOD", ALERT_COLOR, true, ALERT_PITCH);
         }
-        if (mark == 0 || fired || elapsed < mark - ALERT_LEAD_SECONDS) {
-            return;
-        }
-        fired = true;
-        DungeonAlert.getInstance().trigger("KILL BLOOD", ALERT_COLOR, true, ALERT_PITCH);
     }
 
     /**
-     * Moves the clock up to now, converting real time into server time as it goes. The tick rate is
-     * sampled every step rather than once, because a room does not lag evenly: it stalls while the
-     * mobs come in and recovers afterwards, and only the stalling part should stretch the countdown.
+     * World change. The tick only runs in the Catacombs now, so leaving one no longer clears the
+     * clock by itself - this does, and a cycle spanning a reconnect was not measurable anyway.
      */
-    private void advance() {
-        long now = System.currentTimeMillis();
-        long stepMs = now - lastStep;
-        lastStep = now;
-        if (stepMs <= 0) {
-            return;
-        }
-        elapsed += stepMs / 1000.0 * tickFactor();
+    public void onWorldChange() {
+        clock.clear();
     }
 
-    /** Server seconds per real second: 1.0 whenever there is no trustworthy reading to use. */
-    private static double tickFactor() {
-        double tps = ServerStatsTracker.getInstance().tps();
-        return tps < MIN_TPS || tps > FULL_TPS ? 1.0 : tps / FULL_TPS;
-    }
-
-    private void clear() {
-        openedAt = 0;
-        elapsed = 0;
-        mark = 0;
-        gap = -1;
-        fired = false;
+    private static double tps() {
+        return ServerStatsTracker.getInstance().tps();
     }
 
     private static void say(String message) {
@@ -294,13 +226,17 @@ public final class BloodMoveTimer {
      */
     public List<String> debugLines() {
         List<String> out = new ArrayList<>();
-        out.add("§bBlood move§7: " + (cfg().campMove ? "§aon" : "§8off")
-                + " §7| clock §f" + (openedAt == 0 ? "not running"
-                        : String.format(Locale.US, "%.1fs", elapsed))
-                + " §7| open→cue §f" + (gap < 0 ? "-" : String.format(Locale.US, "%.2fs", gap))
-                + " §7| mark §f" + (mark == 0 ? "none" : (int) mark + "s")
-                + " §7| called §f" + fired
-                + " §7| tick rate §f" + String.format(Locale.US, "%.1f", tickFactor() * FULL_TPS));
+        String state = !TIMING_VERIFIED ? "§6paused: timing being re-measured"
+                : cfg().campMove ? "§aon" : "§8off";
+        out.add("§bBlood move§7: " + state
+                + " §7| clock §f" + (!clock.running() ? "not running"
+                        : String.format(Locale.ROOT, "%.1fs", clock.elapsed()))
+                + " §7| open→cue §f" + (clock.gap() < 0 ? "-"
+                        : String.format(Locale.ROOT, "%.2fs", clock.gap()))
+                + " §7| mark §f" + (clock.mark() == 0 ? "none" : (int) clock.mark() + "s")
+                + " §7| called §f" + clock.fired()
+                + " §7| tick rate §f" + String.format(Locale.ROOT, "%.1f",
+                        BloodCampClock.tickFactor(tps()) * BloodCampClock.FULL_TPS));
         return out;
     }
 }

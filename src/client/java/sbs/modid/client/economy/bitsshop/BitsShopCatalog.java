@@ -149,6 +149,7 @@ public final class BitsShopCatalog {
             return false;
         }
         entries.put(id, new Entry(id, name, bits, amount, menu, System.currentTimeMillis()));
+        sbs.modid.client.economy.prices.PriceVersion.bump();
         save();
         SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bits] {} = {} bits x{} ({})", id, bits, amount, menu);
         return true;
@@ -159,6 +160,7 @@ public final class BitsShopCatalog {
         ensureLoaded();
         entries.clear();
         seed();
+        sbs.modid.client.economy.prices.PriceVersion.bump();
         save();
     }
 

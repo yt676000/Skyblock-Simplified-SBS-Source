@@ -9,13 +9,22 @@
 package sbs.modid.client.combat.diana.logic;
 
 import com.google.gson.JsonObject;
+import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.combat.diana.model.MythCreature;
+import sbs.modid.client.core.async.SbsExecutors;
 import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.core.config.ProfileContext;
+import sbs.modid.client.core.config.ProfileScopedStore;
+import sbs.modid.client.core.config.SBSFiles;
 import sbs.modid.client.core.tracker.TrackerStore;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * What this session's ritual has produced: burrows dug, creatures spawned, loot found, and the two
@@ -41,8 +50,16 @@ import java.util.Map;
  * counted; it never gets counted as the wrong thing, because the classifier only ever promotes a
  * line it recognised. A total that stops moving is a visible failure, which is the failure mode
  * worth having.
+ *
+ * <h2>Loot profit</h2>
+ *
+ * <p>The Diana Profit card needs counts it can read back, per profile, which the write-only shared
+ * store cannot give. So the loot ledgers ({@link DianaLootLedger}) are held here too - one for the
+ * session, one for the profile's all time in {@value #LOOT_FILE} - fed by the same burrow and creature
+ * calls as the tallies above, plus {@link #onLoot} for what was paid out. The lifetime tallies keep
+ * going to the shared store as before.
  */
-public final class DianaTracker {
+public final class DianaTracker implements ProfileScopedStore {
 
     private static final DianaTracker INSTANCE = new DianaTracker();
 
@@ -77,11 +94,30 @@ public final class DianaTracker {
      * shared, and the cost of being early is nothing, because a creature has to be sighted as well.
      */
     private static final long OWN_SPAWN_MS = 15_000L;
+    private static final Pattern NON_KEY_CHARS = Pattern.compile("[^A-Z0-9_]");
 
     /** When this session's counting started, so the card can say what "session" means. */
     private long startedAt = System.currentTimeMillis();
 
+    /** Bumped on every change the Diana cards show; they rebuild their rows when it moves. */
+    private int version;
+
+    private static final String LOOT_FILE = "diana_loot.json";
+
+    /** The all-time ledger is written at most this often while digging; a flush writes it at once. */
+    private static final long SAVE_EVERY_MS = 30_000L;
+
+    private volatile DianaLootLedger lootSession = new DianaLootLedger();
+    private volatile DianaLootLedger lootAllTime = new DianaLootLedger();
+    private volatile boolean lootLoaded;
+    private boolean lootDirty;
+    private long lootSavedAt;
+
+    /** Bumped on every change the Diana Profit card shows. */
+    private volatile int lootVersion;
+
     private DianaTracker() {
+        ProfileContext.getInstance().register(this);
     }
 
     public static DianaTracker getInstance() {
@@ -93,13 +129,31 @@ public final class DianaTracker {
         return cfg.enabled && cfg.tracker;
     }
 
+    private static boolean lootOn() {
+        var cfg = ConfigManager.getInstance().get().diana;
+        return cfg.enabled && cfg.lootProfit;
+    }
+
     /** A burrow was dug out. */
     public void onBurrowDug() {
+        if (lootOn()) {
+            long now = System.currentTimeMillis();
+            ensureLootLoaded();
+            lootSession.burrow(now);
+            lootAllTime.burrow(now);
+            lootChanged();
+        }
         if (!on()) {
             return;
         }
         burrows++;
+        version++;
         TrackerStore.record(TRACKER, "BURROWS", 1);
+    }
+
+    /** Moves whenever a count the Diana cards show changes. */
+    public int version() {
+        return version;
     }
 
     /**
@@ -125,10 +179,18 @@ public final class DianaTracker {
             lastRareSpawnAt = System.currentTimeMillis();
         }
 
+        if (lootOn()) {
+            long now = System.currentTimeMillis();
+            ensureLootLoaded();
+            lootSession.mob(now);
+            lootAllTime.mob(now);
+            lootChanged();
+        }
         if (!on()) {
             return;
         }
         creatures++;
+        version++;
         mobsSinceInquisitor++;
         mobsSinceKing++;
         perCreature.computeIfAbsent(name, k -> new long[1])[0]++;
@@ -153,9 +215,22 @@ public final class DianaTracker {
         }
         String name = rawName.trim();
         treasures++;
+        version++;
         perTreasure.computeIfAbsent(name, k -> new long[1])[0]++;
         TrackerStore.record(TRACKER, "TREASURES", 1);
         TrackerStore.record(TRACKER, key(name), 1);
+    }
+
+    /** A payout read off chat by {@link DianaLoot}. */
+    public void onLoot(DianaLoot.Loot loot) {
+        if (loot == null || !lootOn()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        ensureLootLoaded();
+        lootSession.loot(loot, now);
+        lootAllTime.loot(loot, now);
+        lootChanged();
     }
 
     public long burrows() {
@@ -247,11 +322,114 @@ public final class DianaTracker {
         mobsSinceInquisitor = 0;
         mobsSinceKing = 0;
         startedAt = System.currentTimeMillis();
+        version++;
+    }
+
+    // ------------------------------------------------------------------
+    // Loot ledgers
+    // ------------------------------------------------------------------
+
+    /** Moves whenever a number the Diana Profit card shows changes. */
+    public int lootVersion() {
+        return lootVersion;
+    }
+
+    public DianaLootLedger lootSession() {
+        return lootSession;
+    }
+
+    public DianaLootLedger lootAllTime() {
+        ensureLootLoaded();
+        return lootAllTime;
+    }
+
+    /** Starts the loot session over; the all-time ledger is kept. */
+    public void resetLootSession() {
+        lootSession = new DianaLootLedger();
+        lootVersion++;
+    }
+
+    /** Clears this profile's all-time loot ledger, and the session with it. */
+    public void resetLootAllTime() {
+        ensureLootLoaded();
+        lootAllTime = new DianaLootLedger();
+        lootSession = new DianaLootLedger();
+        lootVersion++;
+        lootDirty = true;
+        saveLoot();
+    }
+
+    private void lootChanged() {
+        lootVersion++;
+        lootDirty = true;
+        if (System.currentTimeMillis() - lootSavedAt >= SAVE_EVERY_MS) {
+            saveLoot();
+        }
+    }
+
+    private Path lootFile() {
+        return ProfileContext.getInstance().file(LOOT_FILE);
+    }
+
+    private void ensureLootLoaded() {
+        if (!lootLoaded) {
+            reloadProfile();
+        }
+    }
+
+    @Override
+    public synchronized void reloadProfile() {
+        DianaLootLedger read = new DianaLootLedger();
+        try {
+            Path path = lootFile();
+            if (Files.isRegularFile(path)) {
+                try (var reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+                    DianaLootLedger parsed = SBSFiles.GSON.fromJson(reader, DianaLootLedger.class);
+                    if (parsed != null) {
+                        read = parsed;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // A corrupt file is logged, not fatal; it stays on disk and memory starts empty.
+            SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Diana] could not read {} ({})", LOOT_FILE, e.toString());
+        }
+        lootAllTime = read;
+        lootSession = new DianaLootLedger();
+        lootLoaded = true;
+        lootDirty = false;
+        lootVersion++;
+    }
+
+    @Override
+    public void flushProfile() {
+        if (lootLoaded && lootDirty) {
+            saveLoot();
+        }
+    }
+
+    /** Serialised here, written on the IO thread - one ordered writer, so two writes cannot reorder. */
+    private synchronized void saveLoot() {
+        if (!lootLoaded || !ProfileContext.getInstance().known()) {
+            return;
+        }
+        Path path = lootFile();
+        String json = SBSFiles.GSON.toJson(lootAllTime);
+        lootDirty = false;
+        lootSavedAt = System.currentTimeMillis();
+        SbsExecutors.io().execute(() -> {
+            try {
+                Files.createDirectories(path.getParent());
+                Files.writeString(path, json, StandardCharsets.UTF_8);
+            } catch (Exception e) {
+                SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Diana] could not write {} ({})", LOOT_FILE, e.toString());
+            }
+        });
     }
 
     /** "COINS", "GRIFFIN_FEATHER" - the shape the shared tracker store keys on. */
     private static String key(String name) {
-        return name.toUpperCase(Locale.ROOT).replace(' ', '_').replace('-', '_')
-                .replaceAll("[^A-Z0-9_]", "");
+        return NON_KEY_CHARS.matcher(name.toUpperCase(Locale.ROOT).replace(' ', '_').replace('-', '_'))
+                .replaceAll("");
     }
 }

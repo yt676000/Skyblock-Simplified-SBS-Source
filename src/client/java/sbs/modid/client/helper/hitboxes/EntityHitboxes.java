@@ -27,7 +27,13 @@ import net.minecraft.world.phys.Vec3;
 import sbs.modid.client.combat.mobhighlight.logic.MobHighlightTracker;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.core.entity.EntityIndex;
+import sbs.modid.client.core.entity.EntityKind;
+import sbs.modid.client.core.entity.Tracked;
 import sbs.modid.client.core.player.RealPlayers;
+
+import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Entity Hitboxes: the vanilla hitbox (what F3+B shows) for the entity types the player picked,
@@ -56,6 +62,8 @@ public final class EntityHitboxes {
     /** Vanilla's eye-height line and look arrow colours. */
     private static final int EYE_COLOR = 0xFFFF0000;
     private static final int LOOK_COLOR = 0xFF0000FF;
+
+    private static final Pattern HEX_RGB = Pattern.compile("[0-9A-Fa-f]{6}");
 
     /** Entity id -> category ordinal, rebuilt on the throttle. */
     private final Int2IntOpenHashMap categories = new Int2IntOpenHashMap();
@@ -148,9 +156,11 @@ public final class EntityHitboxes {
         it.unimi.dsi.fastutil.ints.IntOpenHashSet namedByStand = null;
         if (wantSkyblock) {
             namedByStand = new it.unimi.dsi.fastutil.ints.IntOpenHashSet();
-            for (Entity entity : level.entitiesForRendering()) {
-                if (entity instanceof ArmorStand stand && stand.hasCustomName()
-                        && MobHighlightTracker.mobNameInNametag(stand.getCustomName().getString()) != null) {
+            // The index keeps each stand's mob name per name change, so no getString / regex here.
+            List<Tracked> standBucket = EntityIndex.bucket(EntityKind.ARMOR_STAND);
+            for (int i = 0; i < standBucket.size(); i++) {
+                Tracked tracked = standBucket.get(i);
+                if (tracked.entity instanceof ArmorStand stand && tracked.mobName() != null) {
                     LivingEntity mob = MobHighlightTracker.mobBelow(level, stand);
                     if (mob != null) {
                         namedByStand.add(mob.getId());
@@ -158,23 +168,28 @@ public final class EntityHitboxes {
                 }
             }
         }
-        for (Entity entity : level.entitiesForRendering()) {
-            boolean stand = entity instanceof ArmorStand;
-            if (stand && !wantStands) {
+        for (EntityKind kind : KINDS) {
+            if (kind == EntityKind.ARMOR_STAND && !wantStands) {
                 continue;   // thousands of hologram stands: not even classified unless asked for
             }
-            boolean playerShaped = entity instanceof Avatar;
-            boolean living = entity instanceof LivingEntity;
-            boolean skyblockNamed = wantSkyblock && living && !stand && !playerShaped
-                    && (namedByStand.contains(entity.getId())
-                    || (entity.hasCustomName()
-                    && MobHighlightTracker.mobNameInNametag(entity.getCustomName().getString()) != null));
-            HitboxCategory category = HitboxCategory.classify(entity == minecraft.player, playerShaped,
-                    playerShaped && RealPlayers.isRealPlayer(entity), stand, entity instanceof ItemEntity,
-                    entity instanceof Projectile, living, skyblockNamed, entity instanceof Enemy);
-            categories.put(entity.getId(), category.ordinal());
+            List<Tracked> bucket = EntityIndex.bucket(kind);
+            for (int i = 0; i < bucket.size(); i++) {
+                Tracked tracked = bucket.get(i);
+                Entity entity = tracked.entity;
+                boolean stand = entity instanceof ArmorStand;
+                boolean playerShaped = entity instanceof Avatar;
+                boolean living = entity instanceof LivingEntity;
+                boolean skyblockNamed = wantSkyblock && living && !stand && !playerShaped
+                        && (namedByStand.contains(entity.getId()) || tracked.mobName() != null);
+                HitboxCategory category = HitboxCategory.classify(entity == minecraft.player, playerShaped,
+                        playerShaped && RealPlayers.hasPlayerListEntry(entity), stand, entity instanceof ItemEntity,
+                        entity instanceof Projectile, living, skyblockNamed, entity instanceof Enemy);
+                categories.put(entity.getId(), category.ordinal());
+            }
         }
     }
+
+    private static final EntityKind[] KINDS = EntityKind.values();
 
     /** Whether a category is drawn. NPCs ride on Other, and only while they are not hidden. */
     static boolean on(SBSConfig.EntityHitboxSettings cfg, HitboxCategory category) {
@@ -213,6 +228,6 @@ public final class EntityHitboxes {
             return fallback;
         }
         String s = hex.trim().replace("#", "");
-        return s.matches("[0-9A-Fa-f]{6}") ? Integer.parseInt(s, 16) : fallback;
+        return HEX_RGB.matcher(s).matches() ? Integer.parseInt(s, 16) : fallback;
     }
 }

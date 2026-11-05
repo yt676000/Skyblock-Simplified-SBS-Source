@@ -24,6 +24,25 @@ public final class EventCalendar {
     /** Real seconds per SkyBlock minute: 1200 real seconds over 1440 SkyBlock minutes. */
     public static final double REAL_SECONDS_PER_MINUTE = 1200.0 / DAY_MINUTES;
 
+    /**
+     * Early Spring 1st, Year 1, 00:00 as a real instant: 2019-06-11 17:55:00 UTC (wiki, "Time").
+     * Checked against 165 logged "What SkyBlock year is it?" frames: the year this yields was one of
+     * Oruo's three options every time.
+     */
+    public static final long YEAR_ONE_EPOCH_SECONDS = 1_560_275_700L;
+
+    /** Real seconds in one SkyBlock year: 372 days of 20 real minutes - 5 days and 4 hours. */
+    public static final long REAL_SECONDS_PER_YEAR = (long) DAYS_PER_YEAR * 1200L;
+
+    /**
+     * The SkyBlock year at a real instant, 1-based. Needs no sidebar sync: the year is a pure
+     * function of real time, unlike the day, which the timers card anchors off the scoreboard.
+     */
+    public static long yearAt(long epochMillis) {
+        return Math.floorDiv(Math.floorDiv(epochMillis, 1000L) - YEAR_ONE_EPOCH_SECONDS,
+                REAL_SECONDS_PER_YEAR) + 1;
+    }
+
     /** Where a rule stands: running (minutes until it ends) or upcoming (minutes until it starts). */
     public record Occurrence(boolean running, long minutes) {
 

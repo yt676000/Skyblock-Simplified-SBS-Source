@@ -76,7 +76,9 @@ public abstract class ServerPackBypassMixin {
             ci.cancel();
             return;
         }
-        if (!settings.autoAcceptServerPacks) {
+        // Auto-accept acts once, on the client-thread pass: the network pass is about to be
+        // re-scheduled anyway, and ServerData is not ours to write from the network thread.
+        if (networkPass || !settings.autoAcceptServerPacks) {
             return;
         }
         // Vanilla only prompts while the status is PROMPT (or a required pack while DISABLED); flipping
@@ -99,6 +101,10 @@ public abstract class ServerPackBypassMixin {
      * Keep Loaded: leaving SkyBlock pops its pack, which is a full reload. The pack stays instead.
      * Vanilla sends no reply to a pop ({@code RemovalReason.SERVER_REMOVED} carries none), so neither
      * do we. Pops of any other pack, and pop-all, run as usual.
+     *
+     * <p>Runs on both passes (network, then client thread). Cancelling must happen on the network
+     * pass to stop the re-schedule; {@code ignorePop} is a side-effect-free read of a concurrent
+     * set, so the double call is harmless.
      */
     @Inject(method = "handleResourcePackPop", at = @At("HEAD"), cancellable = true)
     private void skyblockSimplified$onPackPop(ClientboundResourcePackPopPacket packet, CallbackInfo ci) {

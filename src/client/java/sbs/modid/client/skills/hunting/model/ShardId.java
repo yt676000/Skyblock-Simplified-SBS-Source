@@ -9,6 +9,7 @@
 package sbs.modid.client.skills.hunting.model;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The one spelling of "which shard is this": {@code ATTRIBUTE_SHARD_<NAME>;<tier>}.
@@ -29,6 +30,9 @@ import java.util.Locale;
  * <p>Pure string work with no game types, so it is unit-tested directly ({@code ShardIdTest}).
  */
 public final class ShardId {
+
+    private static final Pattern NON_ALNUM_RUN = Pattern.compile("[^A-Z0-9]+");
+    private static final Pattern EDGE_UNDERSCORES = Pattern.compile("^_+|_+$");
 
     /** The prefix every canonical id carries; also Hypixel's own shared item id for these. */
     public static final String PREFIX = "ATTRIBUTE_SHARD_";
@@ -68,9 +72,8 @@ public final class ShardId {
         if (name == null) {
             return null;
         }
-        String key = name.toUpperCase(Locale.ROOT)
-                .replaceAll("[^A-Z0-9]+", "_")
-                .replaceAll("^_+|_+$", "");
+        String key = NON_ALNUM_RUN.matcher(name.toUpperCase(Locale.ROOT)).replaceAll("_");
+        key = EDGE_UNDERSCORES.matcher(key).replaceAll("");
         return key.isEmpty() ? null : key;
     }
 

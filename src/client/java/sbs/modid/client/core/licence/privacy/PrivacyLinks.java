@@ -13,17 +13,19 @@ import net.fabricmc.loader.api.metadata.ContactInformation;
 import sbs.modid.SkyblockSimplifiedSBS;
 
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * The two outbound links the privacy screen offers: the website and the Discord.
+ * The two outbound links the privacy screen offers: the privacy policy on the website and the
+ * Discord.
  *
- * <p><b>Neither URL is written in Java.</b> They live in the {@code contact} block of
- * {@code fabric.mod.json}, which is where a Fabric mod's outbound links belong and what every mod
- * list already reads - so moving the site or reissuing the invite is a resource edit, not a code
- * change and a recompile. A URL that has to be changed in a {@code static final String} is a URL
- * that stays wrong until someone rebuilds.
+ * <p><b>The website root and the invite are not written in Java.</b> They live in the
+ * {@code contact} block of {@code fabric.mod.json}, which is where a Fabric mod's outbound links
+ * belong and what every mod list already reads - so reissuing the invite is a resource edit, not a
+ * code change. The policy path and the allowed policy host are constants here, because the policy
+ * URL is checked against them before a button is shown (see {@link #isAllowedPolicyUrl}).
  *
  * <p><b>Absent means absent.</b> Every accessor returns {@code ""} when the key is missing or blank
  * rather than a guess or a placeholder, and the caller renders no button at all. A button that opens
@@ -34,21 +36,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class PrivacyLinks {
 
     /**
-     * Whether {@code /privacy} exists on the website yet.
-     *
-     * <p>Flip this to {@code true} the day the route is live and two things follow on their own:
-     * {@link #privacyUrl()} starts pointing at the notice itself instead of the site root, and the
-     * "still being published, read PRIVACY.md" line disappears from the screen. Until then the
-     * button deliberately opens the root, because the root exists.
-     *
-     * <p>A constant and not a probe: this is a fact about a website we publish, known at build time,
-     * and a runtime check would put a network request behind opening a settings page.
+     * Whether the privacy policy is published on the website. While {@code false},
+     * {@link #privacyUrl()} points at the site root instead of the policy page.
      */
-    public static final boolean PUBLISHED = false;
+    public static final boolean PUBLISHED = true;
 
-    /** The privacy notice's path once {@link #PUBLISHED}. */
-    private static final String PRIVACY_PATH = "/privacy";
+    /** The privacy policy's path on the website. */
+    private static final String PRIVACY_PATH = "/datenschutz.html";
 
+    /** The only hosts the privacy button may open. */
+    private static final String POLICY_HOST = "skyblocksimplified.de";
+
+    private static final AtomicBoolean POLICY_REJECTED = new AtomicBoolean();
     private static final AtomicBoolean WEBSITE_WARNED = new AtomicBoolean();
     private static final AtomicBoolean DISCORD_WARNED = new AtomicBoolean();
 
@@ -66,17 +65,60 @@ public final class PrivacyLinks {
     }
 
     /**
-     * Where the privacy button should go: the notice once it is published, the site root before
-     * then. Empty when there is no website configured at all.
+     * Where the privacy button should go: the policy page under {@code contact.homepage}. Empty
+     * when there is no website configured, or when the resulting URL fails
+     * {@link #isAllowedPolicyUrl}; the latter is logged once.
      */
     public static String privacyUrl() {
-        String root = website();
-        if (root.isEmpty() || !PUBLISHED) {
+        String url = privacyUrl(website());
+        if (url.isEmpty()) {
+            return "";
+        }
+        if (!isAllowedPolicyUrl(url)) {
+            if (POLICY_REJECTED.compareAndSet(false, true)) {
+                SkyblockSimplifiedSBS.LOGGER.warn(
+                        "[SBS][Privacy] The privacy policy URL {} is not an https URL on {} - the "
+                                + "button is not shown.", url, POLICY_HOST);
+            }
+            return "";
+        }
+        return url;
+    }
+
+    /** The policy URL for a given website root; {@code ""} for an empty root. */
+    static String privacyUrl(String root) {
+        if (root == null || root.isEmpty()) {
+            return "";
+        }
+        if (!PUBLISHED) {
             return root;
         }
         return root.endsWith("/")
                 ? root.substring(0, root.length() - 1) + PRIVACY_PATH
                 : root + PRIVACY_PATH;
+    }
+
+    /**
+     * Whether a URL may be opened by the privacy button: scheme {@code https}, host exactly
+     * {@code skyblocksimplified.de} or {@code www.skyblocksimplified.de}, no user info, no port.
+     */
+    public static boolean isAllowedPolicyUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return false;
+        }
+        try {
+            URI uri = new URI(url);
+            if (!"https".equals(uri.getScheme()) || uri.getRawUserInfo() != null || uri.getPort() != -1) {
+                return false;
+            }
+            String host = uri.getHost();
+            String authority = uri.getRawAuthority();
+            return host != null
+                    && host.equals(authority)
+                    && (host.equals(POLICY_HOST) || host.equals("www." + POLICY_HOST));
+        } catch (URISyntaxException e) {
+            return false;
+        }
     }
 
     /**
@@ -92,8 +134,10 @@ public final class PrivacyLinks {
 // METHOD: parsing only, no traffic
 // PURPOSE: Honest link labels. The host is derived from the URL rather than written beside it,
 //   so the label cannot drift from the destination when one of them is edited.
-// DATA SENT: Nothing. Opening the link is the operating system browser doing it, on a click,
-//   with no data added by the mod.
+// DATA SENT: Nothing. Opening the link is the operating system browser doing it, on a click
+//   and after Minecraft's confirm prompt, with no data added by the mod. The privacy button
+//   opens https://skyblocksimplified.de/datenschutz.html only; any other policy URL is
+//   rejected by isAllowedPolicyUrl and no button is shown.
 // DATA RECEIVED: Nothing.
 // SAFETY DECLARATION: No network activity at all. Listed here because a reviewer grepping the
 //   audit keyword should find every URL-handling site, including the ones that turn out to be

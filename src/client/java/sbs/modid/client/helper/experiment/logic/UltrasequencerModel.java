@@ -230,7 +230,7 @@ final class UltrasequencerModel {
      * tile is, since any other square ends the experiment. Fails open: nothing known, a passive round, or
      * two refusals in a row (see {@link MisclickValve}) all let the click through.
      */
-    boolean allowsClick(int slot) {
+    boolean allowsClick(int slot, long now) {
         int next = nextSlot();
         if (passive || valve.open() || phase != Phase.INPUT || next < 0 || !inArea(area, slot)) {
             return true;
@@ -239,7 +239,7 @@ final class UltrasequencerModel {
             valve.allowed();
             return true;
         }
-        if (valve.veto(slot)) {
+        if (valve.veto(slot, now)) {
             passive = true;
             return true;
         }
@@ -252,6 +252,21 @@ final class UltrasequencerModel {
         if (number != null && phase == Phase.INPUT) {
             clickedThrough(number);
         }
+    }
+
+    /** Applies the player's guard settings (see {@link MisclickValve#configure}). */
+    void configureGuard(int vetoLimit, long staleMs) {
+        valve.configure(vetoLimit, staleMs);
+    }
+
+    /** Whether the guard stood down for this round while input is still going on - the "paused" chip. */
+    boolean guardPaused() {
+        return passive && phase == Phase.INPUT;
+    }
+
+    String guardDebug(long now) {
+        return "phase=" + phase + " passive=" + passive + " next=" + nextSlot() + " inArea="
+                + (area != null) + " " + valve.describe(now);
     }
 
     String debug() {

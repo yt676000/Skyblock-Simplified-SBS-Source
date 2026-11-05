@@ -55,6 +55,12 @@ public final class SkillTracker {
     private volatile long lastGain;
 
     /**
+     * Bumped whenever the skill, its XP or its requirement changes, so the overlay rebuilds its text
+     * on a change (or its one-second clock, for the rate and ETA) instead of every frame.
+     */
+    private volatile int version;
+
+    /**
      * The last skill to pay out anything at all, and when - recorded even when the action bar
      * carries no {@code (current/required)} part.
      *
@@ -72,6 +78,11 @@ public final class SkillTracker {
 
     public static SkillTracker getInstance() {
         return INSTANCE;
+    }
+
+    /** Moves whenever the overlay's inputs change; see {@link #version}. */
+    public int version() {
+        return version;
     }
 
     // ------------------------------------------------------------------
@@ -116,11 +127,15 @@ public final class SkillTracker {
                 this.current = current;
                 this.required = required;
                 this.lastGain = now;
+                version++;
                 return;
             }
             // Only count a gain when the counter really moved. Hypixel repeats the same action bar
             // continuously; without this the rate would climb with the frame rate.
             boolean moved = current != this.current;
+            if (moved || required != this.required) {
+                version++;
+            }
             this.current = current;
             this.required = required;
             if (!moved) {
@@ -150,6 +165,7 @@ public final class SkillTracker {
             lastGain = 0;
             anySkill = null;
             anyGain = 0;
+            version++;
         }
     }
 

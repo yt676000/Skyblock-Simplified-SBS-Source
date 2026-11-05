@@ -11,7 +11,6 @@ package sbs.modid.client.skills.foraging.render;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.network.chat.Component;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.skills.SkillIslands;
@@ -58,6 +57,20 @@ public final class SweepHud {
     /** How long the card holds its widest measurement before it is allowed to shrink. */
     private static final long SHRINK_HOLD_MS = 1_500L;
 
+    private static final int PAD = 5;
+
+    /**
+     * The card as last built, {@code null} when the chop had nothing to show. Rebuilt only when its
+     * key below moves: a new chop or session figure, the stale dimming, or a row setting.
+     * Render thread only.
+     */
+    private static HudCard.Snapshot card;
+    private static int builtTracker = -1;
+    private static boolean builtDim;
+    private static boolean builtToughness;
+    private static boolean builtBlocks;
+    private static boolean builtSession;
+
     private SweepHud() {
     }
 
@@ -93,6 +106,49 @@ public final class SweepHud {
         // for a stable readout while comparing gear.
         boolean dim = stale && cfg.staleMode == SweepStaleMode.GREY;
 
+        int version = tracker.version();
+        if (version != builtTracker || dim != builtDim || cfg.showToughness != builtToughness
+                || cfg.showBlocks != builtBlocks || cfg.showSessionStats != builtSession) {
+            builtTracker = version;
+            builtDim = dim;
+            builtToughness = cfg.showToughness;
+            builtBlocks = cfg.showBlocks;
+            builtSession = cfg.showSessionStats;
+            card = build(tracker, chop, cfg, dim);
+        }
+        HudCard.Snapshot current = card;
+        if (current == null) {
+            return;
+        }
+
+        Font font = Minecraft.getInstance().font;
+        int lineH = font.lineHeight + 2;
+        // The snapshot's width is the raw measurement; the step and the shrink hold are applied per
+        // frame because the hold is a clock of its own.
+        int width = quantise(current.width());
+        int height = current.height();
+
+        HudElement.Bounds b = HudElement.FORAGING_SWEEP.defaultBounds(g.guiWidth(), g.guiHeight());
+        int x = Math.round(b.x());
+        int y = Math.round(b.y());
+        HudLayout.measure(HudElement.FORAGING_SWEEP, x, y, width, height);
+
+        HudLayout.begin(g, HudElement.FORAGING_SWEEP);
+        HudCard.draw(g, x, y, width, height);
+
+        int ix = x + PAD;
+        int right = x + width - PAD;
+        int iy = y + PAD;
+        for (HudCard.Line line : current.rows()) {
+            HudCard.drawLine(g, font, line, ix, right, iy);
+            iy += lineH;
+        }
+        HudLayout.end(g);
+    }
+
+    /** The card's rows and unstepped size, or {@code null} when the chop carries nothing to show. */
+    private static HudCard.Snapshot build(SweepTracker tracker, SweepChop chop,
+                                          SBSConfig.SweepSettings cfg, boolean dim) {
         List<String[]> rows = new ArrayList<>(5);
         if (chop.hasSweep()) {
             rows.add(new String[] {"Sweep", "∮" + number(chop.effectiveSweep())});
@@ -112,42 +168,24 @@ public final class SweepHud {
             rows.add(new String[] {"Avg", "∮" + number(tracker.sessionAverage())});
         }
         if (rows.isEmpty()) {
-            return;
+            return null;
         }
 
         Font font = Minecraft.getInstance().font;
         int lineH = font.lineHeight + 2;
-        int pad = 5;
-        String header = "Sweep";
-        int contentW = font.width(header);
+        List<HudCard.Line> lines = new ArrayList<>(rows.size() + 1);
+        lines.add(HudCard.Line.of(font, "Sweep", dim ? SBSTheme.TEXT_MUTED : SBSTheme.ACCENT_BRIGHT));
+        int contentW = lines.get(0).leftWidth();
         for (String[] row : rows) {
-            contentW = Math.max(contentW, font.width(row[0]) + 12 + font.width(row[1]));
-        }
-        int width = quantise(Math.max(MIN_WIDTH, contentW + pad * 2));
-        int height = pad * 2 + lineH * (1 + rows.size()) - 2;
-
-        HudElement.Bounds b = HudElement.FORAGING_SWEEP.defaultBounds(g.guiWidth(), g.guiHeight());
-        int x = Math.round(b.x());
-        int y = Math.round(b.y());
-        HudLayout.measure(HudElement.FORAGING_SWEEP, x, y, width, height);
-
-        HudLayout.begin(g, HudElement.FORAGING_SWEEP);
-        HudCard.draw(g, x, y, width, height);
-
-        int ix = x + pad;
-        int right = x + width - pad;
-        int iy = y + pad;
-        g.text(font, Component.literal(header), ix, iy,
-                dim ? SBSTheme.TEXT_MUTED : SBSTheme.ACCENT_BRIGHT);
-        iy += lineH;
-        for (String[] row : rows) {
-            g.text(font, Component.literal(row[0]), ix, iy, SBSTheme.TEXT_MUTED);
             int colour = dim ? SBSTheme.TEXT_MUTED
                     : (row[0].equals("Sweep") ? 0xFF57D977 : SBSTheme.TEXT);
-            g.text(font, Component.literal(row[1]), right - font.width(row[1]), iy, colour);
-            iy += lineH;
+            HudCard.Line line = HudCard.Line.of(font, row[0], SBSTheme.TEXT_MUTED, row[1], colour);
+            lines.add(line);
+            contentW = Math.max(contentW, line.width(12));
         }
-        HudLayout.end(g);
+        int width = Math.max(MIN_WIDTH, contentW + PAD * 2);
+        int height = PAD * 2 + lineH * lines.size() - 2;
+        return new HudCard.Snapshot(List.copyOf(lines), width, height, null);
     }
 
     /** Whether either hand holds an axe - the offhand counts, since a thrown axe leaves the main one. */

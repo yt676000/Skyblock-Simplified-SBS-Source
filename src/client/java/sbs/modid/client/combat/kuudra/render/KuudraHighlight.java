@@ -19,7 +19,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.monster.cubemob.MagmaCube;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.combat.kuudra.logic.FreshTracker;
 import sbs.modid.client.combat.kuudra.logic.KuudraAbilities;
 import sbs.modid.client.combat.kuudra.logic.KuudraTracker;
@@ -55,6 +56,8 @@ import java.util.Locale;
  * <i>tracker</i> rather than two places to look.
  */
 public final class KuudraHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     /** How tall a marker beam is drawn. Tall enough to clear the walkways from anywhere in the arena. */
     private static final double BEAM_HEIGHT = 40.0;
@@ -99,7 +102,7 @@ public final class KuudraHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f vp = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc vp = FrameCamera.viewProjection();
         Font font = minecraft.font;
         KuudraPhase phase = tracker.phase();
 
@@ -151,7 +154,7 @@ public final class KuudraHighlight {
      * halfway through the phase. A pile whose crate has been called missing is drawn in the alert
      * colour with the call on it, because that pile is the one nobody should be waiting at.
      */
-    private static void piles(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void piles(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                               SBSConfig.KuudraSettings cfg) {
         SupplyTracker supplies = SupplyTracker.getInstance();
         int normal = cfg.pileColor.argb();
@@ -169,7 +172,7 @@ public final class KuudraHighlight {
     }
 
     /** Live crates: one beam per carrier, wherever it currently is down in the lava. */
-    private static void carriers(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void carriers(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                                  LocalPlayer player, SBSConfig.KuudraSettings cfg) {
         int color = cfg.supplyColor.argb();
         for (Vec3 pos : SupplyTracker.getInstance().carriers()) {
@@ -188,7 +191,7 @@ public final class KuudraHighlight {
      * behind" - the answer has to be readable at a glance from the other side of the platform, and a
      * colour carries that at a distance where the percentage text does not.
      */
-    private static void buildPiles(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos) {
+    private static void buildPiles(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos) {
         for (SupplyTracker.PileProgress pile : SupplyTracker.getInstance().buildPiles()) {
             int color = BUILD_RAMP[Math.min(BUILD_RAMP.length - 1, Math.max(0, pile.percent() / 20))];
             beam(g, vp, camPos, pile.position(), color);
@@ -197,7 +200,7 @@ public final class KuudraHighlight {
     }
 
     /** The fresh countdown over each fresh player's head - who is buffed, and for how much longer. */
-    private static void freshTimers(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void freshTimers(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                                     ClientLevel level) {
         FreshTracker fresh = FreshTracker.getInstance();
         for (AbstractClientPlayer other : level.players()) {
@@ -215,7 +218,7 @@ public final class KuudraHighlight {
     // ------------------------------------------------------------------ phase three
 
     /** The three pods inside the mouth. Boxed rather than beamed - it is a small room, not an arena. */
-    private static void pods(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void pods(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                              SBSConfig.KuudraSettings cfg) {
         int color = cfg.stunColor.argb();
         for (Vec3 pod : PODS) {
@@ -235,7 +238,7 @@ public final class KuudraHighlight {
      * recorded pitch matches where you are actually looking turns green: that is the entire feedback
      * loop, and it is why the pitch is on the label at all.
      */
-    private static void pearls(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void pearls(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                                LocalPlayer player, SBSConfig.KuudraSettings cfg) {
         PearlArea area = PearlStore.areaAt(player.position());
         if (area == null) {
@@ -268,7 +271,7 @@ public final class KuudraHighlight {
     }
 
     /** Ichor pools a teammate called out: the ring of floor their buff covers. */
-    private static void pools(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos) {
+    private static void pools(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos) {
         List<KuudraAbilities.Pool> pools = KuudraAbilities.getInstance().pools();
         if (pools.isEmpty()) {
             return;
@@ -279,7 +282,7 @@ public final class KuudraHighlight {
     }
 
     /** Kuudra himself, boxed on his real hitbox so the shots that miss are visibly misses. */
-    private static void hitbox(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos, MagmaCube boss,
+    private static void hitbox(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos, MagmaCube boss,
                                SBSConfig.KuudraSettings cfg) {
         if (boss == null || !boss.isAlive()) {
             return;
@@ -296,7 +299,7 @@ public final class KuudraHighlight {
     // ------------------------------------------------------------------ drawing helpers
 
     /** A column of light on a spot: a translucent fill inside solid edges, so it reads at any range. */
-    private static void beam(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos, Vec3 at, int color) {
+    private static void beam(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos, Vec3 at, int color) {
         double x0 = at.x - BEAM_HALF;
         double z0 = at.z - BEAM_HALF;
         double x1 = at.x + BEAM_HALF;
@@ -307,35 +310,46 @@ public final class KuudraHighlight {
     }
 
     /** A flat ring on the floor, drawn as a closed polygon of short segments. */
-    private static void ring(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos, Vec3 center,
+    private static void ring(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos, Vec3 center,
                              double radius, int color) {
         final int segments = 48;
         int gw = g.guiWidth();
         int gh = g.guiHeight();
-        int[] previous = null;
-        int[] first = null;
+        int[] screen = SCREEN;
+        boolean hasPrevious = false;
+        boolean hasFirst = false;
+        int previousX = 0;
+        int previousY = 0;
+        int firstX = 0;
+        int firstY = 0;
         for (int i = 0; i < segments; i++) {
             double angle = i * 2 * Math.PI / segments;
-            Vec3 point = center.add(Math.cos(angle) * radius, 0.05, Math.sin(angle) * radius);
-            int[] screen = WorldRender.projectToScreen(vp, camPos, point, gw, gh);
-            if (screen != null && previous != null) {
-                WorldRender.line(g, previous[0], previous[1], screen[0], screen[1], color, 2);
+            boolean visible = WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                    center.x + Math.cos(angle) * radius, center.y + 0.05, center.z + Math.sin(angle) * radius,
+                    gw, gh, screen);
+            if (visible && hasPrevious) {
+                WorldRender.line(g, previousX, previousY, screen[0], screen[1], color, 2);
             }
-            if (first == null) {
-                first = screen;
+            if (visible && !hasFirst) {
+                hasFirst = true;
+                firstX = screen[0];
+                firstY = screen[1];
             }
-            previous = screen;
+            hasPrevious = visible;
+            previousX = screen[0];
+            previousY = screen[1];
         }
-        if (first != null && previous != null) {
-            WorldRender.line(g, previous[0], previous[1], first[0], first[1], color, 2);
+        if (hasFirst && hasPrevious) {
+            WorldRender.line(g, previousX, previousY, firstX, firstY, color, 2);
         }
     }
 
     /** One line of text centred over a world point. Skipped silently when it is behind the camera. */
-    private static void label(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void label(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                               Vec3 at, String text, int color) {
-        int[] screen = WorldRender.projectToScreen(vp, camPos, at, g.guiWidth(), g.guiHeight());
-        if (screen == null) {
+        int[] screen = SCREEN;
+        if (!WorldRender.project(vp, camPos.x, camPos.y, camPos.z, at.x, at.y, at.z,
+                g.guiWidth(), g.guiHeight(), screen)) {
             return;
         }
         g.text(font, Component.literal(text), screen[0] - font.width(text) / 2, screen[1], color, false);

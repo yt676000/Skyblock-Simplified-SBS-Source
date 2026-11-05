@@ -8,6 +8,8 @@
 
 package sbs.modid.client.economy.pricehistory.logic;
 
+import sbs.modid.client.core.net.UrlGuard;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -669,7 +671,7 @@ public final class PriceHistoryView {
         if (hovered(imx, imy, webX, y, webW, HEADER_H)) {
             // Native confirm-link flow (same as the Recipe Viewer's wiki link); the SBS-tracked
             // screen is used because Minecraft's screen field/method shape differs across versions.
-            ConfirmLinkScreen.confirmLinkNow(
+            UrlGuard.openAfterClick(
                     sbs.modid.client.core.api.GuiStateManager.getInstance().getCurrentScreen(),
                     site() + "#/item/" + itemId);
             return true;

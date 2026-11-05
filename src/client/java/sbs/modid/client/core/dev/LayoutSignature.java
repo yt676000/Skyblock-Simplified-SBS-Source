@@ -59,6 +59,11 @@ public final class LayoutSignature {
     private static final Pattern MONTH_DATE = Pattern.compile(
             "(?i)\\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \\d{1,2}(?:, \\d{4})?\\b");
 
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    private static final Pattern NON_SLUG = Pattern.compile("[^a-z0-9]+");
+    private static final Pattern SLUG_EDGES = Pattern.compile("(^-+|-+$)");
+    private static final Pattern TRAILING_DASHES = Pattern.compile("-+$");
+
     private static final Pattern CLOCK = Pattern.compile("(?i)\\b\\d{1,2}:\\d{2}(?::\\d{2})?\\s*(?:am|pm)?(?![\\w])");
     /** "12m 30s", "1h 55m", "2d 6h", "45s", "01m 02s" - integer amounts with a d/h/m/s unit. */
     private static final Pattern DURATION = Pattern.compile("\\b(?:\\d+[dhms]\\b\\s*)+");
@@ -102,7 +107,7 @@ public final class LayoutSignature {
      */
     public static String numbers(String text) {
         String normalised = PLAIN_NUMBER.matcher(stripCodes(text)).replaceAll("#");
-        return normalised.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        return WHITESPACE.matcher(normalised.trim()).replaceAll(" ").toLowerCase(Locale.ROOT);
     }
 
     /** {@link #normalise(String, Collection)} with no known players beyond the rank/level rules. */
@@ -133,7 +138,7 @@ public final class LayoutSignature {
         s = DURATION.matcher(s).replaceAll(TIME + " ");
         s = BAR_RUN.matcher(s).replaceAll(BAR);
         s = NUMBER.matcher(s).replaceAll("#");
-        return s.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        return WHITESPACE.matcher(s.trim()).replaceAll(" ").toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -223,9 +228,9 @@ public final class LayoutSignature {
 
     /** A file-system-safe slug: lower case, letters/digits/dashes, at most 60 chars, never empty. */
     public static String slug(String text) {
-        String slug = normalise(text).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-+|-+$)", "");
+        String slug = SLUG_EDGES.matcher(NON_SLUG.matcher(normalise(text)).replaceAll("-")).replaceAll("");
         if (slug.length() > 60) {
-            slug = slug.substring(0, 60).replaceAll("-+$", "");
+            slug = TRAILING_DASHES.matcher(slug.substring(0, 60)).replaceAll("");
         }
         return slug.isEmpty() ? "untitled" : slug;
     }

@@ -70,8 +70,15 @@ public final class LoadoutHud {
                 g.guiWidth(), g.guiHeight());
         float[] screen = {shown.x(), shown.y(), shown.w() / (float) w};
 
-        HudLayout.begin(g, HudElement.EQUIPPED_LOADOUT);
-        overlay.renderCard(g, loadout, x, y, w, h, screen);
-        HudLayout.end(g);
+        // TEMPORARY measurement: the card is "hud.loadoutCard"; drawCard closes it around the preview
+        // player and reopens it after, so "hud.loadoutPreview" is sequential, not nested.
+        sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.loadoutCard");
+        try {
+            HudLayout.begin(g, HudElement.EQUIPPED_LOADOUT);
+            overlay.renderCard(g, loadout, x, y, w, h, screen);
+            HudLayout.end(g);
+        } finally {
+            perf.close();
+        }
     }
 }

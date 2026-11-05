@@ -11,13 +11,11 @@ package sbs.modid.client.combat.damage.render;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.network.chat.Component;
 import sbs.modid.client.combat.damage.logic.DamageEstimator;
 import sbs.modid.client.combat.damage.model.DamageFormat;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.ui.hud.render.HudCard;
-import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
 import sbs.modid.client.ui.hud.edit.model.HudElement;
 import sbs.modid.client.ui.hud.edit.logic.HudLayout;
@@ -31,6 +29,10 @@ import java.util.Locale;
  * hit, crit, DPS and swings-to-kill, all live against the mob's current HP bar (Execute grows as
  * the bar drops, Prosecute shrinks). Self-hiding: it only exists while the overlay is on and a mob
  * is targeted. Movable / scalable via the GUI editor.
+ *
+ * <p>The estimator publishes a new {@link DamageEstimator.Estimate} on every scan whether or not
+ * anything moved, so the card keys its {@link HudCard.Snapshot} on the estimate's value (a record)
+ * plus the settings it shows - an unchanged mob rebuilds nothing, and a frame only draws.
  */
 public final class DamageEstimateHud {
 
@@ -43,6 +45,13 @@ public final class DamageEstimateHud {
     private static final int HP_HIGH = 0xFF57D977;
     private static final int HP_MID = 0xFFE5C34A;
     private static final int HP_LOW = 0xFFE0605F;
+
+    /** What a snapshot was built for: the estimate by value, and the settings that shape the rows. */
+    private record Version(DamageEstimator.Estimate estimate, int combatLevel, boolean showDps,
+                           boolean showHitsToKill, boolean showDetails) {
+    }
+
+    private static volatile HudCard.Snapshot snapshot;
 
     private DamageEstimateHud() {
     }
@@ -58,14 +67,24 @@ public final class DamageEstimateHud {
         if (estimate == null) {
             return; // nothing under the crosshair
         }
+        HudCard.Snapshot card = snapshot;
+        // Field by field against the built version, so an unchanged frame allocates no key.
+        if (card == null || !(card.version() instanceof Version built)
+                || (built.estimate() != estimate && !built.estimate().equals(estimate))
+                || built.combatLevel() != cfg.combatLevel || built.showDps() != cfg.showDps
+                || built.showHitsToKill() != cfg.showHitsToKill || built.showDetails() != cfg.showDetails) {
+            card = build(new Version(estimate, cfg.combatLevel, cfg.showDps, cfg.showHitsToKill,
+                    cfg.showDetails));
+            snapshot = card;
+        }
         HudElement.Bounds bounds = HudElement.DAMAGE_ESTIMATE.defaultBounds(g.guiWidth(), g.guiHeight());
         HudLayout.begin(g, HudElement.DAMAGE_ESTIMATE);
-        draw(g, estimate, cfg, (int) bounds.x(), (int) bounds.y());
+        draw(g, card, (int) bounds.x(), (int) bounds.y());
         HudLayout.end(g);
     }
 
-    private static void draw(GuiGraphicsExtractor g, DamageEstimator.Estimate est,
-                             SBSConfig.DamageOverlaySettings cfg, int x, int y) {
+    private static HudCard.Snapshot build(Version version) {
+        DamageEstimator.Estimate est = version.estimate();
         Font font = Minecraft.getInstance().font;
         String title = est.level() > 0 ? est.mobName() + " Lv" + est.level() : est.mobName();
 
@@ -89,62 +108,64 @@ public final class DamageEstimateHud {
         } else if (est.result() != null) {
             // Combat level is the single biggest additive term (+4%/level, up to +210%), so an
             // uncaptured one is called out rather than quietly costing a factor of three.
-            if (cfg.combatLevel <= 0) {
+            if (version.combatLevel() <= 0) {
                 rows.add(new String[] {"⚠ Combat lvl unset", ""});
             }
             rows.add(new String[] {est.firstHit() ? "Hit (1st)" : "Hit",
                     DamageFormat.compact(est.result().normal())});
             rows.add(new String[] {"Crit", DamageFormat.compact(est.result().crit())});
-            if (cfg.showDps) {
+            if (version.showDps()) {
                 rows.add(new String[] {"DPS", DamageFormat.compact(est.result().dps())});
             }
-            if (cfg.showHitsToKill) {
+            if (version.showHitsToKill()) {
                 rows.add(new String[] {"Kill", est.result().hitsToKill() < 0
                         ? "500+ hits" : "~" + est.result().hitsToKill() + " hits"});
             }
-            if (cfg.showDetails) {
-                footer = "cmb " + cfg.combatLevel + " · def " + est.defense() + (est.calibrated()
+            if (version.showDetails()) {
+                footer = "cmb " + version.combatLevel() + " · def " + est.defense() + (est.calibrated()
                         ? String.format(Locale.ROOT, " · cal ×%.2f", est.calibration())
                         : " · cal —");
             }
         }
 
-        int contentW = Math.max(font.width(title), font.width(hpLine));
+        List<HudCard.Line> lines = new ArrayList<>(rows.size() + 3);
+        lines.add(HudCard.Line.of(font, title, SBSTheme.ACCENT));
+        lines.add(HudCard.Line.of(font, hpLine, hpColor));
+        int contentW = Math.max(lines.get(0).leftWidth(), lines.get(1).leftWidth());
         for (String[] row : rows) {
-            contentW = Math.max(contentW, font.width(row[0]) + COLUMN_GAP + font.width(row[1]));
+            boolean crit = row[0].startsWith("Crit");
+            int labelColor = est.statsMissing() ? SBSTheme.TEXT_MUTED
+                    : crit ? CRIT_COLOR : SBSTheme.TEXT_MUTED;
+            HudCard.Line line = HudCard.Line.of(font, row[0], labelColor, row[1],
+                    crit ? CRIT_COLOR : SBSTheme.TEXT);
+            contentW = Math.max(contentW, line.width(COLUMN_GAP));
+            lines.add(line);
         }
         if (footer != null) {
-            contentW = Math.max(contentW, font.width(footer));
+            HudCard.Line line = HudCard.Line.of(font, footer, SBSTheme.TEXT_MUTED);
+            contentW = Math.max(contentW, line.leftWidth());
+            lines.add(line);
         }
 
         int lineH = font.lineHeight + LINE_GAP;
-        int lines = 2 + rows.size() + (footer != null ? 1 : 0);
         int width = Math.max(MIN_W, PAD * 2 + contentW);
-        int height = PAD * 2 + lineH * lines - LINE_GAP;
-        HudLayout.measure(HudElement.DAMAGE_ESTIMATE, x, y, width, height);
+        int height = PAD * 2 + lineH * lines.size() - LINE_GAP;
+        return new HudCard.Snapshot(List.copyOf(lines), width, height, version);
+    }
 
-        HudCard.draw(g, x, y, width, height);
+    private static void draw(GuiGraphicsExtractor g, HudCard.Snapshot card, int x, int y) {
+        Font font = Minecraft.getInstance().font;
+        HudLayout.measure(HudElement.DAMAGE_ESTIMATE, x, y, card.width(), card.height());
 
+        HudCard.draw(g, x, y, card.width(), card.height());
+
+        int lineH = font.lineHeight + LINE_GAP;
         int ix = x + PAD;
-        int rightEdge = x + width - PAD;
+        int rightEdge = x + card.width() - PAD;
         int iy = y + PAD;
-        g.text(font, Component.literal(title), ix, iy, SBSTheme.ACCENT);
-        iy += lineH;
-        g.text(font, Component.literal(hpLine), ix, iy, hpColor);
-        iy += lineH;
-
-        for (String[] row : rows) {
-            int labelColor = est.statsMissing() ? SBSTheme.TEXT_MUTED
-                    : row[0].startsWith("Crit") ? CRIT_COLOR : SBSTheme.TEXT_MUTED;
-            g.text(font, Component.literal(row[0]), ix, iy, labelColor);
-            if (!row[1].isEmpty()) {
-                g.text(font, Component.literal(row[1]), rightEdge - font.width(row[1]), iy,
-                        row[0].startsWith("Crit") ? CRIT_COLOR : SBSTheme.TEXT);
-            }
+        for (HudCard.Line line : card.rows()) {
+            HudCard.drawLine(g, font, line, ix, rightEdge, iy);
             iy += lineH;
-        }
-        if (footer != null) {
-            g.text(font, Component.literal(footer), ix, iy, SBSTheme.TEXT_MUTED);
         }
     }
 }

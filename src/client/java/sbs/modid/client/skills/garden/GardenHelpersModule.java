@@ -206,6 +206,46 @@ public final class GardenHelpersModule implements SbsModule {
                         .describe("Opens the editor where you drag the pest profit card anywhere on "
                                 + "the screen and scale it."),
 
+                SettingRow.toggle("Farming Net", () -> cfg().farmingNet,
+                        () -> { cfg().farmingNet = !cfg().farmingNet; save(); })
+                        .describe("A card on the farming islands with what farming earned you: crops, "
+                                + "pest loot and served visitors, minus the items visitors took and "
+                                + "what you used up (sprays), as a session total and per hour of "
+                                + "actual farming - breaks longer than Pause After do not count. "
+                                + "Crops need the tab Collection widget (/widgets). A \"+\" means "
+                                + "something has no price yet. Display only."),
+                SettingRow.segmented("Crop Price", java.util.List.of("Sell Order", "Instant Sell", "NPC"),
+                        () -> cfg().farmingNetPriceSource.ordinal(),
+                        index -> { cfg().farmingNetPriceSource =
+                                sbs.modid.client.skills.farming.net.CropPriceSource.values()[index]; save(); })
+                        .describe("What a crop is worth on the Farming Net card: listed as a Bazaar sell "
+                                + "order, sold instantly to the Bazaar, or sold to an NPC."),
+                SettingRow.toggle("Include Visitors", () -> cfg().farmingNetVisitors,
+                        () -> { cfg().farmingNetVisitors = !cfg().farmingNetVisitors; save(); })
+                        .describe("Counts served visitors: the copper they pay in, the items you hand "
+                                + "over out (Bazaar buy price). A visitor whose menu you never opened "
+                                + "is counted without values."),
+                SettingRow.intField("Coins per Copper", 0, 100_000, () -> cfg().farmingNetCoinsPerCopper,
+                        value -> { cfg().farmingNetCoinsPerCopper = value; save(); }, "")
+                        .describe("What one copper is worth to you. 0 leaves copper out of the net "
+                                + "and marks it with \"+\"."),
+                SettingRow.intField("Extra Cost per Hour", 0, 100_000_000,
+                        () -> cfg().farmingNetExtraCostPerHour,
+                        value -> { cfg().farmingNetExtraCostPerHour = value; save(); }, "")
+                        .describe("Any cost of your own per hour of farming - a Booster Cookie, "
+                                + "potions - taken off the net for the time you actually farmed."),
+                SettingRow.toggle("Farming Net Breakdown", () -> cfg().farmingNetBreakdown,
+                        () -> { cfg().farmingNetBreakdown = !cfg().farmingNetBreakdown; save(); })
+                        .describe("Adds a line per crop, the copper and items of your visitors, and "
+                                + "the consumables under the totals."),
+                SettingRow.button("Reset Farming Net", () -> sbs.modid.client.skills.farming.net
+                        .FarmingNetTracker.getInstance().reset())
+                        .describe("Starts the Farming Net card from zero."),
+                SettingRow.button("Move / Resize Farming Net", () -> open(new HudEditorScreen(
+                        new HudElement[] {HudElement.FARMING_NET}, "Edit Farming Net")))
+                        .describe("Opens the editor where you drag the Farming Net card anywhere on "
+                                + "the screen and scale it."),
+
                 SettingRow.toggle("Farming Session Summary", () -> cfg().farmingSession,
                         () -> { cfg().farmingSession = !cfg().farmingSession; save(); })
                         .describe("When you stop farming, a summary of the session: active time, "

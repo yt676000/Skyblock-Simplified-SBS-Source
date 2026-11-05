@@ -12,6 +12,7 @@ import com.google.gson.JsonObject;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.social.playerviewer.ui.PvContext;
@@ -69,7 +70,7 @@ public final class HomeOverviewPage implements PvPage {
     /** Height of the status banner across the top of the page. */
     private static final int STATUS_H = 20;
     /** Height reserved under the model for the SkyBlock-level card. */
-    private static final int LEVEL_CARD_H = 62;
+    private static final int LEVEL_CARD_H = 66;
 
     private PvSkinRender model;
     /** The uuid {@link #model} was built for, so a new player rebuilds it. */
@@ -103,6 +104,11 @@ public final class HomeOverviewPage implements PvPage {
     private int drawStatus(GuiGraphicsExtractor g, PvContext ctx) {
         JsonObject loc = PvDraw.obj(ctx.root, "location");
         if (loc == null) {
+            if (PvDraw.has(ctx.root, "location_unavailable")) {
+                g.text(ctx.font, Component.literal("§8Online status unavailable"), ctx.x + 6,
+                        ctx.y + (STATUS_H - 4 - ctx.font.lineHeight) / 2, SBSTheme.TEXT_MUTED);
+                return ctx.y + STATUS_H;
+            }
             return ctx.y;
         }
         SciFiRender.roundedRectWithBorder(g, ctx.x, ctx.y, ctx.width, STATUS_H - 4,
@@ -201,33 +207,81 @@ public final class HomeOverviewPage implements PvPage {
         }
     }
 
-    /** SkyBlock level with its progress bar, plus the two numbers people quote about a profile. */
+    /**
+     * Hypixel's colour for a SkyBlock level: one colour per 40 levels. Our in-game reading: 451
+     * draws red (2026-10-08); the other bands are the community-documented ones (WIKI).
+     */
+    private static String hypixelLevelColour(int level) {
+        String[] bands = {"§7", "§f", "§e", "§a", "§2", "§b", "§3", "§9", "§d", "§5", "§6", "§c", "§4"};
+        return bands[Math.max(0, Math.min(bands.length - 1, level / 40))];
+    }
+
+    /**
+     * Mort, the Catacombs gatekeeper, as his head from the item repo ({@code MORT_NPC}); deepslate
+     * bricks while it has not resolved.
+     */
+    private static ItemStack catacombsIcon() {
+        ItemStack mort = sbs.modid.client.economy.recipe.logic.SkyBlockItemIcons.getInstance()
+                .iconShared("MORT_NPC", null, 1);
+        return mort == null || mort.isEmpty() || mort.is(Items.BARRIER) ? new ItemStack(Items.DEEPSLATE_BRICKS) : mort;
+    }
+
+    /** SkyBlock level with its progress bar, plus the numbers people quote about a profile. */
     private void drawLevelCard(GuiGraphicsExtractor g, PvContext ctx, int x, int y, int w) {
         JsonObject profile = ctx.profile;
         y = PvDraw.heading(g, ctx.font, x, y, w, "SkyBlock Level");
         if (profile.has("sb_bar")) {
             int lvl = profile.getAsJsonArray("sb_bar").get(0).getAsInt();
-            // The one site with a level and no Hypixel colour to preserve, so the table simply
-            // applies; with Level Colours off this stays the aqua it has always been.
+            int into = Math.round(profile.getAsJsonArray("sb_bar").get(1).getAsInt() / 10f);
+            // As the scoreboard shows it: "451 ... 16/100 XP", the level in Hypixel's colour for its
+            // band. A Level Colours override, when the player has one on, wins as everywhere else.
             Integer tint = sbs.modid.client.core.level.LevelColors.colorOf(lvl);
-            Component level = tint == null
-                    ? Component.literal("§b" + lvl)
-                    : Component.literal(String.valueOf(lvl))
-                            .withStyle(style -> style.withColor(
-                                    net.minecraft.network.chat.TextColor.fromRgb(tint)));
-            g.centeredText(ctx.font, level, x + w / 2, y + 1, SBSTheme.ACCENT_BRIGHT);
-            int barY = y + ctx.font.lineHeight + 4;
-            int prom = profile.getAsJsonArray("sb_bar").get(1).getAsInt();
-            PvDraw.bar(g, x, barY, w - 4, prom / 1000.0, SBSTheme.ACCENT);
-            y = barY + 7;
+            Component level = (tint == null ? Component.literal(hypixelLevelColour(lvl) + lvl)
+                    : Component.literal(String.valueOf(lvl)).withStyle(style -> style.withColor(
+                            net.minecraft.network.chat.TextColor.fromRgb(tint))))
+                    ;
+            // One row: level left, XP right, the bar shortened to the room between them; with no
+            // room left for a readable bar it is dropped rather than overlapping either text.
+            String xpText = "§b" + into + "/100 XP";
+            int levelW = ctx.font.width(level);
+            int xpW = ctx.font.width(xpText);
+            int right = x + w - 4;
+            g.text(ctx.font, level, x, y + 1, SBSTheme.ACCENT_BRIGHT);
+            g.text(ctx.font, Component.literal(xpText), right - xpW, y + 1, SBSTheme.TEXT);
+            int barX = x + levelW + 6;
+            int barW = right - xpW - 6 - barX;
+            if (barW >= 12) {
+                int prom = profile.getAsJsonArray("sb_bar").get(1).getAsInt();
+                PvDraw.bar(g, barX, y + 1 + ctx.font.lineHeight / 2, barW, prom / 1000.0, SBSTheme.ACCENT);
+            }
+            y += ctx.font.lineHeight + 5;
         }
         if (profile.has("magical_power")) {
             y = PvDraw.keyValue(g, ctx.font, x, y, w - 4, "Magical Power",
                     "§d" + PvDraw.num(profile, "magical_power"));
         }
         if (profile.has("skill_average")) {
-            PvDraw.keyValue(g, ctx.font, x, y, w - 4, "Skill Average",
+            y = PvDraw.keyValue(g, ctx.font, x, y, w - 4, "Skill Average",
                     "§b" + profile.get("skill_average").getAsDouble());
+        }
+        // Estimated on this PC from the local Bazaar / auction prices; pets and sacks not included.
+        var worth = sbs.modid.client.social.playerviewer.ui.PvNetworth.of(profile);
+        int rowY = y;
+        PvDraw.keyValue(g, ctx.font, x, y, w - 4, "Est. Networth", "§6" + worth.total().label());
+        if (ctx.hovered(x, rowY, w, ctx.font.lineHeight + 2)) {
+            List<Component> tip = new java.util.ArrayList<>();
+            tip.add(Component.literal("§6Estimated networth §f" + worth.total().label()));
+            worth.parts().forEach((part, total) -> {
+                if (total.any()) {
+                    tip.add(Component.literal("§7" + part + " §f" + total.label()));
+                }
+            });
+            tip.add(Component.literal("§8Priced on your PC from Bazaar and auction data."));
+            tip.add(Component.literal("§8Pets and sacks are not included yet."));
+            if (worth.total().floor()) {
+                tip.add(Component.literal("§8+ = some items have no price yet."));
+            }
+            PvDraw.tooltip(g, ctx.font, tip, ctx.mouseX, ctx.mouseY);
         }
     }
 
@@ -254,7 +308,7 @@ public final class HomeOverviewPage implements PvPage {
         int y = PvDraw.heading(g, ctx.font, x, top, w, "Dungeons");
         JsonObject profile = ctx.profile;
         if (profile.has("catacombs_bar")) {
-            y = PvDraw.iconRow(g, ctx.font, x, y, w, Items.DEEPSLATE_BRICKS,
+            y = PvDraw.iconRow(g, ctx.font, x, y, w, catacombsIcon(),
                     "Catacombs", profile.getAsJsonArray("catacombs_bar"));
         }
         JsonObject classes = PvDraw.obj(profile, "classes");

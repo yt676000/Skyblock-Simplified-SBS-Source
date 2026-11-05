@@ -10,11 +10,8 @@ package sbs.modid.client.core.render;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import org.joml.Vector4f;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Drawing world-space geometry through the HUD pipeline.
@@ -27,6 +24,9 @@ import java.util.List;
  *
  * <p>Unlike the equivalent helpers inside {@code DungeonHighlight}, colour <i>and</i> line thickness are
  * parameters here, which is what the configurable Ether Warp highlight needs.
+ *
+ * <p>Render thread only. The projection works in static scratch buffers, so the per-frame path
+ * allocates nothing - a long route drawn every frame used to create several objects per node.
  */
 public final class WorldRender {
 
@@ -53,29 +53,78 @@ public final class WorldRender {
      */
     private static final float EDGE_MARGIN = 64f;
 
-    /** Projects a world point to GUI-scaled screen pixels, or {@code null} when behind the camera. */
-    public static int[] projectToScreen(Matrix4f viewProjection, Vec3 camPos, Vec3 world,
-                                        int guiWidth, int guiHeight) {
-        Vector4f clip = toClip(viewProjection, camPos, world);
-        return clip.w <= NEAR ? null : divide(clip, guiWidth, guiHeight);
+    /** {@link #projectSegment}: nothing of the segment is on screen. */
+    public static final int SEGMENT_CULLED = 0;
+    /** {@link #projectSegment}: both ends in front of the camera, each projected as a point is. */
+    public static final int SEGMENT_FRONT = 1;
+    /** {@link #projectSegment}: one end was behind the camera and was cut back to the near plane. */
+    public static final int SEGMENT_NEAR_CLIPPED = 2;
+
+    // Scratch, render thread only. No buffer is held across a call that could reach it again.
+    private static final Vector4f PROJECT = new Vector4f();
+    private static final Vector4f LINE_A = new Vector4f();
+    private static final Vector4f LINE_B = new Vector4f();
+    private static final Vector4f NEAR_A = new Vector4f();
+    private static final Vector4f NEAR_B = new Vector4f();
+    private static final Vector4f[] CORNERS = vectors(8);
+    private static final Vector4f[] CULL_CORNERS = vectors(8);
+    private static final Vector4f[] POLY = vectors(5);
+    private static final float[][] POLY_SCREEN = new float[5][2];
+    private static final float[] DIVIDED = new float[2];
+    private static final float[] PA = new float[2];
+    private static final float[] PB = new float[2];
+    private static final float[] CLIP_P = new float[4];
+    private static final float[] CLIP_Q = new float[4];
+    private static final int[] POINT = new int[2];
+    private static final int[] SEGMENT = new int[4];
+
+    /** The 12 edges of a box whose 8 corners are indexed by bits x,z,y (bit 0 = x, 1 = z, 2 = y). */
+    private static final int[][] BOX_EDGES = {
+            {0, 1}, {1, 3}, {3, 2}, {2, 0}, // bottom
+            {4, 5}, {5, 7}, {7, 6}, {6, 4}, // top
+            {0, 4}, {1, 5}, {2, 6}, {3, 7}, // verticals
+    };
+
+    private static Vector4f[] vectors(int count) {
+        Vector4f[] vectors = new Vector4f[count];
+        for (int i = 0; i < count; i++) {
+            vectors[i] = new Vector4f();
+        }
+        return vectors;
     }
 
-    /** The world point in clip space, where {@code w} is its depth in front of the camera. */
-    private static Vector4f toClip(Matrix4f viewProjection, Vec3 camPos, Vec3 world) {
-        Vec3 rel = world.subtract(camPos);
-        return viewProjection.transform(
-                new Vector4f((float) rel.x, (float) rel.y, (float) rel.z, 1.0f));
+    /**
+     * Projects a world point to GUI-scaled screen pixels: writes the screen point into {@code out}, or
+     * returns {@code false} and leaves {@code out} untouched when the point is behind the camera.
+     */
+    public static boolean project(Matrix4fc viewProjection, double camX, double camY, double camZ,
+                                  double x, double y, double z, int guiWidth, int guiHeight, int[] out) {
+        Vector4f clip = toClip(viewProjection, camX, camY, camZ, x, y, z, PROJECT);
+        if (clip.w <= NEAR) {
+            return false;
+        }
+        divide(clip, guiWidth, guiHeight, out);
+        return true;
+    }
+
+    /**
+     * The world point in clip space, written into {@code out}, where {@code w} is its depth in front
+     * of the camera. The camera is subtracted in double before narrowing to float, so a point far
+     * from the world origin keeps its precision.
+     */
+    public static Vector4f toClip(Matrix4fc viewProjection, double camX, double camY, double camZ,
+                                  double x, double y, double z, Vector4f out) {
+        out.set((float) (x - camX), (float) (y - camY), (float) (z - camZ), 1.0f);
+        return viewProjection.transform(out);
     }
 
     /** Perspective divide + viewport transform, with the off-screen POINT clamp applied. */
-    private static int[] divide(Vector4f clip, int guiWidth, int guiHeight) {
-        float[] s = divideF(clip, guiWidth, guiHeight);
+    private static void divide(Vector4f clip, int guiWidth, int guiHeight, int[] out) {
+        divideF(clip, guiWidth, guiHeight, DIVIDED);
         int limitX = guiWidth * OFFSCREEN_LIMIT;
         int limitY = guiHeight * OFFSCREEN_LIMIT;
-        return new int[] {
-                Math.round(Math.max(-limitX, Math.min(limitX, s[0]))),
-                Math.round(Math.max(-limitY, Math.min(limitY, s[1]))),
-        };
+        out[0] = Math.round(Math.max(-limitX, Math.min(limitX, DIVIDED[0])));
+        out[1] = Math.round(Math.max(-limitY, Math.min(limitY, DIVIDED[1])));
     }
 
     /**
@@ -86,11 +135,156 @@ public final class WorldRender {
      * shapes when you are not looking at the correct side" bug - a point just in front of the near
      * plane projects tens of thousands of pixels out, where the old clamp bent it hardest).
      */
-    private static float[] divideF(Vector4f clip, int guiWidth, int guiHeight) {
-        return new float[] {
-                (clip.x / clip.w * 0.5f + 0.5f) * guiWidth,
-                (0.5f - clip.y / clip.w * 0.5f) * guiHeight,
-        };
+    private static void divideF(Vector4f clip, int guiWidth, int guiHeight, float[] out) {
+        out[0] = (clip.x / clip.w * 0.5f + 0.5f) * guiWidth;
+        out[1] = (0.5f - clip.y / clip.w * 0.5f) * guiHeight;
+    }
+
+    /**
+     * Whether a clip-space segment lies wholly beyond one side of the screen, widened by
+     * {@link #EDGE_MARGIN} pixels so a thick line or a glow just past the border is never cut.
+     *
+     * <p>Tested in homogeneous coordinates ({@code x > k*w}) rather than on divided screen points.
+     * Each test is a half-space bounded by a plane through the eye, so it holds for points behind the
+     * camera too, where a perspective divide would flip the sign: when both ends lie in the same
+     * outside half-space, every point between them does as well. Only the four side planes are
+     * tested; the near plane is clipped against, never culled on.
+     */
+    private static boolean outsideOneSide(Vector4f a, Vector4f b, int guiWidth, int guiHeight) {
+        float kx = 1f + 2f * EDGE_MARGIN / guiWidth;
+        float ky = 1f + 2f * EDGE_MARGIN / guiHeight;
+        return (a.x < -kx * a.w && b.x < -kx * b.w)
+                || (a.x > kx * a.w && b.x > kx * b.w)
+                || (a.y < -ky * a.w && b.y < -ky * b.w)
+                || (a.y > ky * a.w && b.y > ky * b.w);
+    }
+
+    /**
+     * Whether any part of an axis-aligned world box can land on screen, widened by
+     * {@code marginPx} GUI pixels on every side. Tested on the 8 clip-space corners before any
+     * divide, so a culled marker costs eight transforms and no projection, label or occlusion work.
+     *
+     * <p>Conservative: {@code false} only when all corners sit behind the near plane or all lie
+     * beyond the same side plane. A box that slips past every single plane (a big box diagonal to a
+     * screen corner) is kept and left to the per-edge clip - never the other way round, so nothing
+     * that would have drawn goes missing.
+     *
+     * <p>Tracers and off-screen arrows point at targets that are off screen on purpose, so they
+     * never call this; that is the opt-out.
+     */
+    public static boolean boxInView(Matrix4fc viewProjection, double camX, double camY, double camZ,
+                                    double x0, double y0, double z0, double x1, double y1, double z1,
+                                    int guiWidth, int guiHeight, float marginPx) {
+        Vector4f[] corners = CULL_CORNERS;
+        for (int corner = 0; corner < 8; corner++) {
+            toClip(viewProjection, camX, camY, camZ,
+                    (corner & 1) == 0 ? x0 : x1, (corner & 4) == 0 ? y0 : y1, (corner & 2) == 0 ? z0 : z1,
+                    corners[corner]);
+        }
+        return !cornersOutside(corners, 1f + 2f * marginPx / guiWidth, 1f + 2f * marginPx / guiHeight);
+    }
+
+    /** {@link #boxInView} with the default {@link #EDGE_MARGIN}, matching what the edge clip keeps. */
+    public static boolean boxInView(Matrix4fc viewProjection, double camX, double camY, double camZ,
+                                    double x0, double y0, double z0, double x1, double y1, double z1,
+                                    int guiWidth, int guiHeight) {
+        return boxInView(viewProjection, camX, camY, camZ, x0, y0, z0, x1, y1, z1,
+                guiWidth, guiHeight, EDGE_MARGIN);
+    }
+
+    /**
+     * The rejection itself: all 8 clip-space corners behind the near plane, or all beyond one side
+     * plane widened to {@code x = ±kx*w}, {@code y = ±ky*w}. Side planes pass through the eye, so
+     * the test holds for corners behind the camera too (see {@link #outsideOneSide}).
+     */
+    static boolean cornersOutside(Vector4f[] c, float kx, float ky) {
+        int behind = 0;
+        int left = 0;
+        int right = 0;
+        int below = 0;
+        int above = 0;
+        for (int i = 0; i < 8; i++) {
+            Vector4f v = c[i];
+            if (v.w <= NEAR) {
+                behind++;
+            }
+            if (v.x < -kx * v.w) {
+                left++;
+            } else if (v.x > kx * v.w) {
+                right++;
+            }
+            if (v.y < -ky * v.w) {
+                below++;
+            } else if (v.y > ky * v.w) {
+                above++;
+            }
+        }
+        return behind == 8 || left == 8 || right == 8 || below == 8 || above == 8;
+    }
+
+    /**
+     * Projects one segment of a polyline whose points are already in clip space ({@link #toClip})
+     * into {@code out} as {@code x0, y0, x1, y1}. Neither input is changed.
+     *
+     * <p>Built for long polylines: the caller transforms each point once and passes consecutive
+     * pairs, and a segment wholly beyond one side of the screen is rejected before any divide.
+     *
+     * <ul>
+     *   <li>{@link #SEGMENT_FRONT} - both ends in front: each end is projected exactly as
+     *       {@link #project} projects a point, so a polyline drawn from these matches one drawn from
+     *       per-point projections pixel for pixel.</li>
+     *   <li>{@link #SEGMENT_NEAR_CLIPPED} - one end behind the camera: that end is moved along the
+     *       segment to the near plane and the rest is clipped to the screen as {@link #line3d} does.
+     *       A line running past the player into view stays drawn instead of disappearing until both
+     *       of its ends are in front.</li>
+     *   <li>{@link #SEGMENT_CULLED} - both ends behind, both beyond one side, or nothing left after
+     *       the screen clip; {@code out} is then unspecified.</li>
+     * </ul>
+     */
+    public static int projectSegment(Vector4f a, Vector4f b, int guiWidth, int guiHeight, int[] out) {
+        boolean aBehind = a.w <= NEAR;
+        boolean bBehind = b.w <= NEAR;
+        if ((aBehind && bBehind) || outsideOneSide(a, b, guiWidth, guiHeight)) {
+            return SEGMENT_CULLED;
+        }
+        if (!aBehind && !bBehind) {
+            divide(a, guiWidth, guiHeight, POINT);
+            out[0] = POINT[0];
+            out[1] = POINT[1];
+            divide(b, guiWidth, guiHeight, POINT);
+            out[2] = POINT[0];
+            out[3] = POINT[1];
+            return SEGMENT_FRONT;
+        }
+        return clippedToScreen(a, b, guiWidth, guiHeight, out) ? SEGMENT_NEAR_CLIPPED : SEGMENT_CULLED;
+    }
+
+    /**
+     * The visible part of a clip-space segment with at least one end in front of the camera: an end
+     * behind is cut back to the near plane, then the exact 2D clip trims the off-screen length along
+     * the line. Writes {@code x0, y0, x1, y1}; {@code false} when nothing is left.
+     */
+    private static boolean clippedToScreen(Vector4f a, Vector4f b, int guiWidth, int guiHeight,
+                                           int[] out) {
+        Vector4f ca = a;
+        Vector4f cb = b;
+        if (a.w <= NEAR) {
+            ca = clipToNear(a, b, NEAR_A);
+        } else if (b.w <= NEAR) {
+            cb = clipToNear(b, a, NEAR_B);
+        }
+        // Unclamped endpoints, then the exact 2D clip: the off-screen part is cut along the line,
+        // so the visible part keeps its true direction however far the far end projects out.
+        divideF(ca, guiWidth, guiHeight, PA);
+        divideF(cb, guiWidth, guiHeight, PB);
+        if (!clip2d(PA, PB, -EDGE_MARGIN, -EDGE_MARGIN, guiWidth + EDGE_MARGIN, guiHeight + EDGE_MARGIN)) {
+            return false;
+        }
+        out[0] = Math.round(PA[0]);
+        out[1] = Math.round(PA[1]);
+        out[2] = Math.round(PB[0]);
+        out[3] = Math.round(PB[1]);
+        return true;
     }
 
     /**
@@ -104,8 +298,16 @@ public final class WorldRender {
         float dy = b[1] - a[1];
         float t0 = 0f;
         float t1 = 1f;
-        float[] p = {-dx, dx, -dy, dy};
-        float[] q = {a[0] - minX, maxX - a[0], a[1] - minY, maxY - a[1]};
+        float[] p = CLIP_P;
+        float[] q = CLIP_Q;
+        p[0] = -dx;
+        p[1] = dx;
+        p[2] = -dy;
+        p[3] = dy;
+        q[0] = a[0] - minX;
+        q[1] = maxX - a[0];
+        q[2] = a[1] - minY;
+        q[3] = maxY - a[1];
         for (int i = 0; i < 4; i++) {
             if (p[i] == 0f) {
                 if (q[i] < 0f) {
@@ -140,12 +342,12 @@ public final class WorldRender {
     }
 
     /**
-     * Moves a clip-space point that sits behind the near plane forward along the segment towards
-     * {@code inside}, to exactly where the segment crosses that plane.
+     * Writes into {@code out} the clip-space point where the segment from {@code behind} (behind the
+     * near plane) towards {@code inside} crosses that plane. {@code out} must be neither input.
      */
-    private static Vector4f clipToNear(Vector4f behind, Vector4f inside) {
+    private static Vector4f clipToNear(Vector4f behind, Vector4f inside, Vector4f out) {
         float t = (NEAR - behind.w) / (inside.w - behind.w);
-        return new Vector4f(
+        return out.set(
                 behind.x + (inside.x - behind.x) * t,
                 behind.y + (inside.y - behind.y) * t,
                 behind.z + (inside.z - behind.z) * t,
@@ -161,29 +363,21 @@ public final class WorldRender {
      * come apart and reassemble as you turn. Clipping keeps the visible part of every edge on screen,
      * so the shape is stable no matter where you stand in it.
      */
-    public static void line3d(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    public static void line3d(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                               Vec3 a, Vec3 b, int color, int thickness) {
-        Vector4f ca = toClip(viewProjection, camPos, a);
-        Vector4f cb = toClip(viewProjection, camPos, b);
-        boolean aBehind = ca.w <= NEAR;
-        boolean bBehind = cb.w <= NEAR;
-        if (aBehind && bBehind) {
+        toClip(viewProjection, camPos.x, camPos.y, camPos.z, a.x, a.y, a.z, LINE_A);
+        toClip(viewProjection, camPos.x, camPos.y, camPos.z, b.x, b.y, b.z, LINE_B);
+        clipLine(g, LINE_A, LINE_B, color, thickness);
+    }
+
+    /** {@link #line3d} for two points already in clip space. */
+    private static void clipLine(GuiGraphicsExtractor g, Vector4f a, Vector4f b, int color, int thickness) {
+        if (a.w <= NEAR && b.w <= NEAR) {
             return;   // wholly behind the camera - nothing of it is on screen
         }
-        if (aBehind) {
-            ca = clipToNear(ca, cb);
-        } else if (bBehind) {
-            cb = clipToNear(cb, ca);
-        }
-        int gw = g.guiWidth();
-        int gh = g.guiHeight();
-        // Unclamped endpoints, then the exact 2D clip: the off-screen part is cut along the line,
-        // so the visible part keeps its true direction however far the far end projects out.
-        float[] pa = divideF(ca, gw, gh);
-        float[] pb = divideF(cb, gw, gh);
-        if (clip2d(pa, pb, -EDGE_MARGIN, -EDGE_MARGIN, gw + EDGE_MARGIN, gh + EDGE_MARGIN)) {
-            line(g, Math.round(pa[0]), Math.round(pa[1]), Math.round(pb[0]), Math.round(pb[1]),
-                    color, thickness);
+        int[] s = SEGMENT;
+        if (clippedToScreen(a, b, g.guiWidth(), g.guiHeight(), s)) {
+            line(g, s[0], s[1], s[2], s[3], color, thickness);
         }
     }
 
@@ -216,22 +410,23 @@ public final class WorldRender {
      * "ghost" cube without needing a per-face quad fill the HUD pipeline cannot do. Skipped entirely
      * when any corner is behind the camera, so a cube straddling the view never fills the screen.
      */
-    public static void fillBox(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    public static void fillBox(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                double x0, double y0, double z0, double x1, double y1, double z1,
                                int color) {
-        Vec3[] corners = {
-                new Vec3(x0, y0, z0), new Vec3(x1, y0, z0), new Vec3(x0, y0, z1), new Vec3(x1, y0, z1),
-                new Vec3(x0, y1, z0), new Vec3(x1, y1, z0), new Vec3(x0, y1, z1), new Vec3(x1, y1, z1),
-        };
         int gw = g.guiWidth();
         int gh = g.guiHeight();
         int minX = Integer.MAX_VALUE;
         int minY = Integer.MAX_VALUE;
         int maxX = Integer.MIN_VALUE;
         int maxY = Integer.MIN_VALUE;
-        for (Vec3 corner : corners) {
-            int[] p = projectToScreen(viewProjection, camPos, corner, gw, gh);
-            if (p == null) {
+        if (!boxInView(viewProjection, camPos.x, camPos.y, camPos.z, x0, y0, z0, x1, y1, z1, gw, gh)) {
+            return; // the filled rectangle would be clamped away to nothing anyway
+        }
+        int[] p = POINT;
+        for (int corner = 0; corner < 8; corner++) {
+            if (!project(viewProjection, camPos.x, camPos.y, camPos.z,
+                    (corner & 1) == 0 ? x0 : x1, (corner & 4) == 0 ? y0 : y1, (corner & 2) == 0 ? z0 : z1,
+                    gw, gh, p)) {
                 return; // partially behind the camera - don't fill a bogus rectangle
             }
             minX = Math.min(minX, p[0]);
@@ -265,24 +460,33 @@ public final class WorldRender {
      * you were close enough to care. Clipping can turn the quad into a five-sided polygon, which the
      * scan fill handles because it works off the edge list rather than assuming four corners.
      */
-    public static void fillQuad(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    public static void fillQuad(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                 Vec3 a, Vec3 b, Vec3 c, Vec3 d, int color, int strip) {
-        // Sutherland-Hodgman against the single near plane, in clip space.
-        Vec3[] corners = {a, b, c, d};
-        List<Vector4f> poly = new ArrayList<>(5);
+        // Sutherland-Hodgman against the single near plane, in clip space. Four corners against one
+        // plane give at most five vertices.
+        Vector4f[] corners = CORNERS;
+        toClip(viewProjection, camPos.x, camPos.y, camPos.z, a.x, a.y, a.z, corners[0]);
+        toClip(viewProjection, camPos.x, camPos.y, camPos.z, b.x, b.y, b.z, corners[1]);
+        toClip(viewProjection, camPos.x, camPos.y, camPos.z, c.x, c.y, c.z, corners[2]);
+        toClip(viewProjection, camPos.x, camPos.y, camPos.z, d.x, d.y, d.z, corners[3]);
+        int count = 0;
         for (int i = 0; i < 4; i++) {
-            Vector4f current = toClip(viewProjection, camPos, corners[i]);
-            Vector4f next = toClip(viewProjection, camPos, corners[(i + 1) % 4]);
+            Vector4f current = corners[i];
+            Vector4f next = corners[(i + 1) % 4];
             boolean currentIn = current.w > NEAR;
             boolean nextIn = next.w > NEAR;
             if (currentIn) {
-                poly.add(current);
+                POLY[count++].set(current);
             }
             if (currentIn != nextIn) {
-                poly.add(currentIn ? clipToNear(next, current) : clipToNear(current, next));
+                if (currentIn) {
+                    clipToNear(next, current, POLY[count++]);
+                } else {
+                    clipToNear(current, next, POLY[count++]);
+                }
             }
         }
-        if (poly.size() < 3) {
+        if (count < 3) {
             return;   // wholly behind the camera
         }
 
@@ -290,11 +494,11 @@ public final class WorldRender {
         int gh = g.guiHeight();
         // Unclamped corners: the scan fill below cuts to the screen anyway, and the old point clamp
         // bent the projected edges - the tint's slant then disagreed with the outline drawn over it.
-        float[][] p = new float[poly.size()][];
+        float[][] p = POLY_SCREEN;
         float cornerMinX = Float.MAX_VALUE;
         float cornerMaxX = -Float.MAX_VALUE;
-        for (int i = 0; i < poly.size(); i++) {
-            p[i] = divideF(poly.get(i), gw, gh);
+        for (int i = 0; i < count; i++) {
+            divideF(POLY[i], gw, gh, p[i]);
             cornerMinX = Math.min(cornerMinX, p[i][0]);
             cornerMaxX = Math.max(cornerMaxX, p[i][0]);
         }
@@ -305,9 +509,9 @@ public final class WorldRender {
             double sample = x + step / 2.0;
             double top = Double.MAX_VALUE;
             double bottom = -Double.MAX_VALUE;
-            for (int i = 0; i < p.length; i++) {
+            for (int i = 0; i < count; i++) {
                 float[] p1 = p[i];
-                float[] p2 = p[(i + 1) % p.length];
+                float[] p2 = p[(i + 1) % count];
                 double x1 = p1[0];
                 double x2 = p2[0];
                 if ((sample < x1 && sample < x2) || (sample >= x1 && sample >= x2)) {
@@ -340,18 +544,22 @@ public final class WorldRender {
      * so it is used directly and the tracer always starts at the crosshair. Skipped silently while
      * the target is behind the camera.
      */
-    public static void tracer(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    public static void tracer(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                               Vec3 target, int color, int thickness) {
         int gw = g.guiWidth();
         int gh = g.guiHeight();
-        Vector4f clip = toClip(viewProjection, camPos, target);
+        Vector4f clip = toClip(viewProjection, camPos.x, camPos.y, camPos.z,
+                target.x, target.y, target.z, PROJECT);
         if (clip.w <= NEAR) {
             return;
         }
         // Same rule as line3d: the far end is clipped along the line, never clamped sideways - a
         // clamped target made the tracer point in a subtly wrong direction while it was off screen.
-        float[] from = {gw / 2f, gh / 2f};
-        float[] to = divideF(clip, gw, gh);
+        float[] from = PA;
+        float[] to = PB;
+        from[0] = gw / 2f;
+        from[1] = gh / 2f;
+        divideF(clip, gw, gh, to);
         if (clip2d(from, to, -EDGE_MARGIN, -EDGE_MARGIN, gw + EDGE_MARGIN, gh + EDGE_MARGIN)) {
             line(g, Math.round(from[0]), Math.round(from[1]), Math.round(to[0]), Math.round(to[1]),
                     color, Math.max(1, thickness));
@@ -359,29 +567,40 @@ public final class WorldRender {
     }
 
     /** The tracer target for a highlight box: its centre, which reads best at any distance. */
-    public static void tracerToBox(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    public static void tracerToBox(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                    net.minecraft.world.phys.AABB box, int color, int thickness) {
         tracer(g, viewProjection, camPos, box.getCenter(), color, thickness);
     }
 
     /** Projects and draws the 12 edges of an axis-aligned world-space box. */
-    public static void boxEdges(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    public static void boxEdges(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                 double x0, double y0, double z0, double x1, double y1, double z1,
                                 int color, int thickness) {
-        // 8 corners, index bits = x,y,z.
-        Vec3[] corners = {
-                new Vec3(x0, y0, z0), new Vec3(x1, y0, z0), new Vec3(x0, y0, z1), new Vec3(x1, y0, z1),
-                new Vec3(x0, y1, z0), new Vec3(x1, y1, z0), new Vec3(x0, y1, z1), new Vec3(x1, y1, z1),
-        };
-        int[][] edges = {
-                {0, 1}, {1, 3}, {3, 2}, {2, 0}, // bottom
-                {4, 5}, {5, 7}, {7, 6}, {6, 4}, // top
-                {0, 4}, {1, 5}, {2, 6}, {3, 7}, // verticals
-        };
+        boxEdges(g, viewProjection, camPos.x, camPos.y, camPos.z, x0, y0, z0, x1, y1, z1, color, thickness);
+    }
+
+    /**
+     * {@link #boxEdges} with the camera as primitives. Each corner is transformed once and shared by
+     * its three edges.
+     */
+    public static void boxEdges(GuiGraphicsExtractor g, Matrix4fc viewProjection,
+                                double camX, double camY, double camZ,
+                                double x0, double y0, double z0, double x1, double y1, double z1,
+                                int color, int thickness) {
+        Vector4f[] corners = CORNERS;
+        for (int corner = 0; corner < 8; corner++) {
+            toClip(viewProjection, camX, camY, camZ,
+                    (corner & 1) == 0 ? x0 : x1, (corner & 4) == 0 ? y0 : y1, (corner & 2) == 0 ? z0 : z1,
+                    corners[corner]);
+        }
+        // A box wholly beyond one screen side or behind the camera has no edge left to draw.
+        if (cornersOutside(corners, 1f + 2f * EDGE_MARGIN / g.guiWidth(), 1f + 2f * EDGE_MARGIN / g.guiHeight())) {
+            return;
+        }
         // Each edge is clipped individually: a box you stand inside has corners behind you, and
         // dropping those edges is what made outlines come apart and snap back as you turned.
-        for (int[] e : edges) {
-            line3d(g, viewProjection, camPos, corners[e[0]], corners[e[1]], color, thickness);
+        for (int[] e : BOX_EDGES) {
+            clipLine(g, corners[e[0]], corners[e[1]], color, thickness);
         }
     }
 }

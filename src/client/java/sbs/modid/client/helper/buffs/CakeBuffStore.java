@@ -49,6 +49,15 @@ public final class CakeBuffStore implements ProfileScopedStore {
         return book.active(System.currentTimeMillis());
     }
 
+    /**
+     * The book the cake card draws from. Its identity and {@link CakeBuffBook#revision()} together
+     * change exactly when the stored set does (a profile reload swaps the whole book).
+     */
+    public CakeBuffBook book() {
+        ensureLoaded();
+        return book;
+    }
+
     /** One chat line. Books an eat or refresh; logs a cake-shaped line that did not parse. */
     public synchronized void onChat(String line) {
         if (!CakeBuffParser.looksLikeCake(line)) {

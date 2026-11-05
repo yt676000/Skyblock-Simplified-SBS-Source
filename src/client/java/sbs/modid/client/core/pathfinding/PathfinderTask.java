@@ -8,18 +8,16 @@
 
 package sbs.modid.client.core.pathfinding;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.PriorityQueue;
 import java.util.Set;
 
 /**
@@ -70,6 +68,9 @@ import java.util.Set;
 final class PathfinderTask {
 
     private static final double DIAGONAL_COST = Math.sqrt(2.0);
+
+    /** The deadline is read every 32 expanded nodes: often enough, and the clock is not free. */
+    private static final int DEADLINE_CHECK_MASK = 31;
 
     /**
      * What a step into a 1.5-block sneak gap costs, per walk step: sneaking moves at about 30% of
@@ -240,9 +241,14 @@ final class PathfinderTask {
      * snapshot per improvement and skipping already-closed entries when polled (lazy deletion) is
      * the standard fix and keeps the result optimal.
      */
-    private final PriorityQueue<Entry> open =
-            new PriorityQueue<>(Comparator.comparingDouble(Entry::f));
-    private final Map<Long, Node> nodes = new HashMap<>();
+    private OpenSet open = new OpenSet();
+
+    /**
+     * Every node seen, by packed position. Primitive keys on purpose: the deep search holds up to
+     * 1.5 M nodes, and a boxed {@code HashMap<Long, Node>} cost a {@code Long} plus a map entry per
+     * node on top - hundreds of MB per search, the heap spike on every start.
+     */
+    private Long2ObjectOpenHashMap<Node> nodes = new Long2ObjectOpenHashMap<>();
 
     /** The node that got closest to the goal – the fallback when the goal is unreachable. */
     private Node best;
@@ -340,7 +346,7 @@ final class PathfinderTask {
         first.g = 0;
         first.h = heuristic(start.getX(), start.getY(), start.getZ());
         nodes.put(first.key, first);
-        open.add(new Entry(first, first.h));
+        open.add(first, first.h);
         best = first;
         bestDistance = distanceToGoal(start.getX(), start.getY(), start.getZ());
     }
@@ -421,14 +427,27 @@ final class PathfinderTask {
      * @return {@code true} once the search is done (goal found, budget spent, or nowhere left to go)
      */
     boolean step(int budget) {
+        return step(budget, Long.MAX_VALUE);
+    }
+
+    /**
+     * Expands at most {@code budget} nodes, and stops early once {@link System#nanoTime()} passes
+     * {@code deadlineNanos} - the hard per-tick ceiling. The node budget is calibrated on averages;
+     * a run of expensive nodes (teleport and pad expansion read many blocks) would otherwise blow
+     * through it and stall the frame.
+     */
+    boolean step(int budget, long deadlineNanos) {
         if (finished) {
             return true;
         }
         for (int i = 0; i < budget; i++) {
+            if ((i & DEADLINE_CHECK_MASK) == DEADLINE_CHECK_MASK && System.nanoTime() > deadlineNanos) {
+                return false;
+            }
             if (open.isEmpty()) {
                 return finish(false, true);
             }
-            Node node = open.poll().node();
+            Node node = open.poll();
             if (node.closed) {
                 continue; // a stale snapshot of a node we already settled
             }
@@ -473,6 +492,10 @@ final class PathfinderTask {
      */
     private boolean finish(boolean reached, boolean exhausted) {
         finished = true;
+        // The path needs only best's parent chain; drop the search graph now instead of whenever
+        // the last reference to this task goes.
+        nodes = new Long2ObjectOpenHashMap<>();
+        open = new OpenSet();
         this.exhausted = exhausted;
         reachedGoal = reached;
         if (!reached) {
@@ -519,26 +542,17 @@ final class PathfinderTask {
 
     /**
      * One line per search that did not reach its goal, so a "it showed no way" report can be checked
-     * against what the search actually saw.
+     * against what the search actually saw. Counted into the per-minute {@link PathLog} summary,
+     * which keeps the latest of these as its example.
      */
-    /** The last request {@link #logNoRoute} reported. */
-    private static volatile String lastNoRouteLogged;
-
     private void logNoRoute(boolean exhausted) {
         BlockPos goal = goals.isEmpty() ? start : goals.getFirst();
-        // Routes are recomputed every few seconds; the same request is logged once, not each time.
-        String key = start + ">" + goal + ">" + exhausted;
-        if (key.equals(lastNoRouteLogged)) {
-            return;
-        }
-        lastNoRouteLogged = key;
-        String reason = exhausted ? "every reachable spot searched" : "node budget spent";
-        sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
-                "[SBS][Path] no route from {} {} {} to {} {} {}{}: {} ({} nodes expanded, closest point "
-                        + "{} {} {}, {} blocks away)",
+        PathLog.noRoute(String.format(java.util.Locale.ROOT,
+                "%d %d %d -> %d %d %d%s: %s (%d nodes, closest %d %d %d, %.1f blocks away)",
                 start.getX(), start.getY(), start.getZ(), goal.getX(), goal.getY(), goal.getZ(),
-                goals.size() > 1 ? " (+" + (goals.size() - 1) + " more goals)" : "", reason, expanded,
-                best.x, best.y, best.z, String.format(java.util.Locale.ROOT, "%.1f", bestDistance));
+                goals.size() > 1 ? " (+" + (goals.size() - 1) + " more goals)" : "",
+                exhausted ? "every reachable spot searched" : "node budget spent", expanded,
+                best.x, best.y, best.z, bestDistance));
     }
 
     // ------------------------------------------------------------------
@@ -984,7 +998,7 @@ final class PathfinderTask {
         neighbour.teleport = teleport;
         neighbour.pad = pad;
         neighbour.breakWall = breakWall;
-        open.add(new Entry(neighbour, g + neighbour.h));
+        open.add(neighbour, g + neighbour.h);
     }
 
     /** Whether a player standing at {@code (x, y, z)} would be supported and fit. */
@@ -1129,10 +1143,66 @@ final class PathfinderTask {
     }
 
     /**
-     * An immutable open-set entry: the node plus the {@code f} it had when queued. Never re-read
-     * from the node, so the queue's ordering cannot be invalidated by a later improvement.
+     * The open set: a binary min-heap over parallel arrays of the node and the {@code f} it had when
+     * queued. That {@code f} is never re-read from the node, so a later improvement cannot break the
+     * ordering (lazy deletion, see {@link #open}); the arrays replace one record object per push.
      */
-    private record Entry(Node node, double f) {
+    private static final class OpenSet {
+        private Node[] heapNodes = new Node[256];
+        private double[] heapF = new double[256];
+        private int size;
+
+        boolean isEmpty() {
+            return size == 0;
+        }
+
+        void add(Node node, double f) {
+            if (size == heapNodes.length) {
+                int grown = size + (size >> 1);
+                heapNodes = Arrays.copyOf(heapNodes, grown);
+                heapF = Arrays.copyOf(heapF, grown);
+            }
+            int i = size++;
+            while (i > 0) {
+                int parent = (i - 1) >>> 1;
+                if (heapF[parent] <= f) {
+                    break;
+                }
+                heapNodes[i] = heapNodes[parent];
+                heapF[i] = heapF[parent];
+                i = parent;
+            }
+            heapNodes[i] = node;
+            heapF[i] = f;
+        }
+
+        Node poll() {
+            Node top = heapNodes[0];
+            int last = --size;
+            Node node = heapNodes[last];
+            double f = heapF[last];
+            heapNodes[last] = null;
+            if (last == 0) {
+                return top;
+            }
+            int i = 0;
+            int half = last >>> 1;
+            while (i < half) {
+                int child = 2 * i + 1;
+                if (child + 1 < last && heapF[child + 1] < heapF[child]) {
+                    child++;
+                }
+                if (f <= heapF[child]) {
+                    break;
+                }
+                heapNodes[i] = heapNodes[child];
+                heapF[i] = heapF[child];
+                i = child;
+            }
+            heapNodes[i] = node;
+            heapF[i] = f;
+            return top;
+        }
     }
 
     /** One search node. Mutable and pooled in {@link #nodes} – A* rewrites g as it improves. */

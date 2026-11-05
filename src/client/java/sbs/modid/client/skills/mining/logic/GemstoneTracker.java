@@ -48,6 +48,7 @@ public final class GemstoneTracker {
 
     /** One "[Sacks]" hover line: "+24 Rough Jade Gemstone (Gemstone Sack)". */
     private static final Pattern SACK_LINE = Pattern.compile("([+-][\\d,.]+) (.+?) \\((.+)\\)");
+    private static final Pattern NON_DIGITS = Pattern.compile("[^0-9]");
 
     /** Rates are refused below this: a shorter sample is noise wearing a number's clothes. */
     private static final long MIN_SAMPLE_MS = 60_000L;
@@ -62,6 +63,8 @@ public final class GemstoneTracker {
     private long lastGainAt;
     private long lastLogAt;
     private boolean sawSackLine;
+    /** Bumped whenever the counts change, so the card rebuilds only then (and on its clock). */
+    private int version;
 
     private GemstoneTracker() {
     }
@@ -131,6 +134,7 @@ public final class GemstoneTracker {
         }
         counts.merge(gem, amount, Long::sum);
         lastGainAt = now;
+        version++;
     }
 
     /** Called every client tick; only logs, on a throttle. The counting itself is chat-driven. */
@@ -162,9 +166,15 @@ public final class GemstoneTracker {
         counts.clear();
         sessionStartMs = 0L;
         lastGainAt = 0L;
+        version++;
     }
 
     // ------------------------------------------------------------------ read model
+
+    /** Changes whenever the counts do; the card's rebuild key. */
+    public int version() {
+        return version;
+    }
 
     /** Session counts per gemstone, in the order they were first mined. */
     public Map<GemstoneCatalog.Gem, Long> counts() {
@@ -265,7 +275,7 @@ public final class GemstoneTracker {
 
     private static long parseCount(String raw) {
         try {
-            return Long.parseLong(raw.replaceAll("[^0-9]", ""));
+            return Long.parseLong(NON_DIGITS.matcher(raw).replaceAll(""));
         } catch (NumberFormatException e) {
             return 0L;
         }

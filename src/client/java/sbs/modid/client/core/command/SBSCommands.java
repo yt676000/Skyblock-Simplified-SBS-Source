@@ -329,6 +329,40 @@ public final class SBSCommands {
                 return true;
             }
 
+            // /sbs dice reset [all] - restart the Dice Profit session, or clear the profile's totals too.
+            if (sub[0].equalsIgnoreCase("dice")) {
+                String arg = sub.length > 1
+                        ? sub[1].trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT) : "";
+                var dice = sbs.modid.client.economy.dice.logic.DiceTracker.getInstance();
+                if (arg.equals("reset")) {
+                    dice.resetSession();
+                    sbs.modid.client.social.chat.logic.SBSChat.send("Dice Profit session reset.");
+                } else if (arg.equals("reset all")) {
+                    dice.resetAllTime();
+                    sbs.modid.client.social.chat.logic.SBSChat.send("Dice Profit session and all-time totals reset.");
+                } else {
+                    sbs.modid.client.social.chat.logic.SBSChat.send("Usage: /sbs dice reset [all]");
+                }
+                return true;
+            }
+
+            // /sbs sacrifice reset [all] - restart the Sacrifice Altar session, or clear the totals too.
+            if (sub[0].equalsIgnoreCase("sacrifice")) {
+                String arg = sub.length > 1
+                        ? sub[1].trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT) : "";
+                var altar = sbs.modid.client.economy.sacrifice.logic.SacrificeTracker.getInstance();
+                if (arg.equals("reset")) {
+                    altar.resetSession();
+                    sbs.modid.client.social.chat.logic.SBSChat.send("Sacrifice Altar session reset.");
+                } else if (arg.equals("reset all")) {
+                    altar.resetAllTime();
+                    sbs.modid.client.social.chat.logic.SBSChat.send("Sacrifice Altar session and all-time totals reset.");
+                } else {
+                    sbs.modid.client.social.chat.logic.SBSChat.send("Usage: /sbs sacrifice reset [all]");
+                }
+                return true;
+            }
+
             // /sbs cph reset - restart the Coins per Hour session.
             if (sub[0].equalsIgnoreCase("cph")) {
                 if (sub.length > 1 && sub[1].trim().equalsIgnoreCase("reset")) {
@@ -484,6 +518,30 @@ public final class SBSCommands {
                 return true;
             }
 
+            // /sbs requeue [cancel|up|down|same] - Auto Requeue: cancel, or step the next requeue.
+            if (sub[0].equalsIgnoreCase("requeue")) {
+                var requeue = sbs.modid.client.dungeons.requeue.logic.AutoRequeue.getInstance();
+                String arg = sub.length > 1 ? sub[1].trim().toLowerCase(java.util.Locale.ROOT) : "";
+                int delta = switch (arg) {
+                    case "up", "next" -> 1;
+                    case "down" -> -1;
+                    case "same" -> 0;
+                    default -> Integer.MIN_VALUE;
+                };
+                if (arg.equals("cancel")) {
+                    requeue.cancel(true);
+                } else if (delta != Integer.MIN_VALUE) {
+                    String answer = requeue.step(delta);
+                    sbs.modid.client.social.chat.logic.SBSChat.send("Auto Requeue", net.minecraft.network.chat
+                            .Component.literal(" " + (answer != null ? answer
+                                    : "Only the party leader, with Auto Requeue on, can do that.")));
+                } else {
+                    sbs.modid.client.social.chat.logic.SBSChat.send("Auto Requeue",
+                            net.minecraft.network.chat.Component.literal(" " + requeue.status()));
+                }
+                return true;
+            }
+
             // /sbs rejoin [stop] - arm the Rejoin Timer by hand (kick auto-detect can miss the wording).
             if (sub[0].equalsIgnoreCase("rejoin")) {
                 if (sub.length > 1 && sub[1].trim().equalsIgnoreCase("stop")) {
@@ -577,9 +635,10 @@ public final class SBSCommands {
                 return true;
             }
 
-            // /sbs scan [start|stop|status] [channels] (dev mode) - Server Scanner: every menu the
-            // server sends as a slot-level time series, plus the player's clicks and optionally chat,
-            // action bar, scoreboard and tab list, as JSONL per session. Capture only.
+            // /sbs scan [full [preset]|start <channels>|mark <text>|stop|status] (dev mode) - Server
+            // Scanner: every menu the server sends as a slot-level time series plus the player's
+            // clicks, and the chosen channels (text, entities, damage, sounds, titles, inventory,
+            // particles, blocks, world), as JSONL per session. Capture only.
             if (sub[0].equalsIgnoreCase("scan")) {
                 // DEV-ONLY: dev command handling
                 if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
@@ -609,6 +668,18 @@ public final class SBSCommands {
                 return true;
             }
 
+            // /sbs backupprice <KEY> - one key's entry in the backup price store, every market.
+            if (sub[0].equalsIgnoreCase("backupprice")) {
+                // DEV-ONLY: dev command handling
+                if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
+                    return true;   // dev tooling; silent, like every other dev path
+                }
+                String key = sub.length > 1 ? sub[1].toUpperCase(java.util.Locale.ROOT) : "";
+                sbs.modid.client.social.chat.logic.SBSChat.send(
+                        sbs.modid.client.economy.prices.BackupPrices.getInstance().describe(key));
+                return true;
+            }
+
             // /sbs sharddump [arm|off] - for every slot of the last shard menu that was open:
             // its index, its display name, the canonical id our resolver produced and which
             // strategy produced it. The one command that separates "the title matched nothing",
@@ -618,6 +689,34 @@ public final class SBSCommands {
             if (sub[0].equalsIgnoreCase("sharddump")) {
                 sbs.modid.client.core.dev.ShardDump.getInstance()
                         .handleCommand(sub.length > 1 ? sub[1] : "");
+                return true;
+            }
+
+            // /sbs dungeonprofit [reset] - the Dungeon Profit history, or start a new session.
+            if (sub[0].equalsIgnoreCase("dungeonprofit")) {
+                var tracker = sbs.modid.client.dungeons.profit.logic.DungeonProfitTracker.getInstance();
+                if (sub.length > 1 && sub[1].trim().equalsIgnoreCase("reset")) {
+                    tracker.resetSession();
+                    sbs.modid.client.social.chat.logic.SBSChat.send("§7Dungeon profit session reset.");
+                } else {
+                    net.minecraft.client.Minecraft.getInstance().execute(() -> net.minecraft.client.Minecraft
+                            .getInstance().setScreenAndShow(
+                                    new sbs.modid.client.dungeons.profit.ui.DungeonProfitScreen(null)));
+                }
+                return true;
+            }
+
+            // /sbs kuudraprofit [reset] - the Kuudra Profit history, or start a new session.
+            if (sub[0].equalsIgnoreCase("kuudraprofit")) {
+                var tracker = sbs.modid.client.combat.kuudraprofit.logic.KuudraProfitTracker.getInstance();
+                if (sub.length > 1 && sub[1].trim().equalsIgnoreCase("reset")) {
+                    tracker.resetSession();
+                    sbs.modid.client.social.chat.logic.SBSChat.send("§7Kuudra profit session reset.");
+                } else {
+                    net.minecraft.client.Minecraft.getInstance().execute(() -> net.minecraft.client.Minecraft
+                            .getInstance().setScreenAndShow(
+                                    new sbs.modid.client.combat.kuudraprofit.ui.KuudraProfitScreen(null)));
+                }
                 return true;
             }
 
@@ -863,7 +962,9 @@ public final class SBSCommands {
     /** Why a channel could not take the test, in the words that point at the fix. */
     private static String reason(AlertChannel channel) {
         return switch (channel) {
-            case SOUND -> " - " + sbs.modid.client.core.audio.SbsAudio.statusText();
+            case SOUND -> " - " + (sbs.modid.client.core.audio.SbsSounds.enabled()
+                    ? sbs.modid.client.core.audio.SbsAudio.statusText()
+                    : sbs.modid.client.core.audio.SbsSounds.OFF_REASON);
             case NARRATOR -> " - text-to-speech is unavailable on this system";
             case HUD -> " - this alert has no HUD element of its own";
             default -> " - see the log";
@@ -1024,7 +1125,7 @@ public final class SBSCommands {
     private static String codepoints(String text) {
         StringBuilder out = new StringBuilder();
         text.codePoints().filter(cp -> cp > 0x7F).forEach(cp ->
-                out.append(out.isEmpty() ? " §8[" : " ").append(String.format("U+%04X", cp)));
+                out.append(out.isEmpty() ? " §8[" : " ").append(String.format(Locale.ROOT, "U+%04X", cp)));
         return out.isEmpty() ? "" : out.append("]").toString();
     }
 
@@ -1270,8 +1371,8 @@ public final class SBSCommands {
     }
 
     /**
-     * {@code /pv [player]} – opens the native SBS profile viewer (fed by the cloud's {@code /api/pv}
-     * endpoint). Without an argument it shows the player's own profile.
+     * {@code /pv [player]} – opens the native SBS profile viewer (fed by the relayed Hypixel
+     * profile, every value computed client-side). Without an argument it shows the player's own profile.
      */
     private static void openProfileViewer(String player) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -1468,7 +1569,7 @@ public final class SBSCommands {
         }
         net.minecraft.core.BlockPos pos = minecraft.player.blockPosition();
         highlight.addTestWaypoint(pos);
-        sbs.modid.client.dungeons.run.logic.DungeonDebug.chat(String.format(
+        sbs.modid.client.dungeons.run.logic.DungeonDebug.chat(String.format(Locale.ROOT,
                 "§aTest waypoint at %d,%d,%d §7(total %d) — use §f/sbstest clear§7 to remove.",
                 pos.getX(), pos.getY(), pos.getZ(), highlight.testWaypointCount()));
     }

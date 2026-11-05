@@ -148,7 +148,8 @@ public final class SkyblockItemModels {
             return null;
         }
         Object component = stack.get(DataComponents.CUSTOM_DATA);
-        return component instanceof CustomData data ? data.copyTag() : null;
+        // Read-only use: the component's own tag, not a copy (this runs per item model resolution).
+        return component instanceof CustomData data ? sbs.modid.client.core.item.SkyblockItem.customTag(data) : null;
     }
 
     /** Reads an id-ish key from the tag root, falling back to the legacy ExtraAttributes nesting. */

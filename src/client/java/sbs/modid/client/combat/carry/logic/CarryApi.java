@@ -8,6 +8,16 @@
 
 package sbs.modid.client.combat.carry.logic;
 
+import sbs.modid.client.core.api.ApiFailure;
+import sbs.modid.client.core.net.SessionIdentity;
+import sbs.modid.client.core.net.LinkFilter;
+
+import sbs.modid.client.core.net.RemoteText;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+import sbs.modid.client.core.net.validation.SbsReply;
+import sbs.modid.client.core.net.validation.ValidationException;
+
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -92,20 +102,20 @@ public final class CarryApi {
 // METHOD: GET and POST
 // PURPOSE: The carry-ticket board - list what carriers offer, post a ticket, claim one.
 // DATA SENT: Reads send nothing beyond the licence-token headers. Posting a ticket sends a
-//   JSON body with the category, tier, note and THE LOCAL PLAYER DISPLAY NAME, all of which
-//   the user typed or chose in the act of posting; claiming sends only the ticket id. Bodies
-//   are built with Gson.
+//   JSON body with the category, tier and note the user typed or chose; claiming sends only
+//   the ticket id. The sender is identified by the verified SBS session (X-SBS-Session, see
+//   SessionIdentity), not by a name in the body. Bodies are built with Gson.
 // DATA RECEIVED: Read-only JSON - the ticket list and its metadata. Parsed with Gson.
-// SAFETY DECLARATION: Posting a ticket transmits the local player display name, because a
-//   ticket nobody can be contacted about is useless; reading the board transmits nothing but
-//   the licence token. No Mojang credentials, no session id, no uuid, no OS telemetry. Gated
+// SAFETY DECLARATION: The server learns who posted from the verified session handshake
+//   (Mojang's own join check). The SBS session is held in memory only and sent only to the
+//   SBS origin. No Mojang credentials, no OS telemetry. Gated
 //   on ConsentScope.CARRY_TICKETS, which starts off. See PRIVACY.md.
 // ============================================================================
-        get("/carry/meta", cb, false);
+        get("/carry/meta", MessageTypes.CARRY_META, cb, false);
     }
 
     public void tickets(Callback cb) {
-        get("/carry/tickets", cb, false);
+        get("/carry/tickets", MessageTypes.CARRY_TICKETS, cb, false);
     }
 
     public void create(String category, String tier, String note, Callback cb) {
@@ -113,44 +123,42 @@ public final class CarryApi {
         body.addProperty("category", category);
         body.addProperty("tier", tier);
         body.addProperty("note", note);
-        body.addProperty("name", selfName());
-        post("/carry/tickets/create", body, cb);
+        post("/carry/tickets/create", MessageTypes.OUT_CARRY_CREATE, body, MessageTypes.CARRY_TICKET, cb);
     }
 
     public void claim(String ticketId, Callback cb) {
         JsonObject body = new JsonObject();
         body.addProperty("ticket_id", ticketId);
-        post("/carry/tickets/claim", body, cb);
+        post("/carry/tickets/claim", MessageTypes.OUT_CARRY_TICKET_ID, body, MessageTypes.CARRY_TICKET, cb);
     }
 
     public void unclaim(String ticketId, Callback cb) {
         JsonObject body = new JsonObject();
         body.addProperty("ticket_id", ticketId);
-        post("/carry/tickets/unclaim", body, cb);
+        post("/carry/tickets/unclaim", MessageTypes.OUT_CARRY_TICKET_ID, body, MessageTypes.CARRY_TICKET, cb);
     }
 
     public void close(String ticketId, Callback cb) {
         JsonObject body = new JsonObject();
         body.addProperty("ticket_id", ticketId);
-        post("/carry/tickets/close", body, cb);
+        post("/carry/tickets/close", MessageTypes.OUT_CARRY_TICKET_ID, body, MessageTypes.CARRY_OK, cb);
     }
 
     public void chat(String ticketId, String msg, Callback cb) {
         JsonObject body = new JsonObject();
         body.addProperty("ticket_id", ticketId);
         body.addProperty("msg", msg);
-        body.addProperty("name", selfName());
-        post("/carry/chat", body, cb);
+        post("/carry/chat", MessageTypes.OUT_CARRY_CHAT, body, MessageTypes.CARRY_CHAT_ACK, cb);
     }
 
     /** One long-poll round for a ticket's chat; the caller re-arms while it stays open. */
     public void poll(String ticketId, int since, Callback cb) {
         String path = "/carry/poll?ticket_id=" + urlEncode(ticketId) + "&since=" + since;
-        pollExec.execute(() -> run(path, null, cb, true));
+        pollExec.execute(() -> run(path, null, null, MessageTypes.CARRY_POLL, cb, true));
     }
 
     public void adminCarriers(Callback cb) {
-        get("/carry/admin/carriers", cb, false);
+        get("/carry/admin/carriers", MessageTypes.CARRY_ADMIN_CARRIERS, cb, false);
     }
 
     public void adminSetCarrier(String targetToken, String ign, String category, String tiersCsv,
@@ -171,66 +179,69 @@ public final class CarryApi {
             }
             body.add("tiers", tiers);
         }
-        post("/carry/admin/set_carrier", body, cb);
+        post("/carry/admin/set_carrier", MessageTypes.OUT_CARRY_SET_CARRIER, body, MessageTypes.CARRY_ADMIN_SET, cb);
     }
 
     public void adminRemoveCarrier(String ign, Callback cb) {
         JsonObject body = new JsonObject();
         body.addProperty("ign", ign);
-        post("/carry/admin/remove_carrier", body, cb);
+        post("/carry/admin/remove_carrier", MessageTypes.OUT_CARRY_REMOVE_CARRIER, body, MessageTypes.CARRY_OK, cb);
     }
 
     // ------------------------------------------------------------------
     // Transport
     // ------------------------------------------------------------------
 
-    private void get(String path, Callback cb, boolean isPoll) {
-        io.execute(() -> run(path, null, cb, isPoll));
+    private void get(String path, String typeId, Callback cb, boolean isPoll) {
+        io.execute(() -> run(path, null, null, typeId, cb, isPoll));
     }
 
-    private void post(String path, JsonObject body, Callback cb) {
-        io.execute(() -> run(path, body, cb, false));
+    private void post(String path, String outTypeId, JsonObject body, String typeId, Callback cb) {
+        io.execute(() -> run(path, outTypeId, body, typeId, cb, false));
     }
 
-    private void run(String path, JsonObject body, Callback cb, boolean isPoll) {
+    private void run(String path, String outTypeId, JsonObject body, String typeId, Callback cb, boolean isPoll) {
         try {
-            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(BASE + path))
-                    .timeout(isPoll ? POLL_TIMEOUT : TIMEOUT)
-                    .header("Authorization", "Bearer " + token())
-                    .header("Content-Type", "application/json");
-            HttpRequest request = body == null ? builder.GET().build()
-                    : builder.POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body),
-                            StandardCharsets.UTF_8)).build();
-            HttpResponse<String> response = sbs.modid.client.core.api.SbsApi.send(
-                    ConsentScope.CARRY_TICKETS, http, request,
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            // Parse leniently: Gson 2.11 throws if a non-object body (a bare string/number the
-            // server may return on some paths) is coerced into JsonObject.class. Read a
-            // JsonElement first and branch on its actual shape instead of crashing to "network:".
-            JsonElement parsed = null;
-            try {
-                if (response.body() != null && !response.body().isBlank()) {
-                    parsed = JsonParser.parseString(response.body());
-                }
-            } catch (JsonParseException malformed) {
-                parsed = null;
+            if (body != null) {
+                LinkFilter.check(body, "note", "msg");
+                MessageSchemas.checkOutgoing(outTypeId, body);
             }
-            if (parsed == null || !parsed.isJsonObject()) {
-                // Treat a primitive body as the server's error text; anything else is empty.
-                String message = parsed != null && parsed.isJsonPrimitive()
-                        ? parsed.getAsString() : "empty_response";
-                complete(cb, null, message);
-                return;
-            }
-            JsonObject json = parsed.getAsJsonObject();
-            if (json.has("error") && !json.get("error").isJsonNull()) {
-                complete(cb, null, json.get("error").getAsString());
+            String json = body == null ? null : gson.toJson(body);
+            java.util.function.Supplier<HttpRequest.Builder> request = () -> {
+                HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(BASE + path))
+                        .timeout(isPoll ? POLL_TIMEOUT : TIMEOUT)
+                        .header("Authorization", "Bearer " + token())
+                        .header("Content-Type", "application/json");
+                return json == null ? builder.GET()
+                        : builder.POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8));
+            };
+            // The ticket board, its chat and poll need the verified session; meta and the admin
+            // routes are licence-only and never start a handshake.
+            HttpResponse<String> response = needsSession(path)
+                    ? SessionIdentity.get().send(ConsentScope.CARRY_TICKETS, typeId, request)
+                    : sbs.modid.client.core.api.SbsApi.send(ConsentScope.CARRY_TICKETS, typeId, request.get().build(),
+                            HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            SbsReply reply = SbsReply.parse(typeId, response.body());
+            if (reply.isError()) {
+                complete(cb, null, reply.error());
             } else {
-                complete(cb, json, null);
+                // Notes, names and chat lines are drawn into screens; cleaned once here.
+                complete(cb, RemoteText.sanitizeTree(reply.data(), 1_024).getAsJsonObject(), null);
             }
+        } catch (LinkFilter.LinkRefusedException refused) {
+            complete(cb, null, LinkFilter.REFUSED);
+        } catch (SessionIdentity.SessionException session) {
+            complete(cb, null, session.userMessage());
+        } catch (ValidationException invalid) {
+            complete(cb, null, ValidationException.USER_MESSAGE);
         } catch (Exception e) {
-            complete(cb, null, "network: " + e.getMessage());
+            ApiFailure.log("[SBS][Carry]", path, e);
+            complete(cb, null, ApiFailure.message(e));
         }
+    }
+
+    static boolean needsSession(String path) {
+        return path.startsWith("/carry/tickets") || path.startsWith("/carry/chat") || path.startsWith("/carry/poll");
     }
 
     /** Results hop back to the client thread - callers touch screen state directly. */

@@ -31,5 +31,9 @@ public abstract class EntityHitboxesMixin {
         EntityHitboxes.getInstance().emit(frustum, camX, camY, camZ, partialTick);
         // Reward chest boxes: the same depth-tested gizmo scope.
         sbs.modid.client.dungeons.chest.RewardChestGlow.getInstance().emit(camX, camY, camZ);
+        // F7 Arrow Align click counts on the device's frames: the same depth-tested scope.
+        sbs.modid.client.dungeons.floorseven.render.ArrowAlignMarks.emit(camX, camY, camZ);
+        // F7 Shoot the Target: the current target and the hit marks, depth-tested like the rest.
+        sbs.modid.client.dungeons.floorseven.render.ShootTargetMarks.emit();
     }
 }

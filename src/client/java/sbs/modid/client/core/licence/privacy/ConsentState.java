@@ -10,9 +10,9 @@ package sbs.modid.client.core.licence.privacy;
 
 /**
  * The stored answer for one {@link ConsentScope}: whether it was granted, when, against which
- * disclosure, and how the answer was given.
+ * disclosure and which published policy, and how the answer was given.
  *
- * <p>All four fields are the record of consent, not bookkeeping around it. {@code grantedAt} and
+ * <p>All five fields are the record of consent, not bookkeeping around it. {@code grantedAt} and
  * {@code source} are what makes a grant evidenced rather than merely asserted, and
  * {@code disclosureVersion} is what pins a yes to the specific text it was a yes to - a grant whose
  * version no longer matches the scope's current one is not a weaker yes, it is not a yes at all
@@ -25,9 +25,15 @@ package sbs.modid.client.core.licence.privacy;
  * @param grantedAt         epoch millis of the answer, or {@code 0} when never answered
  * @param disclosureVersion the {@link ConsentScope#disclosureVersion()} in force at the time
  * @param source            how the answer was given
+ * @param policyVersion     the {@link PrivacyPolicy#VERSION} in force at the time, {@code ""} when
+ *                          unknown (never answered, or an answer read from a version 1 file)
  */
 public record ConsentState(boolean granted, long grantedAt, int disclosureVersion,
-                           ConsentSource source) {
+                           ConsentSource source, String policyVersion) {
+
+    public ConsentState {
+        policyVersion = policyVersion == null ? "" : policyVersion;
+    }
 
     /**
      * The state every scope starts in and falls back to: not granted, never answered. Used for a
@@ -35,17 +41,17 @@ public record ConsentState(boolean granted, long grantedAt, int disclosureVersio
      * mean the same thing, that nobody has agreed to anything.
      */
     public static ConsentState none() {
-        return new ConsentState(false, 0L, 0, ConsentSource.DEFAULT);
+        return new ConsentState(false, 0L, 0, ConsentSource.DEFAULT, "");
     }
 
-    /** A grant recorded now, against the scope's current disclosure. */
+    /** A grant recorded now, against the scope's current disclosure and the build's policy. */
     public static ConsentState granted(ConsentScope scope, ConsentSource source, long now) {
-        return new ConsentState(true, now, scope.disclosureVersion(), source);
+        return new ConsentState(true, now, scope.disclosureVersion(), source, PrivacyPolicy.VERSION);
     }
 
     /** A withdrawal recorded now. Kept rather than deleted so the audit trail shows the change. */
     public static ConsentState revoked(ConsentScope scope, ConsentSource source, long now) {
-        return new ConsentState(false, now, scope.disclosureVersion(), source);
+        return new ConsentState(false, now, scope.disclosureVersion(), source, PrivacyPolicy.VERSION);
     }
 
     /**
@@ -55,8 +61,15 @@ public record ConsentState(boolean granted, long grantedAt, int disclosureVersio
      * <i>higher</i> version than the build knows about is not "even more consented" - it is a file
      * from a future build, or an edited one, describing a disclosure this code cannot show the user.
      * Treating it as a grant would send data under terms the running client cannot display.
+     *
+     * <p>The policy version is compared by equality for the same reason. It applies to
+     * {@link ConsentScope.Kind#CONSENT} scopes only: a {@link ConsentScope.Kind#CONTRACT} scope is
+     * not refusable, so there is no answer for a policy change to invalidate.
      */
     public boolean countsFor(ConsentScope scope) {
-        return granted && disclosureVersion == scope.disclosureVersion();
+        if (!granted || disclosureVersion != scope.disclosureVersion()) {
+            return false;
+        }
+        return scope.kind() != ConsentScope.Kind.CONSENT || PrivacyPolicy.VERSION.equals(policyVersion);
     }
 }

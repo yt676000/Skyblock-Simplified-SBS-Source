@@ -11,6 +11,7 @@ package sbs.modid.client.helper.build.model;
 import sbs.modid.client.core.build.model.SchematicHeader;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The Quick Paste search: every typed term must match. {@code #tag} matches the start of a tag;
@@ -19,13 +20,15 @@ import java.util.Locale;
  */
 public final class LibrarySearch {
 
+    private static final Pattern TERM_SEPARATOR = Pattern.compile("\s+");
+
     private LibrarySearch() {
     }
 
     public static boolean matches(String displayName, SchematicHeader header, String query) {
         String name = displayName.toLowerCase(Locale.ROOT);
         String folder = header.folder().toLowerCase(Locale.ROOT);
-        for (String term : query.trim().toLowerCase(Locale.ROOT).split("\s+")) {
+        for (String term : TERM_SEPARATOR.split(query.trim().toLowerCase(Locale.ROOT))) {
             if (term.isEmpty()) {
                 continue;
             }

@@ -8,6 +8,10 @@
 
 package sbs.modid.client.economy.prices;
 
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+
 import com.google.gson.Gson;
 import sbs.modid.SkyblockSimplifiedSBS;
 
@@ -54,11 +58,12 @@ public final class LbinApiClient {
                             HttpRequest.newBuilder(URI.create(URL + page)).timeout(TIMEOUT))
                     .GET()
                     .build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = SecureHttp.send(MessageTypes.HYPIXEL_AUCTIONS, request,
+                    HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 return null;
             }
-            Response parsed = gson.fromJson(response.body(), Response.class);
+            Response parsed = MessageSchemas.parse(MessageTypes.HYPIXEL_AUCTIONS, response.body(), Response.class);
             return (parsed != null && parsed.success && parsed.auctions != null) ? parsed : null;
         } catch (Exception e) {
             SkyblockSimplifiedSBS.LOGGER.warn("[SBS][LBIN] Auctions API request (page {}) failed: {}", page, e.toString());

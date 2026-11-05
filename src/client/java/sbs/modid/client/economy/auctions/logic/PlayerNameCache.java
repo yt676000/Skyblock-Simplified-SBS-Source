@@ -8,6 +8,11 @@
 
 package sbs.modid.client.economy.auctions.logic;
 
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+import sbs.modid.client.core.net.Identity;
+
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
@@ -86,12 +91,18 @@ public final class PlayerNameCache {
 
     private void resolve(String uuid) {
         try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(PROFILE_URL + uuid))
+            String plain = Identity.normalizeUuid(uuid).orElse(null);
+            if (plain == null) {
+                names.put(uuid, shortUuid(uuid));
+                return;
+            }
+            HttpRequest request = HttpRequest.newBuilder(URI.create(PROFILE_URL + plain))
                     .timeout(TIMEOUT).GET().build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = SecureHttp.send(MessageTypes.MOJANG_PROFILE, request,
+                    HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
-                JsonObject profile = gson.fromJson(response.body(), JsonObject.class);
-                if (profile != null && profile.has("name")) {
+                JsonObject profile = MessageSchemas.parse(MessageTypes.MOJANG_PROFILE, response.body()).getAsJsonObject();
+                if (profile.has("name") && Identity.isValidName(profile.get("name").getAsString())) {
                     names.put(uuid, profile.get("name").getAsString());
                     return;
                 }

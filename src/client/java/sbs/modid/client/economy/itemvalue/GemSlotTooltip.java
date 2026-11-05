@@ -15,6 +15,8 @@ import net.minecraft.world.item.ItemStack;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.item.SkyblockItem;
+import sbs.modid.client.core.item.TooltipLines;
+import sbs.modid.client.economy.prices.PriceVersion;
 import sbs.modid.client.economy.recipe.logic.SkyBlockItemCatalog;
 import sbs.modid.client.skills.mining.logic.GemstoneCatalog;
 
@@ -45,29 +47,37 @@ public final class GemSlotTooltip {
     public record Segment(String text, int color) {
     }
 
+    private static final TooltipLines CACHE = new TooltipLines(GemSlotTooltip::build);
+
     private GemSlotTooltip() {
     }
 
     /** Adds the line to {@code lines} when the item has gem slots; else returns {@code lines}. */
     public static List<Component> decorate(List<Component> lines, ItemStack stack) {
-        SBSConfig.ItemOverlaySettings cfg = ConfigManager.getInstance().get().itemOverlay;
-        if (!cfg.showGemSlots || stack == null || stack.isEmpty()) {
+        if (!ConfigManager.getInstance().get().itemOverlay.showGemSlots || stack == null || stack.isEmpty()) {
             return lines;
         }
+        // Built once per stack, price version (gem prices, the item catalogue) and config revision.
+        long key = TooltipLines.key(PriceVersion.get(), ConfigManager.getInstance().revision(), 0);
+        return TooltipLines.append(lines, CACHE.get(stack, key));
+    }
+
+    private static List<Component> build(ItemStack stack) {
+        SBSConfig.ItemOverlaySettings cfg = ConfigManager.getInstance().get().itemOverlay;
         CompoundTag extra = SkyblockItem.extraAttributes(stack);
         String id = SkyblockItem.id(stack);
         SkyBlockItemCatalog.Entry entry = id == null ? null : SkyBlockItemCatalog.getInstance().byId(id);
         List<GemSlots.SlotDef> defs = entry == null ? List.of() : entry.gemSlots;
         GemSlots.Applied applied = ItemModifiers.readGems(extra);
         if (defs.isEmpty() && applied.filled().isEmpty() && applied.unlocked().isEmpty()) {
-            return lines;
+            return List.of();
         }
         List<GemSlots.Slot> slots = GemSlots.resolve(defs, applied, extra.getIntOr("levelable_lvl", 0));
         if (slots.isEmpty()) {
-            return lines;
+            return List.of();
         }
         Value value = cfg.showGemSlotValue ? value(slots) : null;
-        List<Component> out = new ArrayList<>(lines);
+        List<Component> out = new ArrayList<>();
         for (List<Segment> row : rows(slots, value)) {
             MutableComponent line = Component.empty();
             for (Segment segment : row) {
@@ -75,7 +85,7 @@ public final class GemSlotTooltip {
             }
             out.add(line);
         }
-        return out;
+        return List.copyOf(out);
     }
 
     /** What the filled gems sell for; {@code partial} when one of them has no price. */

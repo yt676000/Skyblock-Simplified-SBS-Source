@@ -13,7 +13,6 @@ import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
@@ -23,8 +22,10 @@ import sbs.modid.client.core.alert.Alerts;
 import sbs.modid.client.core.audio.SbsAudio;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.core.entity.EntityIndex;
+import sbs.modid.client.core.entity.EntityKind;
+import sbs.modid.client.core.entity.Tracked;
 import sbs.modid.client.core.location.SkyBlockLocation;
-import sbs.modid.client.core.util.PlainText;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -117,7 +118,7 @@ public final class MythMobTracker {
      * non-matching read loses the entity permanently. That was the bug behind "Inquisitors are not
      * highlighted and not shared" - detection never happened, so nothing downstream of it could.
      */
-    private final Set<Integer> dismissed = new HashSet<>();
+    private final it.unimi.dsi.fastutil.ints.IntOpenHashSet dismissed = new it.unimi.dsi.fastutil.ints.IntOpenHashSet();
 
     /** Named stands looked at on the last tick, for the readout. */
     private volatile int scanned;
@@ -137,6 +138,12 @@ public final class MythMobTracker {
     /** Sightings from other players' messages, which have no entity to re-read. */
     private final List<Sighting> shared = new CopyOnWriteArrayList<>();
 
+    /**
+     * Bumped whenever the own sightings may have changed - every tick a creature is in view, since
+     * health moves on every hit. The creature card rebuilds its rows when it moves.
+     */
+    private volatile int version;
+
     private MythMobTracker() {
     }
 
@@ -146,6 +153,11 @@ public final class MythMobTracker {
 
     private static SBSConfig.DianaSettings cfg() {
         return ConfigManager.getInstance().get().diana;
+    }
+
+    /** Moves whenever the own sightings may have changed. */
+    public int version() {
+        return version;
     }
 
     /** Everything worth drawing: what we can see, plus what somebody told us about. */
@@ -196,7 +208,10 @@ public final class MythMobTracker {
         ClientLevel level = minecraft.level;
         Player player = minecraft.player;
         if (!cfg.enabled || level == null || player == null || !SkyBlockLocation.onIsland("Hub")) {
-            sightings.clear();
+            if (!sightings.isEmpty()) {
+                sightings.clear();
+                version++;
+            }
             return;
         }
 
@@ -205,16 +220,16 @@ public final class MythMobTracker {
         scanned = 0;
         matched = 0;
 
-        for (Entity entity : level.entitiesForRendering()) {
-            if (!(entity instanceof ArmorStand stand)) {
-                continue;
-            }
+        // The stand bucket, with each name read and stripped once per change, not per tick.
+        List<Tracked> stands = EntityIndex.bucket(EntityKind.ARMOR_STAND);
+        for (int i = 0, n = stands.size(); i < n; i++) {
+            Tracked tracked = stands.get(i);
+            ArmorStand stand = (ArmorStand) tracked.entity;
             int id = stand.getId();
             if (dismissed.contains(id)) {
                 continue;
             }
-            Component custom = stand.getCustomName();
-            String raw = custom == null ? "" : custom.getString();
+            String raw = tracked.raw();
             if (raw.isEmpty()) {
                 // The name has not arrived yet. Park it, and give up on it after a second - the
                 // difference between detecting these creatures and detecting none of them.
@@ -228,7 +243,7 @@ public final class MythMobTracker {
             unconfirmed.remove(id);
             scanned++;
 
-            String name = PlainText.strip(raw);
+            String name = tracked.plain();
             MythCreature creature = creatureFor(name);
             if (creature == null) {
                 // Deliberately NOT dismissed. A stand whose name does not match right now is
@@ -261,6 +276,9 @@ public final class MythMobTracker {
             maybeAnnounce(cfg, id, sighting, player);
         }
 
+        if (!found.isEmpty() || !sightings.isEmpty()) {
+            version++;
+        }
         sightings.clear();
         sightings.addAll(found);
         prune(level, now);
@@ -349,6 +367,7 @@ public final class MythMobTracker {
         announced.clear();
         sightings.clear();
         shared.clear();
+        version++;
     }
 
     /**

@@ -29,6 +29,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 /**
  * Ability Ready Alert: "Pickobulus ready" through the player's alert channels the moment Hypixel
@@ -59,6 +60,7 @@ public final class AbilityReadyAlert {
     /** When an axe was last right-clicked - chat within {@link #CAPTURE_WINDOW_MS} of it is logged. */
     private volatile long axeUsedAt;
     private static final long CAPTURE_WINDOW_MS = 2_000L;
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     private AbilityReadyAlert() {
     }
@@ -148,7 +150,7 @@ public final class AbilityReadyAlert {
         }
         long now = System.currentTimeMillis();
         axeUsedAt = now;
-        String item = stack.getHoverName().getString().replaceAll("§.", "");
+        String item = FORMATTING.matcher(stack.getHoverName().getString()).replaceAll("");
         List<AxeAbilityLore.Ability> abilities = AxeAbilityLore.abilities(lore);
         log("lore|" + item + abilities, "[SBS][Ability] axe '{}' lore abilities={}", item, abilities);
         SBSConfig.MiningHelpersSettings cfg = cfg();
@@ -199,7 +201,7 @@ public final class AbilityReadyAlert {
         if (text == null || System.currentTimeMillis() - axeUsedAt > CAPTURE_WINDOW_MS) {
             return;
         }
-        String plain = text.replaceAll("§.", "").strip();
+        String plain = FORMATTING.matcher(text).replaceAll("").strip();
         String lower = plain.toLowerCase(Locale.ROOT);
         if (lower.contains("ability") || lower.contains("cooldown") || lower.contains("available")) {
             log("chat|" + plain, "[SBS][Ability] axe chat within {}ms of right-click: '{}'",

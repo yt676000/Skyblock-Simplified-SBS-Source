@@ -11,7 +11,6 @@ package sbs.modid.client.skills.garden.model;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.network.chat.Component;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.tab.TabWidgets;
 import sbs.modid.client.skills.farming.model.FarmingText;
@@ -65,6 +64,15 @@ public final class GardenLevel {
     private volatile String xpText;
     private volatile long seenAt;
     private long lastScanAt;
+
+    /** Bumped when a scan reads a different level, bar or XP text; the card rebuilds on it. */
+    private volatile int version;
+
+    /** The card as last built, and what for. Render thread only. */
+    private HudCard.Snapshot card;
+    private double cardBar = -1;
+    private int builtVersion = -1;
+    private boolean builtOverflow;
 
     private GardenLevel() {
     }
@@ -138,9 +146,12 @@ public final class GardenLevel {
             }
         }
         if (foundLevel >= 0) {
-            level = foundLevel;
-            fraction = foundFraction;
-            xpText = foundXp;
+            if (foundLevel != level || foundFraction != fraction || !java.util.Objects.equals(foundXp, xpText)) {
+                level = foundLevel;
+                fraction = foundFraction;
+                xpText = foundXp;
+                version++;
+            }
             seenAt = now;
         }
     }
@@ -153,30 +164,26 @@ public final class GardenLevel {
                 || HudLayout.isHidden(HudElement.GARDEN_LEVEL)) {
             return;
         }
-        int shown = level;
-        if (shown < 0 || System.currentTimeMillis() - seenAt > HIDE_AFTER_MS) {
+        if (level < 0 || System.currentTimeMillis() - seenAt > HIDE_AFTER_MS) {
             return;
         }
-        boolean overflow = shown > MAX_LEVEL;
-        if (overflow && !cfg().gardenLevelOverflow) {
-            shown = MAX_LEVEL;
+        // Nothing here counts down, so the card only rebuilds on a new reading or the overflow toggle.
+        int version = this.version;
+        boolean showOverflow = cfg().gardenLevelOverflow;
+        if (card == null || version != builtVersion || showOverflow != builtOverflow) {
+            builtVersion = version;
+            builtOverflow = showOverflow;
+            card = build(showOverflow);
         }
+        HudCard.Snapshot current = card;
 
         Font font = Minecraft.getInstance().font;
         int lineH = font.lineHeight + 2;
         int pad = 5;
         int barH = 4;
-        String header = "Garden Level";
-        String levelText = overflow && cfg().gardenLevelOverflow
-                ? shown + " (+" + (shown - MAX_LEVEL) + ")"
-                : String.valueOf(shown);
-        double bar = fraction;
-        String xp = xpText;
-
-        int contentW = Math.max(font.width(header) + 10 + font.width(levelText),
-                xp == null ? 0 : font.width(xp));
-        int width = Math.max(118, contentW + pad * 2);
-        int height = pad * 2 + lineH + (bar >= 0 ? barH + 3 : 0) + (xp != null ? lineH : 0) - 2;
+        int width = current.width();
+        int height = current.height();
+        double bar = cardBar;
 
         HudElement.Bounds b = HudElement.GARDEN_LEVEL.defaultBounds(g.guiWidth(), g.guiHeight());
         int x = Math.round(b.x());
@@ -189,9 +196,7 @@ public final class GardenLevel {
         int ix = x + pad;
         int right = x + width - pad;
         int iy = y + pad;
-        g.text(font, Component.literal(header), ix, iy, SBSTheme.ACCENT_BRIGHT);
-        g.text(font, Component.literal(levelText), right - font.width(levelText), iy,
-                overflow ? 0xFFE0A14D : SBSTheme.TEXT);
+        HudCard.drawLine(g, font, current.rows().get(0), ix, right, iy);
         iy += lineH;
         if (bar >= 0) {
             int barW = width - pad * 2;
@@ -202,9 +207,36 @@ public final class GardenLevel {
             }
             iy += barH + 3;
         }
-        if (xp != null) {
-            g.text(font, Component.literal(xp), ix, iy, SBSTheme.TEXT_MUTED);
+        if (current.rows().size() > 1) {
+            HudCard.drawLine(g, font, current.rows().get(1), ix, right, iy);
         }
         HudLayout.end(g);
+    }
+
+    /** The header row with the level, the XP row when there is one, and the measured size. */
+    private HudCard.Snapshot build(boolean showOverflow) {
+        int shown = level;
+        boolean overflow = shown > MAX_LEVEL;
+        if (overflow && !showOverflow) {
+            shown = MAX_LEVEL;
+        }
+        Font font = Minecraft.getInstance().font;
+        int lineH = font.lineHeight + 2;
+        int pad = 5;
+        int barH = 4;
+        String levelText = overflow && showOverflow
+                ? shown + " (+" + (shown - MAX_LEVEL) + ")"
+                : String.valueOf(shown);
+        double bar = fraction;
+        String xp = xpText;
+
+        HudCard.Line head = HudCard.Line.of(font, "Garden Level", SBSTheme.ACCENT_BRIGHT,
+                levelText, overflow ? 0xFFE0A14D : SBSTheme.TEXT);
+        HudCard.Line xpLine = xp == null ? null : HudCard.Line.of(font, xp, SBSTheme.TEXT_MUTED);
+        int contentW = Math.max(head.width(10), xpLine == null ? 0 : xpLine.leftWidth());
+        int width = Math.max(118, contentW + pad * 2);
+        int height = pad * 2 + lineH + (bar >= 0 ? barH + 3 : 0) + (xp != null ? lineH : 0) - 2;
+        cardBar = bar;
+        return new HudCard.Snapshot(xpLine == null ? List.of(head) : List.of(head, xpLine), width, height, null);
     }
 }

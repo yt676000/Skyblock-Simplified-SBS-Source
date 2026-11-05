@@ -8,12 +8,14 @@
 
 package sbs.modid.client.helper.hideplayers;
 
+import net.fabricmc.loader.api.FabricLoader;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.module.ModuleGroup;
 import sbs.modid.client.core.module.SbsModule;
 import sbs.modid.client.ui.settings.SettingRow;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -62,7 +64,7 @@ public final class HidePlayersModule implements SbsModule {
 
     @Override
     public List<SettingRow> settings() {
-        return List.of(
+        List<SettingRow> rows = new ArrayList<>(List.of(
                 SettingRow.toggle("Hide Nearby Players", () -> cfg().enabled,
                         () -> { cfg().enabled = !cfg().enabled; save(); })
                         .describe("Other players close to you are not drawn - no body, armour, name "
@@ -101,7 +103,44 @@ public final class HidePlayersModule implements SbsModule {
                         () -> { cfg().npcHint = !cfg().npcHint; save(); })
                         .describe("When your crosshair points through a hidden player at the NPC "
                                 + "behind them, a short line under the crosshair says so - your click "
-                                + "would reach the player, so step aside. Default: on."),
+                                + "would reach the player, so step aside. Default: on.")));
+        if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            // Dev only until the pet body and cosmetic stands are classified; today it hides the name stand alone.
+            rows.add(SettingRow.toggle("Hide Their Pets", () -> cfg().hidePets,
+                    () -> { cfg().hidePets = !cfg().hidePets; save(); })
+                    .describe("Also hides other players' pet names. Pets of your party, dungeon "
+                            + "team and Trusted players, and the one under your crosshair, stay. "
+                            + "Default: off."));
+        }
+        rows.addAll(List.of(
+                SettingRow.label("— Low-level players —"),
+                SettingRow.toggle("Hide Low-Level Players", () -> cfg().lowLevelEnabled,
+                        () -> { cfg().lowLevelEnabled = !cfg().lowLevelEnabled; save(); })
+                        .describe("Players below the SkyBlock level you set are hidden - their public "
+                                + "chat lines and their models. The level is read from the tab list and "
+                                + "from the [level] in front of their chat lines, kept in memory only. "
+                                + "A player whose level is not known stays visible; party, guild, "
+                                + "private and co-op chat is never touched, and the player under your "
+                                + "crosshair is always drawn. Works without the nearby hiding above. "
+                                + "Default: off."),
+                SettingRow.intField("Minimum SkyBlock Level", 0, 500, () -> cfg().minLevel,
+                        value -> { cfg().minLevel = value; save(); }, "")
+                        .describe("Players with a lower SkyBlock level are hidden. Default: 100."),
+                SettingRow.toggle("Hide Their Chat", () -> cfg().lowLevelChat,
+                        () -> { cfg().lowLevelChat = !cfg().lowLevelChat; save(); })
+                        .describe("Their public chat lines are not shown. Default: on."),
+                SettingRow.toggle("Count Hidden Messages", () -> cfg().lowLevelNotice,
+                        () -> { cfg().lowLevelNotice = !cfg().lowLevelNotice; save(); })
+                        .describe("At most once a minute, a chat line says how many messages were "
+                                + "hidden. Only the number - nothing they wrote is kept. Default: off."),
+                SettingRow.toggle("Hide Them In The World", () -> cfg().lowLevelWorld,
+                        () -> { cfg().lowLevelWorld = !cfg().lowLevelWorld; save(); })
+                        .describe("Their models are not drawn. Only how they look changes: you can "
+                                + "still hit, bump into and right-click them. Default: on."),
+                SettingRow.toggle("Hide Them In The Tab List", () -> cfg().lowLevelTab,
+                        () -> { cfg().lowLevelTab = !cfg().lowLevelTab; save(); })
+                        .describe("They are left out of the SBS tab list. Your party, dungeon team and "
+                                + "trusted players stay, as everywhere else. Default: on."),
 
                 SettingRow.label("— Always show —"),
                 SettingRow.toggle("Keep Party Members", () -> cfg().keepParty,
@@ -122,6 +161,7 @@ public final class HidePlayersModule implements SbsModule {
                         .describe("Normally nothing is hidden in a dungeon, in Kuudra's Hollow or "
                                 + "while your slayer boss is up, because there the players around "
                                 + "you are information. Turn this on to hide there as well. "
-                                + "Default: off."));
+                                + "Default: off.")));
+        return rows;
     }
 }

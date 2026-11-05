@@ -71,6 +71,9 @@ public final class TerminalSimulatorScreen extends Screen {
 
     private static final int COLS = 6;
     private static final int ROWS = 5;
+
+    /** Numbers on a "Click in order!" board. Hypixel 2026-10: 14 → 10. */
+    static final int NUMBERS_COUNT = 10;
     private static final int CELL = 22;
     private static final int GAP = 3;
 
@@ -194,17 +197,25 @@ public final class TerminalSimulatorScreen extends Screen {
     }
 
     private void generateNumbers(int total) {
-        int count = 10 + random.nextInt(5); // 10..14 numbers
-        List<Integer> slots = shuffledSlots(total);
-        for (int i = 0; i < count; i++) {
+        List<Integer> slots = numberSlots(random, total);
+        for (int i = 0; i < slots.size(); i++) {
             Cell cell = cells.get(slots.get(i));
             cell.number = i + 1;
             cell.text = String.valueOf(i + 1);
             cell.argb = 0xFF394A5A;
             cell.target = true;
         }
-        remaining = count;
-        targetLabel = "1-" + count;
+        remaining = slots.size();
+        targetLabel = "1-" + slots.size();
+    }
+
+    /**
+     * The cells numbers 1..{@value #NUMBERS_COUNT} land on: element {@code i} holds {@code i + 1}.
+     * Static and Minecraft-free so the count is testable without opening the screen.
+     */
+    static List<Integer> numberSlots(Random random, int total) {
+        List<Integer> slots = shuffledSlots(random, total);
+        return new ArrayList<>(slots.subList(0, Math.min(NUMBERS_COUNT, total)));
     }
 
     private void generateColors(int total) {
@@ -273,6 +284,10 @@ public final class TerminalSimulatorScreen extends Screen {
     }
 
     private List<Integer> shuffledSlots(int total) {
+        return shuffledSlots(random, total);
+    }
+
+    private static List<Integer> shuffledSlots(Random random, int total) {
         List<Integer> slots = new ArrayList<>();
         for (int i = 0; i < total; i++) {
             slots.add(i);
@@ -417,7 +432,7 @@ public final class TerminalSimulatorScreen extends Screen {
             g.centeredText(font, Component.literal("§bTerminal Simulator §7· §f" + type.label),
                     px + panelW / 2, py + 6, SBSTheme.ACCENT_BRIGHT);
             String prompt = type.prompt.contains("%s")
-                    ? String.format(type.prompt, "§e" + targetLabel + "§7") : type.prompt;
+                    ? String.format(Locale.ROOT, type.prompt, "§e" + targetLabel + "§7") : type.prompt;
             g.centeredText(font, Component.literal("§7" + prompt), px + panelW / 2, py + 18, SBSTheme.TEXT_MUTED);
             String timer = "§fTime §b" + secs(elapsed) + "s"
                     + (pb != null ? "   §7PB §a" + secs(pb) + "s" : "")

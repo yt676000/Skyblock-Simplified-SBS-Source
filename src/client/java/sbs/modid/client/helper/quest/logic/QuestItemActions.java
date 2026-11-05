@@ -8,6 +8,8 @@
 
 package sbs.modid.client.helper.quest.logic;
 
+import sbs.modid.client.core.net.UrlGuard;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.Screen;
@@ -64,7 +66,7 @@ public final class QuestItemActions {
         if (displayName == null) {
             return;
         }
-        ConfirmLinkScreen.confirmLinkNow(parent, ItemWikiLinks.officialUrl(displayName));
+        UrlGuard.openAfterClick(parent, ItemWikiLinks.officialUrl(displayName));
     }
 
     /** The label for the market button, so the UI says where the click actually goes. */

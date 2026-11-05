@@ -57,6 +57,7 @@ public final class StoragePreview {
     private static final StoragePreview INSTANCE = new StoragePreview();
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
     private static final Pattern FIRST_NUMBER = Pattern.compile("([0-9]+)");
     private static final int COLUMNS = 9;
     private static final int CELL = 18;
@@ -162,7 +163,18 @@ public final class StoragePreview {
     // Session caches from open menus (live stacks – real icons, skins, counts)
     // ------------------------------------------------------------------
 
+    /** What cacheOpenStorage last read: the screen and the slot-packet revision. Render thread only. */
+    private AbstractContainerScreen<?> cachedScreen;
+    private int cachedRevision;
+
     private void cacheOpenStorage(AbstractContainerScreen<?> screen) {
+        // The slots only change with a slot packet; until one arrives they are exactly as copied.
+        int revision = sbs.modid.client.core.tick.InventoryChanges.revision();
+        if (screen == cachedScreen && revision == cachedRevision) {
+            return;
+        }
+        cachedScreen = screen;
+        cachedRevision = revision;
         String title = stripCodes(screen.getTitle() != null ? screen.getTitle().getString() : "").trim();
         String lower = title.toLowerCase(Locale.ROOT);
         boolean enderChest = lower.contains("ender chest");
@@ -225,7 +237,7 @@ public final class StoragePreview {
                 diagnose(stack, new CompoundTag(), new CompoundTag()); // "no custom data at all"
                 return null;
             }
-            CompoundTag tag = data.copyTag();
+            CompoundTag tag = sbs.modid.client.core.item.SkyblockItem.customTag(data); // read-only
             CompoundTag extra = tag.getCompoundOrEmpty("ExtraAttributes");
             if (extra.isEmpty()) {
                 for (String key : tag.keySet()) {
@@ -366,6 +378,6 @@ public final class StoragePreview {
     }
 
     private static String stripCodes(String text) {
-        return text == null ? "" : text.replaceAll(SECTION_SIGN + ".", "");
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("");
     }
 }

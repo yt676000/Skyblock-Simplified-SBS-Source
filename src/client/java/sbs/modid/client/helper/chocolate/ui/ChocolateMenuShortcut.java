@@ -12,17 +12,15 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.ItemLore;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.core.item.MenuFiller;
 import sbs.modid.client.core.mixin.AbstractContainerScreenAccessor;
 import sbs.modid.client.core.util.NumberDisplay;
 import sbs.modid.client.core.util.PlainText;
@@ -162,7 +160,7 @@ public final class ChocolateMenuShortcut implements SlotDecorator {
         if (stack.isEmpty()) {
             return null; // the menu's contents have not arrived yet
         }
-        if (!isFiller(stack)) {
+        if (!MenuFiller.isFiller(stack)) {
             if (!occupiedLogged) {
                 occupiedLogged = true;
                 SkyblockSimplifiedSBS.LOGGER.info("[SBS][Chocolate] SkyBlock Menu slot {} holds '{}', "
@@ -172,13 +170,6 @@ public final class ChocolateMenuShortcut implements SlotDecorator {
             return null;
         }
         return slot;
-    }
-
-    private static boolean isFiller(ItemStack stack) {
-        ItemLore lore = stack.get(DataComponents.LORE);
-        return MenuShortcut.isFiller(BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath(),
-                PlainText.strip(stack.getHoverName().getString()),
-                lore == null ? 0 : lore.lines().size());
     }
 
     /** The one screen test, asked by the tier, the draw and the click so they cannot disagree. */

@@ -16,7 +16,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.combat.ghost.logic.GhostTracker;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
@@ -35,6 +36,8 @@ import java.util.List;
  * exactly the one a tracer is for; the walk there was already priced into the choice.
  */
 public final class GhostHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     /** Alpha the non-chosen ghosts' boxes are drawn at, so the pick stays unmistakable. */
     private static final int OTHERS_ALPHA = 0x55;
@@ -69,7 +72,7 @@ public final class GhostHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         int color = cfg.color.argb();
         int dim = (color & 0x00FFFFFF) | (OTHERS_ALPHA << 24);
 
@@ -95,7 +98,7 @@ public final class GhostHighlight {
     }
 
     /** The twelve edges of a ghost's hitbox, slightly inflated so the box clears the model. */
-    private static void box(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void box(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                             LivingEntity mob, int color, int thickness) {
         AABB box = mob.getBoundingBox().inflate(0.1);
         WorldRender.boxEdges(g, viewProjection, camPos,
@@ -107,11 +110,11 @@ public final class GhostHighlight {
      * still won despite being awkward. A ghost someone else is nearer to is marked, since that is the
      * one case where you may want to override the pick yourself.
      */
-    private static void label(GuiGraphicsExtractor g, Font font, Matrix4f viewProjection, Vec3 camPos,
+    private static void label(GuiGraphicsExtractor g, Font font, Matrix4fc viewProjection, Vec3 camPos,
                               AABB box, GhostTracker.Ghost ghost, int color) {
-        Vec3 top = new Vec3((box.minX + box.maxX) / 2, box.maxY + 0.4, (box.minZ + box.maxZ) / 2);
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos, top, g.guiWidth(), g.guiHeight());
-        if (screen == null) {
+        int[] screen = SCREEN;
+        if (!WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z, (box.minX + box.maxX) / 2,
+                box.maxY + 0.4, (box.minZ + box.maxZ) / 2, g.guiWidth(), g.guiHeight(), screen)) {
             return;
         }
         String text = "» Ghost §7" + Math.round(ghost.distance()) + "m"

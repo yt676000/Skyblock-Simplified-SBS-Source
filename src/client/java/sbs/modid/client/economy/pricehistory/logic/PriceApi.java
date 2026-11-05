@@ -8,6 +8,13 @@
 
 package sbs.modid.client.economy.pricehistory.logic;
 
+import sbs.modid.client.core.api.ApiFailure;
+import com.google.gson.JsonElement;
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+import sbs.modid.client.core.net.validation.ValidationException;
+
 import com.google.gson.Gson;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.ConfigManager;
@@ -39,10 +46,11 @@ public final class PriceApi {
     /** Primary endpoint: everything over HTTPS on 443 (tokens travel as headers, never in URLs). */
     private static final String BASE_HTTPS = "https://skyblocksimplified.info";
 
-    /** Legacy direct-port endpoint, used automatically while 443 is not serving yet. */
-    private static final String BASE_LEGACY = "http://skyblocksimplified.info:3000";
 
     private static final Duration TIMEOUT = Duration.ofSeconds(12);
+
+    private static final java.util.regex.Pattern ITEM_ID = java.util.regex.Pattern.compile("^[A-Za-z0-9_:;.+-]{1,96}$");
+    private static final java.util.regex.Pattern RANGE = java.util.regex.Pattern.compile("^[0-9a-z]{1,8}$");
 
     // Must come AFTER the constants above: static initializers run in declaration order, and the
     // constructor reads TIMEOUT (a Duration is not a compile-time constant – it would still be null).
@@ -82,13 +90,19 @@ public final class PriceApi {
         return active != null ? active : BASE_HTTPS;
     }
 
-    /** The legacy direct-port endpoint, for the connect-failure fallback. */
+    /**
+     * The fallback base for a connect failure. Every request is https-only, so this is the primary
+     * endpoint: a failed connection is retried once against the same TLS origin.
+     */
     public static String legacyBase() {
-        return BASE_LEGACY;
+        return BASE_HTTPS;
     }
 
     /** True when a licence token is configured (Licence Token module). */
     public static boolean hasToken() {
+        if (sbs.modid.client.core.net.Credentials.current() != sbs.modid.client.core.net.Credentials.Kind.LICENCE) {
+            return false;
+        }
         return sbs.modid.client.core.config.LicenceToken.getInstance().isSet();
     }
 
@@ -96,8 +110,13 @@ public final class PriceApi {
     public void fetchItem(String itemId, String range, Callback<ItemData> callback) {
         executor.execute(() -> {
             try {
-                String json = get("/api/item/" + itemId + "?range=" + range);
-                ItemData data = gson.fromJson(json, ItemData.class);
+                if (!ITEM_ID.matcher(itemId == null ? "" : itemId).matches()
+                        || !RANGE.matcher(range == null ? "" : range).matches()) {
+                    callback.done(null, "unknown_item");
+                    return;
+                }
+                String json = get("/api/item/" + itemId + "?range=" + range, MessageTypes.PRICE_ITEM);
+                ItemData data = MessageSchemas.parse(MessageTypes.PRICE_ITEM, json, ItemData.class);
                 if (data == null || data.t == null) {
                     callback.done(null, "Empty response");
                     return;
@@ -105,9 +124,11 @@ public final class PriceApi {
                 callback.done(data, null);
             } catch (ApiException e) {
                 callback.done(null, e.getMessage());
+            } catch (ValidationException e) {
+                callback.done(null, ValidationException.USER_MESSAGE);
             } catch (Exception e) {
-                SkyblockSimplifiedSBS.LOGGER.warn("[SBS][PriceHistory] /api/item/{} failed: {}", itemId, e.toString());
-                callback.done(null, "Connection failed");
+                ApiFailure.log("[SBS][PriceHistory]", "/api/item/" + itemId, e);
+                callback.done(null, ApiFailure.message(e));
             }
         });
     }
@@ -116,8 +137,8 @@ public final class PriceApi {
     public void fetchItems(Callback<String[][]> callback) {
         executor.execute(() -> {
             try {
-                String json = get("/api/items");
-                ItemsResponse response = gson.fromJson(json, ItemsResponse.class);
+                String json = get("/api/items", MessageTypes.PRICE_ITEMS);
+                ItemsResponse response = MessageSchemas.parse(MessageTypes.PRICE_ITEMS, json, ItemsResponse.class);
                 if (response == null || response.items == null) {
                     callback.done(null, "Empty response");
                     return;
@@ -125,9 +146,11 @@ public final class PriceApi {
                 callback.done(response.items, null);
             } catch (ApiException e) {
                 callback.done(null, e.getMessage());
+            } catch (ValidationException e) {
+                callback.done(null, ValidationException.USER_MESSAGE);
             } catch (Exception e) {
-                SkyblockSimplifiedSBS.LOGGER.warn("[SBS][PriceHistory] /api/items failed: {}", e.toString());
-                callback.done(null, "Connection failed");
+                ApiFailure.log("[SBS][PriceHistory]", "/api/items", e);
+                callback.done(null, ApiFailure.message(e));
             }
         });
     }
@@ -141,8 +164,8 @@ public final class PriceApi {
      *
      * <p><b>Blocking</b> – callers must run it off the render thread.
      */
-    public String getAuthenticated(String path) throws Exception {
-        return get(path);
+    public String getAuthenticated(String path, String typeId) throws Exception {
+        return get(path, typeId);
     }
 
     /**
@@ -168,35 +191,17 @@ public final class PriceApi {
 //   starts off. See PRIVACY.md.
 // ============================================================================
     private String get(String path) throws Exception {
-        String base = activeBase;
-        if (base != null) {
-            return getFrom(base, path);
-        }
-        try {
-            String body = getFrom(BASE_HTTPS, path);
-            activeBase = BASE_HTTPS;
-            return body;
-        } catch (ApiException answered) {
-            activeBase = BASE_HTTPS; // 401/404/5xx = HTTPS is live, the request itself failed
-            throw answered;
-        } catch (Exception unreachable) {
-            try {
-                String body = getFrom(BASE_LEGACY, path);
-                activeBase = BASE_LEGACY;
-                SkyblockSimplifiedSBS.LOGGER.info(
-                        "[SBS][PriceHistory] HTTPS endpoint not reachable yet - using the legacy endpoint.");
-                return body;
-            } catch (ApiException answeredLegacy) {
-                activeBase = BASE_LEGACY;
-                SkyblockSimplifiedSBS.LOGGER.info(
-                        "[SBS][PriceHistory] HTTPS endpoint not reachable yet - using the legacy endpoint.");
-                throw answeredLegacy;
-            }
-        }
+        return get(path, null);
+    }
+
+    private String get(String path, String typeId) throws Exception {
+        String body = getFrom(BASE_HTTPS, path, typeId);
+        activeBase = BASE_HTTPS;
+        return body;
     }
 
     /** Blocking GET against one base, translating API errors into readable messages. */
-    private String getFrom(String base, String path) throws Exception {
+    private String getFrom(String base, String path, String typeId) throws Exception {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(base + path))
                 .timeout(TIMEOUT)
                 .header("Accept-Encoding", "gzip")
@@ -208,8 +213,8 @@ public final class PriceApi {
             builder.header("X-Api-Token", token.trim());
         }
         HttpResponse<byte[]> response = sbs.modid.client.core.api.SbsApi.send(
-                ConsentScope.LICENCE_VALIDATION, http, builder.build(), HttpResponse.BodyHandlers.ofByteArray());
-        String body = inflate(response);
+                ConsentScope.LICENCE_VALIDATION, typeId, builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+        String body = inflate(response, typeId);
         int status = response.statusCode();
         if (status == 200) {
             return body;
@@ -229,9 +234,7 @@ public final class PriceApi {
      * the plain-HTTP origin while only the legacy setup is up. Browser URLs are built from this.
      */
     public String siteBase() {
-        return BASE_LEGACY.equals(activeBase)
-                ? "http://skyblocksimplified.info/"
-                : "https://skyblocksimplified.info/";
+        return "https://skyblocksimplified.info/";
     }
 
     /**
@@ -245,7 +248,7 @@ public final class PriceApi {
         probeStarted = true;
         executor.execute(() -> {
             try {
-                get("/api/health");
+                get("/api/health", MessageTypes.HEALTH);
             } catch (Exception ignored) {
                 // Unreachable either way – requests will keep trying and settle later.
             }
@@ -253,25 +256,21 @@ public final class PriceApi {
     }
 
     /** Inflates a gzip body (by header or magic bytes); small responses arrive uncompressed. */
-    private static String inflate(HttpResponse<byte[]> response) throws Exception {
+    private static String inflate(HttpResponse<byte[]> response, String typeId) throws Exception {
         byte[] raw = response.body();
+        long cap = MessageSchemas.maxBytes(typeId);
         boolean gzip = response.headers().firstValue("Content-Encoding")
                 .map(value -> value.toLowerCase(java.util.Locale.ROOT).contains("gzip")).orElse(false)
                 || (raw.length > 2 && (raw[0] & 0xFF) == 0x1F && (raw[1] & 0xFF) == 0x8B);
-        if (!gzip) {
-            return new String(raw, StandardCharsets.UTF_8);
-        }
-        try (GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(raw))) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
+        return new String(gzip ? SecureHttp.gunzip(raw, cap) : raw, StandardCharsets.UTF_8);
     }
 
     /** The {@code {"error":"..."}} code of a failed response, or {@code null}. */
     private String errorCode(String body) {
         try {
-            ErrorResponse error = gson.fromJson(body, ErrorResponse.class);
-            return error != null ? error.error : null;
-        } catch (Exception e) {
+            JsonElement tree = MessageSchemas.parse(MessageTypes.ERROR, body);
+            return tree.getAsJsonObject().get("error").getAsString();
+        } catch (ValidationException invalid) {
             return null;
         }
     }

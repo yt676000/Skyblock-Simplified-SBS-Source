@@ -16,7 +16,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
-import net.minecraft.network.chat.TextColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
@@ -26,7 +25,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
-import sbs.modid.client.helper.enchants.EnchantPoolCache;
 import sbs.modid.client.core.item.SkyblockItem;
 import sbs.modid.client.economy.recipe.logic.EnchantmentRecipeProvider;
 import sbs.modid.client.helper.visual.render.ChromaText;
@@ -56,9 +54,6 @@ import java.util.Set;
 @Mixin(Screen.class)
 public abstract class EnchantTooltipMixin {
 
-    private static final int MISSING_HEADER = 0xFF3FB4FF;
-    private static final int MISSING_TEXT = 0xFF8FA9C8;
-
     @Inject(method = "getTooltipFromItem", at = @At("RETURN"), cancellable = true)
     private static void skyblockSimplified$enchantTooltip(Minecraft minecraft, ItemStack stack,
                                                           CallbackInfoReturnable<List<Component>> cir) {
@@ -87,7 +82,11 @@ public abstract class EnchantTooltipMixin {
                 changed |= sbs$applyChroma(lines, enchants, cfg, stack);
             }
             if (missing) {
-                changed |= sbs$appendMissing(lines, extra, enchants);
+                List<Component> missingLines = sbs.modid.client.helper.enchants.MissingEnchantsTooltip.lines(stack);
+                if (!missingLines.isEmpty()) {
+                    lines.addAll(missingLines);
+                    changed = true;
+                }
             }
             if (changed) {
                 cir.setReturnValue(lines);
@@ -381,76 +380,6 @@ public abstract class EnchantTooltipMixin {
         }
         ChromaText.appendGradient(out, text, style, startPos, lineIndex,
                 group == GROUP_ULTIMATE ? ultimate : normal);
-    }
-
-    // ------------------------------------------------------------------
-    // Missing enchantments (SHIFT held)
-    // ------------------------------------------------------------------
-
-    private static boolean sbs$appendMissing(List<Component> lines, CompoundTag extra,
-                                             CompoundTag enchants) {
-        String itemId = extra.getStringOr("id", "");
-        if (itemId.isEmpty() || "ENCHANTED_BOOK".equalsIgnoreCase(itemId)
-                || "PET".equalsIgnoreCase(itemId) || "RUNE".equalsIgnoreCase(itemId)) {
-            return false;
-        }
-        Map<String, Integer> pool = EnchantPoolCache.getInstance().get(itemId);
-        lines.add(Component.empty());
-        if (pool == null) {
-            lines.add(Component.literal("Missing Enchants: loading...")
-                    .withStyle(style -> style.withColor(TextColor.fromRgb(MISSING_TEXT & 0xFFFFFF))));
-            return true;
-        }
-        // Only one ultimate fits per item: once any ultimate is present, other ultimates are
-        // not "missing" but alternatives - keep them out of the list.
-        boolean hasUltimate = false;
-        for (String key : enchants.keySet()) {
-            if (sbs.modid.client.helper.enchants.EnchantNames.isUltimate(key)) {
-                hasUltimate = true;
-                break;
-            }
-        }
-        List<String> missing = new ArrayList<>();
-        for (Map.Entry<String, Integer> e : pool.entrySet()) {
-            if (enchants.contains(e.getKey())) {
-                continue;
-            }
-            if (hasUltimate && sbs.modid.client.helper.enchants.EnchantNames.isUltimate(e.getKey())) {
-                continue;
-            }
-            // Show the enchant's real max level (bazaar registry, endcaps included) - the pool's
-            // "max seen on this item" undershoots on thin data ("Fatal Tempo 4" vs real max 5).
-            int level = Math.max(e.getValue(),
-                    EnchantmentRecipeProvider.maxLevelOf(e.getKey()));
-            missing.add(sbs.modid.client.helper.enchants.EnchantNames.displayName(e.getKey()) + " " + level);
-        }
-        if (missing.isEmpty()) {
-            lines.add(Component.literal("Missing Enchants: none - fully enchanted")
-                    .withStyle(style -> style.withColor(TextColor.fromRgb(0x57D977))));
-            return true;
-        }
-        lines.add(Component.literal("Missing Enchants (" + missing.size() + ", max seen):")
-                .withStyle(style -> style.withColor(TextColor.fromRgb(MISSING_HEADER & 0xFFFFFF))));
-        StringBuilder row = new StringBuilder();
-        for (String entry : missing) {
-            if (row.length() > 0 && row.length() + entry.length() > 44) {
-                sbs$addMuted(lines, row.toString());
-                row.setLength(0);
-            }
-            if (row.length() > 0) {
-                row.append(", ");
-            }
-            row.append(entry);
-        }
-        if (row.length() > 0) {
-            sbs$addMuted(lines, row.toString());
-        }
-        return true;
-    }
-
-    private static void sbs$addMuted(List<Component> lines, String text) {
-        lines.add(Component.literal("  " + text)
-                .withStyle(style -> style.withColor(TextColor.fromRgb(MISSING_TEXT & 0xFFFFFF))));
     }
 
 }

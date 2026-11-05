@@ -61,7 +61,14 @@ public final class KeybindDispatch {
         if (GuiStateManager.getInstance().getCurrentScreen() != null) {
             return; // a screen (chat, inventory, SBS overlay, ...) is open
         }
-        CommandKeybindManager.getInstance().onPressed(code, modifiers);
+        boolean commandFired = CommandKeybindManager.getInstance().onPressed(code, modifiers);
+        // Auto Requeue: any key cancels a running countdown; the cancel key also resets the counter.
+        sbs.modid.client.dungeons.requeue.logic.AutoRequeue.getInstance().onKeyPressed(code);
+        // A command keybind owns its press: "/sbs" bound to O must not also open the item search
+        // (default O) behind the settings - one press, one SBS action.
+        if (commandFired) {
+            return;
+        }
         // Route-waypoint hotkeys (Dungeons module, available to everyone; unbound by default).
         sbs.modid.client.dungeons.run.command.RouteKeybinds.onKeyPressed(code);
         // Item Price History hotkey (opens the fixed search view; unbound by default).

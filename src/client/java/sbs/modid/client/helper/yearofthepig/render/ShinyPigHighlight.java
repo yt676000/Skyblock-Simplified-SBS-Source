@@ -17,7 +17,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig.YearOfThePigSettings;
 import sbs.modid.client.core.render.WorldRender;
@@ -49,6 +50,9 @@ import java.util.Locale;
  * call, so the HUD pipeline does the drawing.
  */
 public final class ShinyPigHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
+    private static final int[] SCREEN_B = new int[2];
 
     /** Vertical offset onto the pig's back, so a line lands on the animal and not in the dirt. */
     private static final double PIG_ANCHOR_Y = 0.55;
@@ -85,7 +89,7 @@ public final class ShinyPigHighlight {
 
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
 
         if (cfg.highlightPigs) {
@@ -127,7 +131,7 @@ public final class ShinyPigHighlight {
     }
 
     /** A box around every shiny pig in range, so the next target is visible at a glance. */
-    private static void drawPigBoxes(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos,
+    private static void drawPigBoxes(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos,
                                      List<LivingEntity> pigs, YearOfThePigSettings cfg) {
         for (LivingEntity pig : pigs) {
             if (!pig.isAlive()) {
@@ -140,14 +144,14 @@ public final class ShinyPigHighlight {
     }
 
     /** The orb's box plus its label, drawn a little above the ground it hovers over. */
-    private static void drawOrbMarker(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void drawOrbMarker(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                                       Vec3 anchor, int color, String label) {
         WorldRender.boxEdges(g, vp, camPos,
                 anchor.x - 0.35, anchor.y - 0.35, anchor.z - 0.35,
                 anchor.x + 0.35, anchor.y + 0.35, anchor.z + 0.35, color, 2);
-        int[] screen = WorldRender.projectToScreen(vp, camPos, anchor.add(0, 0.6, 0),
-                g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                anchor.x, anchor.y + 0.6, anchor.z, g.guiWidth(), g.guiHeight(), screen)) {
             g.text(font, Component.literal(label), screen[0] - font.width(label) / 2, screen[1], color);
         }
     }
@@ -161,21 +165,26 @@ public final class ShinyPigHighlight {
      * disappeared or shot off from a meaningless corner. The centre of the screen is where the eyes
      * project to by definition, so it is used directly and the line always starts at the crosshair.
      */
-    private static void drawLineFromCrosshair(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos,
+    private static void drawLineFromCrosshair(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos,
                                               Vec3 to, int color, int thickness) {
-        int[] target = WorldRender.projectToScreen(vp, camPos, to, g.guiWidth(), g.guiHeight());
-        if (target != null) {
+        int[] target = SCREEN;
+        if (WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                to.x, to.y, to.z, g.guiWidth(), g.guiHeight(), target)) {
             WorldRender.line(g, g.guiWidth() / 2, g.guiHeight() / 2, target[0], target[1],
                     color, Math.max(1, thickness));
         }
     }
 
     /** One projected world-space line; skipped when either end is behind the camera. */
-    private static void drawLine(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos,
+    private static void drawLine(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos,
                                  Vec3 from, Vec3 to, int color, int thickness) {
-        int[] a = WorldRender.projectToScreen(vp, camPos, from, g.guiWidth(), g.guiHeight());
-        int[] b = WorldRender.projectToScreen(vp, camPos, to, g.guiWidth(), g.guiHeight());
-        if (a != null && b != null) {
+        int[] a = SCREEN;
+        int[] b = SCREEN_B;
+        boolean aOk = WorldRender.project(vp, camPos.x, camPos.y, camPos.z, from.x, from.y, from.z,
+                g.guiWidth(), g.guiHeight(), a);
+        boolean bOk = WorldRender.project(vp, camPos.x, camPos.y, camPos.z, to.x, to.y, to.z,
+                g.guiWidth(), g.guiHeight(), b);
+        if (aOk && bOk) {
             WorldRender.line(g, a[0], a[1], b[0], b[1], color, Math.max(1, thickness));
         }
     }

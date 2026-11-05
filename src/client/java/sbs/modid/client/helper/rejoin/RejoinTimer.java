@@ -8,6 +8,7 @@
 
 package sbs.modid.client.helper.rejoin;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -374,7 +375,7 @@ public final class RejoinTimer {
             announced = true;
             SBSChat.send(Component.literal(" Try rejoining now!").withColor(0x57D977));
             if (cfg().sound) {
-                mc.player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.0f);
+                SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.0f);
             }
             if (cfg().autoRejoin) {
                 sendRejoinOnce(mc);

@@ -8,6 +8,11 @@
 
 package sbs.modid.client.economy.forge.logic;
 
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+import sbs.modid.client.core.net.validation.ValidationException;
+
 import com.google.gson.Gson;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.api.ApiFailure;
@@ -105,10 +110,11 @@ public final class ForgeApi {
                 callback.done(null, answered.failure, answered.getMessage());
             } catch (Exception unreachable) {
                 String legacy = PriceApi.legacyBase();
-                if (legacy.equals(primary)) {
-                    SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Forge] Request failed: {}",
-                            unreachable.toString());
-                    callback.done(null, ApiFailure.OFFLINE, unreachable.toString());
+                // A refusal (consent or licence) is the same on every endpoint; only a failed
+                // connection is worth the legacy retry.
+                if (legacy.equals(primary) || ApiFailure.of(unreachable) != ApiFailure.OFFLINE) {
+                    ApiFailure.log("[SBS][Forge]", "Request", unreachable);
+                    callback.done(null, ApiFailure.of(unreachable), unreachable.toString());
                     return;
                 }
                 try {
@@ -116,8 +122,8 @@ public final class ForgeApi {
                 } catch (ApiException answeredLegacy) {
                     callback.done(null, answeredLegacy.failure, answeredLegacy.getMessage());
                 } catch (Exception e) {
-                    SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Forge] Request failed: {}", e.toString());
-                    callback.done(null, ApiFailure.OFFLINE, e.toString());
+                    ApiFailure.log("[SBS][Forge]", "Request", e);
+                    callback.done(null, ApiFailure.of(e), e.toString());
                 }
             }
         });
@@ -134,7 +140,7 @@ public final class ForgeApi {
             builder.header("X-Api-Token", token.trim());
         }
         HttpResponse<byte[]> response = sbs.modid.client.core.api.SbsApi.send(
-                ConsentScope.LICENCE_VALIDATION, http, builder.build(),
+                ConsentScope.LICENCE_VALIDATION, MessageTypes.FORGE_FLIPS, builder.build(),
                 HttpResponse.BodyHandlers.ofByteArray());
         String text = inflate(response);
         int status = response.statusCode();
@@ -150,7 +156,12 @@ public final class ForgeApi {
         if (status != 200) {
             throw new ApiException(ApiFailure.BACKEND, "HTTP " + status);
         }
-        Response result = gson.fromJson(text, Response.class);
+        Response result;
+        try {
+            result = MessageSchemas.parse(MessageTypes.FORGE_FLIPS, text, Response.class);
+        } catch (ValidationException invalid) {
+            throw new ApiException(ApiFailure.INVALID_DATA, ValidationException.USER_MESSAGE);
+        }
         if (result == null || result.flips == null) {
             throw new ApiException(ApiFailure.BACKEND, "Empty response");
         }
@@ -169,16 +180,7 @@ public final class ForgeApi {
 
     /** Inflates a gzip body (by header or magic bytes); small responses arrive uncompressed. */
     private static String inflate(HttpResponse<byte[]> response) throws Exception {
-        byte[] raw = response.body();
-        boolean gzip = response.headers().firstValue("Content-Encoding")
-                .map(value -> value.toLowerCase(java.util.Locale.ROOT).contains("gzip")).orElse(false)
-                || (raw.length > 2 && (raw[0] & 0xFF) == 0x1F && (raw[1] & 0xFF) == 0x8B);
-        if (!gzip) {
-            return new String(raw, StandardCharsets.UTF_8);
-        }
-        try (GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(raw))) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
+        return SecureHttp.inflateText(response, MessageTypes.FORGE_FLIPS);
     }
 
     // ------------------------------------------------------------------

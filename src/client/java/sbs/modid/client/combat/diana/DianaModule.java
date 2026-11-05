@@ -9,6 +9,8 @@
 package sbs.modid.client.combat.diana;
 
 import sbs.modid.client.combat.diana.logic.DianaHudLayout;
+import sbs.modid.client.combat.diana.logic.DianaTracker;
+import sbs.modid.client.combat.diana.model.LootPriceSource;
 import sbs.modid.client.combat.diana.model.DianaHudLine.LegacySwitch;
 import sbs.modid.client.combat.diana.model.MythCreature;
 import sbs.modid.client.core.api.GuiStateManager;
@@ -306,6 +308,46 @@ public final class DianaModule implements SbsModule {
                 .describe("This session's counts on the Diana card, under the chains: burrows, "
                         + "creatures, treasures, mobs since an Inquisitor and the per-creature "
                         + "counts. Arrange them under Diana: Appearance. Off by default."));
+
+        // --- Loot profit ---
+        rows.add(SettingRow.label("§bLoot Profit"));
+
+        rows.add(SettingRow.toggle("Diana Profit Card", () -> cfg().lootProfit,
+                        () -> { cfg().lootProfit = !cfg().lootProfit; save(); })
+                .describe("A card with what the event has paid you - Griffin Feathers, coins, Chimera, "
+                        + "Minos Relic, Daedalus Stick and the other drops - with the profit per hour "
+                        + "and per burrow and your best drops. Only your own drops count. Display "
+                        + "only. /sbs diana profit lists every item. Default: on."));
+
+        rows.add(SettingRow.segmented("Price Source", LootPriceSource.labels(),
+                        () -> LootPriceSource.byName(cfg().lootPriceSource).ordinal(),
+                        i -> {
+                            LootPriceSource[] values = LootPriceSource.values();
+                            cfg().lootPriceSource = values[Math.max(0, Math.min(values.length - 1, i))].name();
+                            save();
+                        })
+                .describe("What a drop is valued at: the Bazaar sell offer, the Bazaar buy order "
+                        + "(instant sell), or the lowest BIN. A drop the chosen market does not list "
+                        + "is priced from the other one. Default: sell order."));
+
+        rows.add(SettingRow.toggle("Count Coins", () -> cfg().lootCountCoins,
+                        () -> { cfg().lootCountCoins = !cfg().lootCountCoins; save(); })
+                .describe("Counts the coins burrows pay out towards the profit. Default: on."));
+
+        rows.add(SettingRow.toggle("Show All-Time", () -> cfg().lootShowAllTime,
+                        () -> { cfg().lootShowAllTime = !cfg().lootShowAllTime; save(); })
+                .describe("Shows this profile's totals since tracking began instead of this "
+                        + "session's. Default: off."));
+
+        rows.add(SettingRow.intField("Custom Cost per Hour", 0, 1_000_000_000,
+                        () -> cfg().lootCostPerHour,
+                        v -> { cfg().lootCostPerHour = Math.max(0, v); save(); }, "coins")
+                .describe("Coins per hour of digging taken off the profit, for whatever the event "
+                        + "costs you. Default: 0."));
+
+        rows.add(SettingRow.button("Reset Profit Session",
+                        () -> DianaTracker.getInstance().resetLootSession())
+                .describe("Starts the session's loot totals over. All-time totals are kept."));
 
         // --- Chat ---
         rows.add(SettingRow.label("§bChat"));

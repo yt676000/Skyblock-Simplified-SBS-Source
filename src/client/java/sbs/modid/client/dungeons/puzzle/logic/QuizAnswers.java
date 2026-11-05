@@ -12,23 +12,19 @@ import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.SBSFiles;
 import sbs.modid.client.core.data.VersionedDataStore;
 import sbs.modid.client.dungeons.puzzle.model.QuizData;
+import sbs.modid.client.economy.minions.logic.MinionCatalogs;
+import sbs.modid.client.economy.minions.model.MinionData;
+import sbs.modid.client.helper.fairysouls.logic.FairySoulDatabase;
+import sbs.modid.client.helper.timers.model.EventCalendar;
 
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
+import java.util.List;
 
 /**
- * The lookup in front of {@link QuizData}: question text in, correct answer out, {@code null} when
- * the question is not in the set.
+ * The live answer table: {@link QuizData} through {@code VersionedDataStore}, resolved by
+ * {@link QuizResolver} against the mod's own Fairy Soul file, minion catalogue and calendar.
  *
- * <p><b>{@code null} is the important return value.</b> It is what makes the solver show nothing, and
- * nothing is the only safe output for a question this build does not know - one wrong click fails
- * Oruo's room outright and costs the party 14 points of Skill score.
- *
- * <p>Matching is on a {@linkplain #key normalised} form so a stray comma, a colour code that survived
- * stripping or a changed apostrophe cannot turn a known question into an unknown one. It is
- * deliberately not fuzzy beyond that: a near-match that resolved to the wrong question would produce
- * a confident wrong highlight, which is worse than the blank one an exact miss produces.
+ * <p>The rules themselves live in {@link QuizResolver}; this class only owns the store and the
+ * {@link QuizResolver.Facts} that read the other datasets at the moment a question is asked.
  */
 public final class QuizAnswers {
 
@@ -36,15 +32,38 @@ public final class QuizAnswers {
             "/assets/" + SkyblockSimplifiedSBS.MOD_ID + "/dungeons/quiz_answers.json";
 
     /** The highest schema this build reads; bump only alongside a parser change. */
-    private static final int SUPPORTED_SCHEMA = 1;
+    private static final int SUPPORTED_SCHEMA = 2;
 
     private static final VersionedDataStore<QuizData> STORE = new VersionedDataStore<>(
             "QuizAnswers", RESOURCE,
             SBSFiles.root().resolve("data").resolve("quiz_answers.json"),
             "/api/dungeons/quiz", QuizData.class, SUPPORTED_SCHEMA);
 
-    /** Normalised question → answer, rebuilt when the store publishes a different document. */
-    private static volatile Map<String, String> index = Map.of();
+    /** The mod's own numbers, read when asked - never cached here, so a data refresh is seen at once. */
+    private static final QuizResolver.Facts LIVE = new QuizResolver.Facts() {
+        @Override
+        public int fairySoulsOn(String island) {
+            return FairySoulDatabase.countOn(island);
+        }
+
+        @Override
+        public int fairySoulsTotal() {
+            return FairySoulDatabase.totalInGame();
+        }
+
+        @Override
+        public int minionCount() {
+            MinionData minions = MinionCatalogs.minions();
+            return minions == null || minions.minions == null ? 0 : minions.minions.size();
+        }
+
+        @Override
+        public long skyblockYear() {
+            return EventCalendar.yearAt(System.currentTimeMillis());
+        }
+    };
+
+    private static volatile QuizResolver resolver = new QuizResolver(null);
     private static volatile QuizData indexed;
 
     private QuizAnswers() {
@@ -56,25 +75,19 @@ public final class QuizAnswers {
         reindex();
     }
 
-    /**
-     * The correct answer for a question, or {@code null} when it is not in the set.
-     *
-     * @param question the question text, colour-stripped
-     */
-    public static String answerFor(String question) {
-        if (question == null || question.isBlank()) {
-            return null;
-        }
-        QuizData document = STORE.get();
-        if (document != indexed) {
-            reindex();
-        }
-        return index.get(key(question));
+    /** The option answering {@code question}, or {@code null} - see {@link QuizResolver#resolve}. */
+    public static QuizResolver.Resolution resolve(String question, List<String> options) {
+        return current().resolve(question, options, LIVE);
+    }
+
+    /** Whether the table has a row for this question at all. */
+    public static boolean knows(String question) {
+        return current().knows(question);
     }
 
     /** How many questions are loaded, for the settings status line. */
     public static int size() {
-        return index.size();
+        return current().size();
     }
 
     /** Where the live document came from, for the settings status line. */
@@ -82,40 +95,21 @@ public final class QuizAnswers {
         return STORE.source();
     }
 
-    private static synchronized void reindex() {
-        QuizData document = STORE.get();
-        indexed = document;
-        if (document == null || document.questions == null) {
-            index = Map.of();
-            return;
+    private static QuizResolver current() {
+        if (STORE.get() != indexed) {
+            reindex();
         }
-        Map<String, String> built = new HashMap<>();
-        for (QuizData.Entry entry : document.questions) {
-            if (entry == null || entry.question == null || entry.answer == null
-                    || entry.question.isBlank() || entry.answer.isBlank()) {
-                continue;
-            }
-            built.put(key(entry.question), entry.answer.trim());
-        }
-        index = Map.copyOf(built);
-        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Puzzle] quiz answers loaded: {} questions ({})",
-                index.size(), STORE.source());
+        return resolver;
     }
 
-    /**
-     * Lower-cased with everything that is not a letter or digit removed.
-     *
-     * <p>Punctuation is the whole reason this exists: the same question reaches us with and without
-     * a trailing question mark, with a curly or a straight apostrophe, and with the spacing Hypixel
-     * happens to use that week. None of that changes which question it is.
-     */
-    static String key(String text) {
-        StringBuilder out = new StringBuilder(text.length());
-        for (char c : text.toLowerCase(Locale.ROOT).toCharArray()) {
-            if (Character.isLetterOrDigit(c)) {
-                out.append(c);
-            }
+    private static synchronized void reindex() {
+        QuizData document = STORE.get();
+        if (document == indexed) {
+            return;
         }
-        return out.toString();
+        indexed = document;
+        resolver = new QuizResolver(document);
+        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Quiz] answer table loaded: {} questions ({})",
+                resolver.size(), STORE.source());
     }
 }

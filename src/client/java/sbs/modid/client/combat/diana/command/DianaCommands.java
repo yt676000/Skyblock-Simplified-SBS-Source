@@ -20,13 +20,20 @@ import sbs.modid.client.combat.diana.logic.DianaGuard;
 import sbs.modid.client.combat.diana.logic.DianaEvent;
 import sbs.modid.client.combat.diana.logic.DianaParticles;
 import sbs.modid.client.combat.diana.logic.DianaPrompts;
+import sbs.modid.client.combat.diana.logic.DianaLootLedger;
+import sbs.modid.client.combat.diana.logic.DianaLootPrices;
 import sbs.modid.client.combat.diana.logic.DianaTracker;
 import sbs.modid.client.combat.diana.logic.MythMobTracker;
 import sbs.modid.client.combat.diana.logic.SpadeGuess;
 import sbs.modid.client.combat.diana.logic.SphinxAnswers;
 import sbs.modid.client.combat.diana.model.DianaParticleData;
+import sbs.modid.client.combat.diana.model.LootPriceSource;
 import sbs.modid.client.combat.diana.render.BurrowMarkers;
+import sbs.modid.client.combat.diana.render.DianaProfitHud;
+import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.location.SkyBlockLocation;
+import sbs.modid.client.core.util.NumberDisplay;
 import sbs.modid.client.social.chat.logic.SBSChat;
 
 import java.util.Locale;
@@ -51,10 +58,15 @@ public final class DianaCommands {
     private DianaCommands() {
     }
 
-    /** {@code /sbs diana [status|clear|debug]}. Bare form reports. */
+    /** {@code /sbs diana [status|clear|debug|profit [reset [all]]]}. Bare form reports. */
     public static void handle(String argument) {
         try {
-            switch (argument == null ? "" : argument.trim().toLowerCase(Locale.ROOT)) {
+            String arg = argument == null ? "" : argument.trim().toLowerCase(Locale.ROOT);
+            if (arg.equals("profit") || arg.startsWith("profit ")) {
+                profit(arg.substring("profit".length()).trim());
+                return;
+            }
+            switch (arg) {
                 case "clear", "reset" -> clear();
                 case "debug" -> say("§7" + DianaDebug.getInstance().report());
                 default -> status();
@@ -73,6 +85,49 @@ public final class DianaCommands {
     static void fenced(String command, Throwable failure) {
         SkyblockSimplifiedSBS.LOGGER.error("[SBS][Diana] {} threw", command, failure);
         say("§c" + command + " failed (" + failure + ") - details are in the game log.");
+    }
+
+    /**
+     * {@code /sbs diana profit}: the card's numbers as a table, one line per item with count, price
+     * each and value. {@code reset} starts the session over; {@code reset all} clears the profile's
+     * all-time ledger too.
+     */
+    private static void profit(String rest) {
+        DianaTracker tracker = DianaTracker.getInstance();
+        if (rest.equals("reset")) {
+            tracker.resetLootSession();
+            say("§aDiana profit session reset. All-time totals are kept.");
+            return;
+        }
+        if (rest.equals("reset all")) {
+            tracker.resetLootAllTime();
+            say("§aDiana profit reset, all-time totals included.");
+            return;
+        }
+        SBSConfig.DianaSettings cfg = ConfigManager.getInstance().get().diana;
+        boolean allTime = rest.equals("all");
+        DianaLootLedger ledger = allTime ? tracker.lootAllTime() : tracker.lootSession();
+        LootPriceSource source = LootPriceSource.byName(cfg.lootPriceSource);
+        long profit = ledger.profit(id -> DianaLootPrices.price(id, source), cfg.lootCountCoins,
+                Math.max(0, cfg.lootCostPerHour));
+        say("§bDiana profit §7(" + (allTime ? "all time" : "session") + ", " + source.displayName() + ")");
+        say("§7  profit §f" + NumberDisplay.format(profit)
+                + "§7 · per hour §f" + NumberDisplay.format(DianaLootLedger.perHour(profit, ledger.activeMs))
+                + "§7 · per burrow §f" + NumberDisplay.format(DianaLootLedger.perBurrow(profit, ledger.burrows)));
+        say("§7  burrows §f" + ledger.burrows + "§7 · creatures §f" + ledger.mobs
+                + "§7 · active §f" + DianaProfitHud.clock(ledger.activeMs));
+        if (ledger.coins > 0) {
+            say("§7  Coins §f" + NumberDisplay.format(ledger.coins) + (cfg.lootCountCoins ? "" : " §8(not counted)"));
+        }
+        for (DianaProfitHud.Priced item : DianaProfitHud.priced(ledger, source)) {
+            say("§7  " + item.count() + "x " + item.name() + " §8@ "
+                    + (item.each() == null ? "no price" : NumberDisplay.format(item.each()))
+                    + " §f" + NumberDisplay.format(item.value()));
+        }
+        if (cfg.lootCostPerHour > 0) {
+            say("§8  less " + NumberDisplay.format(cfg.lootCostPerHour) + " per active hour (custom cost)");
+        }
+        say("§8  /sbs diana profit all · /sbs diana profit reset · /sbs diana profit reset all");
     }
 
     private static void status() {

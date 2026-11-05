@@ -160,6 +160,9 @@ public final class VisitorOfferStore implements ProfileScopedStore {
     public void onChat(String text) {
         String served = VisitorShoppingList.servedVisitor(text);
         if (served != null && enabled()) {
+            // The Farming Net books the served offer; this is the last moment it is still known.
+            sbs.modid.client.skills.farming.net.FarmingNetTracker.getInstance()
+                    .onVisitorServed(served, offersByKey().get(VisitorShoppingList.key(served)));
             remove(served);
         }
     }

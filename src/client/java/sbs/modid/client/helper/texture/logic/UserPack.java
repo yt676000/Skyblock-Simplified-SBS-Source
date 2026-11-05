@@ -8,6 +8,8 @@
 
 package sbs.modid.client.helper.texture.logic;
 
+import sbs.modid.client.core.net.UrlGuard;
+
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.minecraft.client.Minecraft;
@@ -83,7 +85,7 @@ public enum UserPack {
 
     /** Opens the official download page, behind vanilla's "open this link?" confirmation. */
     public void openDownloadPage() {
-        ConfirmLinkScreen.confirmLinkNow(Minecraft.getInstance().gui.screen(), pageUrl);
+        UrlGuard.openAfterClick(Minecraft.getInstance().gui.screen(), pageUrl);
     }
 
     /**

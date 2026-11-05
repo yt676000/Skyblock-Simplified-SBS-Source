@@ -21,6 +21,7 @@ import net.minecraft.world.phys.Vec3;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.social.chat.logic.SBSChat;
 import sbs.modid.client.combat.carry.model.SlayerBoss;
+import sbs.modid.client.combat.slayer.logic.VoidgloomShield;
 import sbs.modid.client.combat.carry.render.CarryHighlight;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig.CarryCounterSettings;
@@ -113,6 +114,9 @@ public final class CarryCounter {
      */
     private static final Pattern SPAWNED_BY = Pattern.compile(
             "Spawned by:\\s+([A-Za-z0-9_]{1,16})", Pattern.CASE_INSENSITIVE);
+    private static final Pattern NON_NAME_CHARS = Pattern.compile("[^A-Za-z0-9_]");
+    private static final Pattern HEALTH_FRACTION = Pattern.compile(".*\\d[\\d.,]*\\s*/\\s*\\d.*");
+    private static final Pattern HEALTH_SUFFIXED = Pattern.compile(".*\\d[\\d.,]*[kKmMbB].*");
 
     private static final char SECTION_SIGN = (char) 0x00A7;
 
@@ -136,6 +140,17 @@ public final class CarryCounter {
 
     public static CarryCounter getInstance() {
         return INSTANCE;
+    }
+
+    /**
+     * World leave: only the live boss tracks. A boss that vanished because the world did is not a
+     * kill, so the judge's pending vanishes go too. The carries themselves (players, counts, goals)
+     * live in the config and must survive every hop - carries are done across lobbies.
+     */
+    public void onWorldChange() {
+        tracks.clear();
+        judge.clear();
+        highlightBoxes = List.of();
     }
 
     private static CarryCounterSettings cfg() {
@@ -693,7 +708,7 @@ public final class CarryCounter {
     }
 
     private static String cleanName(String raw) {
-        return raw == null ? "" : raw.replaceAll("[^A-Za-z0-9_]", "");
+        return raw == null ? "" : NON_NAME_CHARS.matcher(raw).replaceAll("");
     }
 
     private static int parseInt(String s, int fallback) {
@@ -726,15 +741,70 @@ public final class CarryCounter {
      * "5M" style number. This keeps a boss <i>title</i> hologram (name only, no health) from being
      * mistaken for the live health bar the detector actually wants.
      */
-    private static boolean looksLikeHealthTag(String stripped) {
+    static boolean looksLikeHealthTag(String stripped) {
         if (stripped == null) {
             return false;
         }
         if (stripped.indexOf('❤') >= 0 || stripped.indexOf('♥') >= 0) { // ❤ ♥
             return true;
         }
-        return stripped.matches(".*\\d[\\d.,]*\\s*/\\s*\\d.*")
-                || stripped.matches(".*\\d[\\d.,]*[kKmMbB].*");
+        // This runs per nametag stand per tick, so the two patterns are answered by a char scan.
+        // A line terminator is the one input where the scan and the patterns' "." could disagree;
+        // nametags never carry one, so that case simply asks the patterns.
+        boolean fraction = false;
+        boolean suffixed = false;
+        for (int k = 0; k < stripped.length(); k++) {
+            char c = stripped.charAt(k);
+            if (c == '\n' || c == '\r' || c == '\u0085' || c == ' ' || c == ' ') {
+                return HEALTH_FRACTION.matcher(stripped).matches()
+                        || HEALTH_SUFFIXED.matcher(stripped).matches();
+            }
+            if (c == '/') {
+                fraction |= isHealthFraction(stripped, k);
+            } else if (c == 'k' || c == 'K' || c == 'm' || c == 'M' || c == 'b' || c == 'B') {
+                suffixed |= digitRunEndsAt(stripped, k - 1);
+            }
+        }
+        return fraction || suffixed;
+    }
+
+    /** A digit run, optional {@code \s}, the slash at {@code slash}, optional {@code \s}, a digit. */
+    private static boolean isHealthFraction(String s, int slash) {
+        int right = slash + 1;
+        while (right < s.length() && isRegexSpace(s.charAt(right))) {
+            right++;
+        }
+        if (right >= s.length() || !isDigit(s.charAt(right))) {
+            return false;
+        }
+        int left = slash - 1;
+        while (left >= 0 && isRegexSpace(s.charAt(left))) {
+            left--;
+        }
+        return digitRunEndsAt(s, left);
+    }
+
+    /** Whether the run of {@code [\d.,]} ending at {@code end} contains a digit ({@code \d[\d.,]*}). */
+    private static boolean digitRunEndsAt(String s, int end) {
+        for (int i = end; i >= 0; i--) {
+            char c = s.charAt(i);
+            if (isDigit(c)) {
+                return true;
+            }
+            if (c != '.' && c != ',') {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isDigit(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    /** Java regex {@code \s}: {@code [ \t\n\x0B\f\r]}. */
+    private static boolean isRegexSpace(char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == 0x0B || c == '\f' || c == '\r';
     }
 
     /**
@@ -743,9 +813,9 @@ public final class CarryCounter {
      * health bar with a hit count, so without this the box (and the track) would vanish exactly while
      * the boss is being finished off.
      */
-    private static boolean looksLikeBossTag(String stripped) {
+    static boolean looksLikeBossTag(String stripped) {
         return looksLikeHealthTag(stripped)
-                || (stripped != null && stripped.toLowerCase(Locale.ROOT).contains("hits"));
+                || VoidgloomShield.isShieldTag(stripped);
     }
 
     /** Players whose slayer boss the highlight may highlight: party members + every carry target (lower-cased). */

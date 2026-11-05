@@ -12,7 +12,9 @@ import sbs.modid.client.social.playerviewer.ui.page.AccessoriesPage;
 import sbs.modid.client.social.playerviewer.ui.page.CollectionsPage;
 import sbs.modid.client.social.playerviewer.ui.page.ContainerPage;
 import sbs.modid.client.social.playerviewer.ui.page.GearPage;
-import sbs.modid.client.social.playerviewer.ui.page.LoadoutsPage;
+import sbs.modid.client.social.playerviewer.ui.page.HeartTreePage;
+import sbs.modid.client.social.playerviewer.ui.page.LoadoutCardsPage;
+import sbs.modid.client.social.playerviewer.ui.page.StoragePagesPage;
 import sbs.modid.client.social.playerviewer.ui.page.MuseumPage;
 import sbs.modid.client.social.playerviewer.ui.page.combat.CombatOverviewPage;
 import sbs.modid.client.social.playerviewer.ui.page.combat.DianaPage;
@@ -48,8 +50,15 @@ import java.util.List;
  */
 public final class PvNav {
 
-    /** A sub-page: its sidebar label and the page that draws it. */
-    public record Sub(String label, PvPage page) {
+    /**
+     * A sub-page: its sidebar label, the page that draws it, and the view sections it depends on.
+     * When any of those sections is unavailable the shell shows a neutral message instead of the
+     * page. A sub-page with no sections (the overviews) shows a footnote naming what is missing.
+     */
+    public record Sub(String label, PvPage page, List<String> sections) {
+        public Sub(String label, PvPage page) {
+            this(label, page, List.of());
+        }
     }
 
     /** A top-bar category and the sub-pages of its sidebar. */
@@ -67,61 +76,65 @@ public final class PvNav {
                         new Sub("Stats", new HomeStatsPage()))),
                 new Category("Combat", List.of(
                         new Sub("Overview", new CombatOverviewPage()),
-                        new Sub("Dungeons", new DungeonsPage()),
-                        new Sub("Kuudra", new KuudraPage()),
-                        new Sub("Slayer", new SlayerPage()),
-                        new Sub("Diana", new DianaPage()))),
+                        new Sub("Dungeons", new DungeonsPage(), List.of("dungeons")),
+                        new Sub("Kuudra", new KuudraPage(), List.of("crimson")),
+                        new Sub("Slayer", new SlayerPage(), List.of("slayer")),
+                        new Sub("Diana", new DianaPage(), List.of("diana")))),
                 new Category("Inventory", List.of(
                         new Sub("Overview", new GearPage()),
-                        new Sub("Accessories", new AccessoriesPage()),
-                        new Sub("Inventory", new ContainerPage("inventory", "Inventory")),
-                        new Sub("Ender Chest", new ContainerPage("ender_chest", "Ender Chest")),
-                        new Sub("Backpacks", new ContainerPage("backpacks", "Backpacks")),
-                        new Sub("Accessory Bag", new ContainerPage("accessory_bag", "Accessory Bag")),
-                        new Sub("Quiver", new ContainerPage("quiver", "Quiver")),
-                        new Sub("Potion Bag", new ContainerPage("potion_bag", "Potion Bag")),
-                        new Sub("Fishing Bag", new ContainerPage("fishing_bag", "Fishing Bag")),
-                        new Sub("Loadouts", new LoadoutsPage()),
-                        new Sub("Vault", new ContainerPage("vault", "Personal Vault")))),
+                        new Sub("Accessories", new AccessoriesPage(), List.of("accessories")),
+                        new Sub("Inventory", new ContainerPage("inventory", "Inventory"), List.of("inventory")),
+                        new Sub("Ender Chest", new StoragePagesPage(StoragePagesPage.Mode.ENDER_CHEST), List.of("inventory","ender_chest")),
+                        new Sub("Backpacks", new StoragePagesPage(StoragePagesPage.Mode.BACKPACKS), List.of("inventory","backpacks")),
+                        new Sub("Accessory Bag", new ContainerPage("accessory_bag", "Accessory Bag"), List.of("inventory","accessory_bag")),
+                        new Sub("Quiver", new ContainerPage("quiver", "Quiver"), List.of("inventory","quiver")),
+                        new Sub("Potion Bag", new ContainerPage("potion_bag", "Potion Bag"), List.of("inventory","potion_bag")),
+                        new Sub("Bait Sack", new ContainerPage("bait_sack", "Bait Sack"), List.of("inventory","fishing_bag")),
+                        new Sub("Loadouts", new LoadoutCardsPage(LoadoutCardsPage.Mode.LOADOUTS), List.of("loadouts")),
+                        new Sub("Wardrobe", new LoadoutCardsPage(LoadoutCardsPage.Mode.WARDROBE), List.of("loadouts")),
+                        new Sub("Equipment", new LoadoutCardsPage(LoadoutCardsPage.Mode.EQUIPMENT), List.of("loadouts")),
+                        new Sub("Vault", new ContainerPage("vault", "Personal Vault"), List.of("inventory","vault")))),
                 new Category("Pets", List.of(
-                        new Sub("Overview", new PetsListPage()),
-                        new Sub("By Rarity", new PetsRarityPage()),
-                        new Sub("Held Items", new PetsHeldPage()))),
+                        new Sub("Overview", new PetsListPage(), List.of("pets")),
+                        new Sub("By Rarity", new PetsRarityPage(), List.of("pets")),
+                        new Sub("Held Items", new PetsHeldPage(), List.of("pets")))),
                 new Category("Collections", List.of(
-                        new Sub("Overview", new CollectionsPage(null)),
-                        new Sub("Farming", new CollectionsPage("FARMING")),
-                        new Sub("Mining", new CollectionsPage("MINING")),
-                        new Sub("Combat", new CollectionsPage("COMBAT")),
-                        new Sub("Foraging", new CollectionsPage("FORAGING")),
-                        new Sub("Fishing", new CollectionsPage("FISHING")),
-                        new Sub("Rift", new CollectionsPage("RIFT")))),
+                        new Sub("Overview", new CollectionsPage(null), List.of("collections")),
+                        new Sub("Farming", new CollectionsPage("FARMING"), List.of("collections")),
+                        new Sub("Mining", new CollectionsPage("MINING"), List.of("collections")),
+                        new Sub("Combat", new CollectionsPage("COMBAT"), List.of("collections")),
+                        new Sub("Foraging", new CollectionsPage("FORAGING"), List.of("collections")),
+                        new Sub("Fishing", new CollectionsPage("FISHING"), List.of("collections")),
+                        new Sub("Rift", new CollectionsPage("RIFT"), List.of("collections")))),
                 new Category("Farming", List.of(
-                        new Sub("Overview", new FarmingPage(FarmingPage.Mode.OVERVIEW)),
-                        new Sub("Contests", new FarmingPage(FarmingPage.Mode.CONTESTS)),
-                        new Sub("Personal Bests", new FarmingPage(FarmingPage.Mode.BESTS)),
-                        new Sub("Garden", new FarmingPage(FarmingPage.Mode.GARDEN)))),
+                        new Sub("Overview", new FarmingPage(FarmingPage.Mode.OVERVIEW), List.of("farming")),
+                        new Sub("Contests", new FarmingPage(FarmingPage.Mode.CONTESTS), List.of("farming")),
+                        new Sub("Personal Bests", new FarmingPage(FarmingPage.Mode.BESTS), List.of("farming")),
+                        new Sub("Garden", new FarmingPage(FarmingPage.Mode.GARDEN), List.of("farming")))),
                 new Category("Foraging", List.of(
-                        new Sub("Overview", new ForagingPage(ForagingPage.Mode.OVERVIEW)),
-                        new Sub("Trees", new ForagingPage(ForagingPage.Mode.TREES)),
-                        new Sub("Harp", new ForagingPage(ForagingPage.Mode.HARP)))),
+                        new Sub("Overview", new ForagingPage(ForagingPage.Mode.OVERVIEW), List.of("foraging")),
+                        new Sub("Trees", new ForagingPage(ForagingPage.Mode.TREES), List.of("foraging")),
+                        new Sub("HotF", new HeartTreePage(HeartTreePage.Mode.FOREST), List.of("skill_tree")),
+                        new Sub("Harp", new ForagingPage(ForagingPage.Mode.HARP), List.of("foraging")))),
                 new Category("Fishing", List.of(
-                        new Sub("Overview", new FishingPage(FishingPage.Mode.OVERVIEW)),
-                        new Sub("Trophy Fish", new FishingPage(FishingPage.Mode.TROPHY)),
-                        new Sub("Stats", new FishingPage(FishingPage.Mode.STATS)))),
+                        new Sub("Overview", new FishingPage(FishingPage.Mode.OVERVIEW), List.of("fishing")),
+                        new Sub("Trophy Fish", new FishingPage(FishingPage.Mode.TROPHY), List.of("fishing")),
+                        new Sub("Stats", new FishingPage(FishingPage.Mode.STATS), List.of("fishing")))),
                 new Category("Mining", List.of(
-                        new Sub("Overview", new MiningPage(MiningPage.Mode.OVERVIEW)),
-                        new Sub("Powder", new MiningPage(MiningPage.Mode.POWDER)),
-                        new Sub("Crystals", new MiningPage(MiningPage.Mode.CRYSTALS)),
-                        new Sub("Glacite", new MiningPage(MiningPage.Mode.GLACITE)))),
+                        new Sub("Overview", new MiningPage(MiningPage.Mode.OVERVIEW), List.of("mining")),
+                        new Sub("Powder", new MiningPage(MiningPage.Mode.POWDER), List.of("mining")),
+                        new Sub("Crystals", new MiningPage(MiningPage.Mode.CRYSTALS), List.of("mining")),
+                        new Sub("Glacite", new MiningPage(MiningPage.Mode.GLACITE), List.of("mining")),
+                        new Sub("HotM", new HeartTreePage(HeartTreePage.Mode.MOUNTAIN), List.of("skill_tree")))),
                 new Category("Museum", List.of(
-                        new Sub("Overview", new MuseumPage()))),
+                        new Sub("Overview", new MuseumPage(), List.of("museum")))),
                 new Category("Hoppity", List.of(
-                        new Sub("Overview", new HoppityPage(HoppityPage.Mode.OVERVIEW)),
-                        new Sub("Rabbits", new HoppityPage(HoppityPage.Mode.RABBITS)),
-                        new Sub("Factory", new HoppityPage(HoppityPage.Mode.FACTORY)))),
+                        new Sub("Overview", new HoppityPage(HoppityPage.Mode.OVERVIEW), List.of("hoppity")),
+                        new Sub("Rabbits", new HoppityPage(HoppityPage.Mode.RABBITS), List.of("hoppity")),
+                        new Sub("Factory", new HoppityPage(HoppityPage.Mode.FACTORY), List.of("hoppity")))),
                 new Category("Rift", List.of(
-                        new Sub("Overview", new RiftPage(RiftPage.Mode.OVERVIEW)),
-                        new Sub("Progress", new RiftPage(RiftPage.Mode.PROGRESS)),
-                        new Sub("Enigma Souls", new RiftPage(RiftPage.Mode.SOULS)))));
+                        new Sub("Overview", new RiftPage(RiftPage.Mode.OVERVIEW), List.of("rift")),
+                        new Sub("Progress", new RiftPage(RiftPage.Mode.PROGRESS), List.of("rift")),
+                        new Sub("Enigma Souls", new RiftPage(RiftPage.Mode.SOULS), List.of("rift")))));
     }
 }

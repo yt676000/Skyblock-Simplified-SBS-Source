@@ -16,7 +16,9 @@ import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The pathfinding module's waypoints: adding, removing and finding the one to route to.
@@ -68,6 +70,7 @@ public final class WaypointStore {
             TRANSIENT.addAll(waypoints);
         }
         if (removed || added) {
+            rebuild();
             PathfindingManager.getInstance().invalidate();
         }
     }
@@ -77,9 +80,88 @@ public final class WaypointStore {
         setTransient(source, List.of());
     }
 
+    /**
+     * An immutable view of the store, swapped whole on every change so the per-frame questions -
+     * {@link #hasAny}, {@link #hasSource}, {@link #inCurrentDimension} - are a volatile read rather
+     * than a synchronized scan. The renderer used to ask {@code hasSource} a dozen times a frame,
+     * each a linear walk of every transient marker under the store's lock.
+     *
+     * <p>{@code persisted} is the config list's contents at build time. Features still edit that
+     * list in place through {@link #all()}, so {@link #refresh()} compares it element by element
+     * once per tick; a remove-then-add of the same size would slip past a size check alone.
+     */
+    private record Snapshot(List<Waypoint> persistedList, Waypoint[] persisted, String dimension,
+                            Map<String, Integer> sources, List<Waypoint> inDimension, boolean any) {
+    }
+
+    private static final Snapshot EMPTY = new Snapshot(null, new Waypoint[0], null, Map.of(), List.of(), false);
+
+    private static volatile Snapshot snapshot = EMPTY;
+
+    /**
+     * The current snapshot, rebuilt first when the dimension, the config list's identity or its size
+     * moved - all three are cheap to see. In-place edits of equal size are caught by {@link #refresh}.
+     */
+    private static Snapshot snapshot() {
+        Snapshot current = snapshot;
+        List<Waypoint> persisted = cfg().waypoints;
+        if (current.persistedList() != persisted
+                || current.persisted().length != (persisted == null ? 0 : persisted.size())
+                || !currentDimension().equals(current.dimension())) {
+            return rebuild();
+        }
+        return current;
+    }
+
+    /** Called once per client tick: catches a same-size in-place edit of the config list. */
+    public static void refresh() {
+        Snapshot current = snapshot();
+        List<Waypoint> persisted = cfg().waypoints;
+        if (persisted == null) {
+            return;
+        }
+        Waypoint[] seen = current.persisted();
+        for (int i = 0; i < seen.length; i++) {
+            if (seen[i] != persisted.get(i)) {
+                rebuild();
+                return;
+            }
+        }
+    }
+
+    private static synchronized Snapshot rebuild() {
+        List<Waypoint> persistedList = cfg().waypoints;
+        List<Waypoint> persisted = persistedList == null ? List.of() : persistedList;
+        String dimension = currentDimension();
+        Map<String, Integer> sources = new HashMap<>();
+        List<Waypoint> inDimension = new ArrayList<>();
+        for (Waypoint waypoint : persisted) {
+            count(sources, waypoint);
+            if (waypoint.inDimension(dimension)) {
+                inDimension.add(waypoint);
+            }
+        }
+        for (Waypoint waypoint : TRANSIENT) {
+            count(sources, waypoint);
+            if (waypoint.inDimension(dimension)) {
+                inDimension.add(waypoint);
+            }
+        }
+        Snapshot built = new Snapshot(persistedList, persisted.toArray(new Waypoint[0]), dimension,
+                Map.copyOf(sources), List.copyOf(inDimension), !persisted.isEmpty() || !TRANSIENT.isEmpty());
+        snapshot = built;
+        return built;
+    }
+
+    private static void count(Map<String, Integer> sources, Waypoint waypoint) {
+        if (waypoint.source != null) {
+            sources.merge(waypoint.source, 1, Integer::sum);
+        }
+    }
+
     /** Whether any waypoint exists at all - the renderer's cheapest possible early-out. */
     public static boolean hasAny() {
-        return !all().isEmpty() || !TRANSIENT.isEmpty();
+        return snapshot().any();
     }
 
     /**
@@ -90,48 +172,40 @@ public final class WaypointStore {
      * publisher whose output already encodes its own conditions, this is the whole gate: if a
      * waypoint is there, it was asked for.
      */
-    public static synchronized boolean hasSource(String source) {
-        if (source == null) {
-            return false;
-        }
-        for (Waypoint waypoint : TRANSIENT) {
-            if (source.equals(waypoint.source)) {
-                return true;
-            }
-        }
-        for (Waypoint waypoint : all()) {
-            if (source.equals(waypoint.source)) {
-                return true;
-            }
-        }
-        return false;
+    public static boolean hasSource(String source) {
+        return source != null && snapshot().sources().containsKey(source);
     }
 
     /**
      * The waypoints in the player's current dimension – the only ones worth drawing or routing to.
      * Includes the transient ones, which is the whole point of them being visible to the router.
+     * Immutable: it is the snapshot's own list, shared by every caller this tick.
      */
-    public static synchronized List<Waypoint> inCurrentDimension() {
-        String dimension = currentDimension();
-        List<Waypoint> out = new ArrayList<>();
-        for (Waypoint waypoint : all()) {
-            if (waypoint.inDimension(dimension)) {
-                out.add(waypoint);
-            }
-        }
-        for (Waypoint waypoint : TRANSIENT) {
-            if (waypoint.inDimension(dimension)) {
-                out.add(waypoint);
-            }
-        }
-        return out;
+    public static List<Waypoint> inCurrentDimension() {
+        return snapshot().inDimension();
     }
 
     /** The dimension key the player is in, or an empty string when not in a world. */
     public static String currentDimension() {
         Minecraft minecraft = Minecraft.getInstance();
-        return minecraft.level == null ? "" : minecraft.level.dimension().identifier().toString();
+        if (minecraft.level == null) {
+            return "";
+        }
+        // Resource keys are interned, so the key's identity says whether the string is still right;
+        // it is built once per dimension change instead of on every snapshot() call.
+        Object key = minecraft.level.dimension();
+        DimensionName last = lastDimension;
+        if (last.key() != key) {
+            last = new DimensionName(key, minecraft.level.dimension().identifier().toString());
+            lastDimension = last;
+        }
+        return last.name();
     }
+
+    private record DimensionName(Object key, String name) {
+    }
+
+    private static volatile DimensionName lastDimension = new DimensionName(null, "");
 
     /** Adds a waypoint at the player's feet and persists it. Returns the new waypoint. */
     public static Waypoint addAtPlayer() {
@@ -151,6 +225,7 @@ public final class WaypointStore {
         Waypoint waypoint = new Waypoint("Waypoint " + (cfg.waypoints.size() + 1), pos, currentDimension());
         cfg.waypoints.add(waypoint);
         ConfigManager.getInstance().save();
+        rebuild();
         PathfindingManager.getInstance().invalidate();
         notifyPlayer("§a[SBS] Added " + waypoint.summary());
         return waypoint;
@@ -173,6 +248,7 @@ public final class WaypointStore {
         }
         cfg.waypoints.add(waypoint);
         ConfigManager.getInstance().save();
+        rebuild();
         PathfindingManager.getInstance().invalidate();
     }
 
@@ -190,6 +266,7 @@ public final class WaypointStore {
             return false;
         }
         ConfigManager.getInstance().save();
+        rebuild();
         PathfindingManager.getInstance().invalidate();
         return true;
     }
@@ -201,6 +278,7 @@ public final class WaypointStore {
             cfg.waypoints.clear();
         }
         ConfigManager.getInstance().save();
+        rebuild();
         PathfindingManager.getInstance().invalidate();
         notifyPlayer("§7[SBS] Cleared all waypoints");
     }
@@ -216,6 +294,7 @@ public final class WaypointStore {
         if (nearest != null) {
             waypoints.remove(nearest);
             ConfigManager.getInstance().save();
+            rebuild();
             PathfindingManager.getInstance().invalidate();
             notifyPlayer("§7[SBS] Removed " + nearest.summary());
         }

@@ -14,7 +14,8 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.render.WorldRender;
 import sbs.modid.client.skills.fishing.logic.SeaCreatureAnnouncer;
@@ -63,7 +64,7 @@ public final class SeaCreatureSpawnHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         AABB box = mob.getBoundingBox().inflate(0.1);
         WorldRender.boxEdges(g, viewProjection, camPos,
                 box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, color, 2);

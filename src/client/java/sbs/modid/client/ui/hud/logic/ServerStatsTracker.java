@@ -99,7 +99,12 @@ public final class ServerStatsTracker {
 
     /** Payloads of OUR in-flight ping requests (vanilla's debug pinger uses its own values). */
     private final Map<Long, Boolean> pendingPings = new ConcurrentHashMap<>();
+    /** A card that read the ping within this window still wants the cadence (frames stop while hidden). */
+    private static final long PING_WANTED_MS = 1_000;
+
     private volatile long lastPingSentMs;
+    /** When a card last read {@link #ping(Minecraft)}; the tick only sends while that is recent. */
+    private volatile long lastReadMs;
     private volatile long lastPongMs;
     private volatile int rttMs = -1;
 
@@ -121,8 +126,9 @@ public final class ServerStatsTracker {
     }
 
     /**
-     * The measured server ping in ms ({@code -1} while unknown). Also drives the 2s send
-     * cadence - called every rendered frame by the HUD card.
+     * The measured server ping in ms ({@code -1} while unknown). Called every rendered frame by the
+     * cards that show it; it only reads, and marks the ping as wanted so {@link #onClientTick()} keeps
+     * the 2s send cadence going.
      */
     public int ping(Minecraft minecraft) {
         if (minecraft.player == null || minecraft.getConnection() == null) {
@@ -131,9 +137,7 @@ public final class ServerStatsTracker {
             return -1;
         }
         long now = System.currentTimeMillis();
-        if (now - lastPingSentMs >= PING_INTERVAL_MS) {
-            send(minecraft, now);
-        }
+        lastReadMs = now;
         return fresh(now) ? rttMs : tabLatency(minecraft);
     }
 
@@ -164,14 +168,20 @@ public final class ServerStatsTracker {
         requests.add(new PingRequest(onResult, now, now + REQUEST_TIMEOUT_MS));
     }
 
-    /** Settles the waiting one-shot measurements. Called every client tick; free while none wait. */
+    /**
+     * Sends the 2s ping while a card has read {@link #ping(Minecraft)} recently, and settles the
+     * waiting one-shot measurements. Called every client tick; free while nothing wants a ping.
+     */
     public void onClientTick() {
-        if (requests.isEmpty()) {
-            return;
-        }
         Minecraft minecraft = Minecraft.getInstance();
         boolean gone = minecraft.player == null || minecraft.getConnection() == null;
         long now = System.currentTimeMillis();
+        if (!gone && now - lastReadMs <= PING_WANTED_MS && now - lastPingSentMs >= PING_INTERVAL_MS) {
+            send(minecraft, now);
+        }
+        if (requests.isEmpty()) {
+            return;
+        }
         for (PingRequest request : requests) {
             if (!gone && rttMs >= 0 && lastPongMs >= request.sentAtMs()) {
                 requests.remove(request);

@@ -34,8 +34,9 @@ import sbs.modid.client.core.util.DisplayedText;
  * spliced into. Nothing is flattened to a plain string on the way through.
  *
  * <p><b>Cost.</b> Each stage opens with its own cheap enabled test - a field read while the feature
- * is off, and both are off by default. With one on, the text is rewritten per draw; that is the
- * price of a feature being global, and it is paid only by players who switched it on.
+ * is off, and both are off by default. With the Text Editor on, every draw still passes through, but
+ * {@code TextReplacer} remembers per visible string what its rules did - including "nothing" - so
+ * text that was drawn last frame costs a lookup, not a rescan.
  */
 @Mixin(GuiGraphicsExtractor.class)
 public class GuiTextReplaceMixin {

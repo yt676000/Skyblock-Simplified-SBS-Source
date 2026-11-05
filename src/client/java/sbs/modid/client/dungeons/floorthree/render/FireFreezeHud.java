@@ -22,6 +22,7 @@ import sbs.modid.client.ui.theme.SBSTheme;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * The F3 / M3 Fire Freeze card: the countdown to the cast, then the staff's wind-up, then how long
@@ -43,6 +44,7 @@ public final class FireFreezeHud {
     private static final int CAST_COLOR = 0xFFFF5555;
     private static final int FROZEN_COLOR = 0xFF6ED8FF;
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     private FireFreezeHud() {
     }
@@ -111,6 +113,6 @@ public final class FireFreezeHud {
     }
 
     private static String strip(String text) {
-        return text.replaceAll(SECTION_SIGN + ".", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 }

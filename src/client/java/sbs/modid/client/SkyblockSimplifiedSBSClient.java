@@ -44,8 +44,17 @@ public class SkyblockSimplifiedSBSClient implements ClientModInitializer {
         // loose files into it. The hidden Development_Stuff/ folder is intentionally NOT created here.
         SBSFiles.prepareBaseDirs();
 
+        // The shared item-analysis cache serves this (the client/render) thread only.
+        sbs.modid.client.core.item.ItemAnalysis.bindThread();
+
         // Prepare the config manager (file is read lazily on first use).
         ConfigManager.getInstance();
+
+        // Hypixel Mod API location event; payload types must exist before the first connection.
+        // BOOKMARK(merge 2026-10-05): both kept - location API init from hypixel-location-api, entity index from perf/entity-index.
+        sbs.modid.client.core.location.HypixelLocationApi.init();
+        // Entity index: tracker entity walks go through its buckets instead of the whole level.
+        sbs.modid.client.core.entity.EntityIndex.register();
 
         // Block-break listeners. Lambdas, so each feature's class loads on the first break, not here.
         sbs.modid.client.core.player.BlockBreakEvents.register((pos, state) ->
@@ -62,10 +71,20 @@ public class SkyblockSimplifiedSBSClient implements ClientModInitializer {
         sbs.modid.client.core.player.BlockBreakEvents.register((pos, state) ->
                 sbs.modid.client.skills.farming.session.FarmingSessionTracker.getInstance()
                         .onBlockBroken(pos, state));
+        // Farming Net: the same crop breaks are its active farming time.
+        sbs.modid.client.core.player.BlockBreakEvents.register((pos, state) ->
+                sbs.modid.client.skills.farming.net.FarmingNetTracker.getInstance().onBlockBroken(pos, state));
         // NB: the per-account-profile caches (StorageIndex / LoadoutsOverlay / BazaarOrderTracker)
         // register themselves with ProfileContext in their own constructors – doing it here would
         // force those classes to load before the item registry is bound (LoadoutsOverlay builds
         // ItemStack fallbacks in a static field → "Components not bound yet" crash).
+
+        // World-bound state: one registry, fired once per leave - the tick edge where the player
+        // disappears, the connection closing, or a proxy transfer (ConfigurationStartMixin).
+        sbs.modid.client.core.world.WorldScopedTrackers.registerAll();
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register((handler, client) ->
+                sbs.modid.client.core.world.WorldTransitions.fire(
+                        sbs.modid.client.core.world.WorldTransitions.Transition.DISCONNECT));
 
         // Module registry (placeholder categories for now).
         ModuleManager moduleManager = ModuleManager.getInstance();
@@ -90,6 +109,7 @@ public class SkyblockSimplifiedSBSClient implements ClientModInitializer {
         // run, because a wrong answer fails the room for the whole party. Backend-refreshed so a new
         // question does not need a release.
         sbs.modid.client.dungeons.puzzle.logic.QuizAnswers.load();
+        sbs.modid.client.dungeons.floorseven.logic.ArrowAlignLayouts.load();
 
         // Load the bundled island maps (from mod resources) into memory.
         sbs.modid.client.helper.map.logic.MapDatabase.load();
@@ -120,6 +140,7 @@ public class SkyblockSimplifiedSBSClient implements ClientModInitializer {
         // Heart of the Mountain perk catalogue. Ships with perk identities and NO costs - Hypixel
         // publishes none, so they are learned from the menu's own tooltips instead of guessed.
         sbs.modid.client.skills.mining.logic.HotmCatalog.load();
+        sbs.modid.client.skills.foraging.logic.HotfCatalog.load();
         sbs.modid.client.skills.mining.logic.HotmStrategies.load();
 
         // Rift per-area clock rules (drain multipliers, minimum-to-enter): same loader as the souls.
@@ -138,7 +159,13 @@ public class SkyblockSimplifiedSBSClient implements ClientModInitializer {
         // spade's curve. Bundled-only for now and every value in it unverified, which is exactly why
         // it is a document - a capture corrects it with a JSON edit rather than a release.
         sbs.modid.client.combat.diana.logic.DianaParticles.load();
+
+        // Counter enchant levels (Champion, Toxophilite): wiki thresholds and unverified counter
+        // keys, bundled only, so a capture corrects them with a JSON edit.
+        sbs.modid.client.helper.enchants.counter.CounterEnchants.load();
         sbs.modid.client.skills.farming.logic.FarmDropTracker.load();
+        // Boss Bar Health: maximum health per Catacombs boss, bundled only.
+        sbs.modid.client.dungeons.bossbar.logic.BossHealthModel.load();
 
         // Load the player's personal route waypoints (config/sbs/Routes.json).
         sbs.modid.client.dungeons.run.logic.DungeonRouteStore.load();
@@ -158,9 +185,11 @@ public class SkyblockSimplifiedSBSClient implements ClientModInitializer {
         // Build the native Brigadier command dispatcher (no Fabric command API).
         SBSCommands.init();
 
-        // Start the local-only HTTP API (127.0.0.1:8765) for external dev tooling.
+        // The local-only HTTP API (127.0.0.1:8765) for external dev tooling - only when the user
+        // switched "Local API Server" on (off by default). Binds on its own thread, not this one.
         // The GUI state itself is captured on the client thread via GuiTrackingMixin.
-        ApiServer.getInstance().start();
+        ApiServer.getInstance().setEnabled(
+                sbs.modid.client.core.config.ConfigManager.getInstance().get().localApi.enabled);
 
         // Background Bazaar order sync (~5s), independent of the Bazaar GUI being open.
         // Orders are scanned on the client thread by BazaarOrderTracker (via GuiTrackingMixin).
@@ -171,6 +200,7 @@ public class SkyblockSimplifiedSBSClient implements ClientModInitializer {
         // reading prices - see its class comment for why it stopped asking the config that question.
         LbinCache.getInstance().start();
         BazaarPriceCache.getInstance().start();
+        sbs.modid.client.economy.prices.BackupPrices.getInstance().start();
 
         // Persistent chat-fed price cache (loaded from disk so prices survive restarts).
         ChatPriceCache.getInstance().load();

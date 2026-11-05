@@ -11,7 +11,7 @@ package sbs.modid.client.helper.map.logic;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import sbs.modid.client.core.net.validation.MessageTypes;
 import com.google.gson.JsonPrimitive;
 import sbs.modid.client.core.location.hollows.HollowsGeometry;
 import sbs.modid.client.core.location.hollows.HollowsStructure;
@@ -125,7 +125,7 @@ public final class StructureProtocol {
         out.addProperty("island", ISLAND);
         out.addProperty("mod", modVersion != null && MOD_VERSION.matcher(modVersion).matches()
                 ? modVersion : "unknown");
-        return out.toString();
+        return checked(MessageTypes.OUT_HOLLOWS_SUBSCRIBE, out);
     }
 
     /** {@code report}, or {@code null} when the lobby or the position would be refused. */
@@ -138,7 +138,7 @@ public final class StructureProtocol {
         out.addProperty("lobby", lobby);
         writePosition(out, report.structure(), report.x(), report.y(), report.z(), report.box());
         out.addProperty("samples", Math.max(1, Math.min(MAX_SAMPLES, report.samples())));
-        return out.toString();
+        return checked(MessageTypes.OUT_HOLLOWS_REPORT, out);
     }
 
     /** {@code unsubscribe}, or {@code null} for a lobby id of the wrong shape. */
@@ -148,7 +148,7 @@ public final class StructureProtocol {
         }
         JsonObject out = envelope("unsubscribe");
         out.addProperty("lobby", lobby);
-        return out.toString();
+        return checked(MessageTypes.OUT_HOLLOWS_UNSUBSCRIBE, out);
     }
 
     private static JsonObject envelope(String type) {
@@ -262,11 +262,10 @@ public final class StructureProtocol {
             return null;
         }
         try {
-            JsonElement root = JsonParser.parseString(text);
-            if (!root.isJsonObject()) {
+            JsonObject message = validated(text);
+            if (message == null) {
                 return null;
             }
-            JsonObject message = root.getAsJsonObject();
             Long version = integer(message, "v");
             if (version == null || version != VERSION) {
                 return null;
@@ -285,6 +284,43 @@ public final class StructureProtocol {
                 default -> null;
             };
         } catch (RuntimeException malformed) {
+            return null;
+        }
+    }
+
+    /**
+     * The message checked against the schema for its {@code type}, or {@code null}. The type is read
+     * from a structurally checked tree first so the matching schema can be applied to the whole frame.
+     */
+    private static JsonObject validated(String text) {
+        try {
+            JsonElement root = sbs.modid.client.core.net.validation.GuardedJson.parse(text,
+                    sbs.modid.client.core.net.validation.MessageSchemas.entry(MessageTypes.HOLLOWS_ERROR).limits());
+            if (!root.isJsonObject()) {
+                return null;
+            }
+            JsonElement type = root.getAsJsonObject().get("type");
+            String typeId = type == null || !type.isJsonPrimitive() ? null : switch (type.getAsString()) {
+                case "snapshot" -> MessageTypes.HOLLOWS_SNAPSHOT;
+                case "update" -> MessageTypes.HOLLOWS_UPDATE;
+                case "error" -> MessageTypes.HOLLOWS_ERROR;
+                default -> null;
+            };
+            if (typeId == null) {
+                return null;
+            }
+            return sbs.modid.client.core.net.validation.MessageSchemas.parse(typeId, text).getAsJsonObject();
+        } catch (sbs.modid.client.core.net.validation.ValidationException invalid) {
+            return null;
+        }
+    }
+
+    /** {@code out} as JSON text when it passes its outgoing schema, otherwise {@code null}. */
+    private static String checked(String typeId, JsonObject out) {
+        try {
+            sbs.modid.client.core.net.validation.MessageSchemas.checkOutgoing(typeId, out);
+            return out.toString();
+        } catch (sbs.modid.client.core.net.validation.ValidationException invalid) {
             return null;
         }
     }

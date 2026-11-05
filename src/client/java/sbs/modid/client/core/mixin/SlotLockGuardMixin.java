@@ -36,6 +36,13 @@ public abstract class SlotLockGuardMixin {
     private void skyblockSimplified$guardLockedSlots(int containerId, int slotId, int button,
                                                      ContainerInput input, Player player,
                                                      CallbackInfo ci) {
+        // Experimentation Table misclick guard: an out-of-order input on the Chronomatron /
+        // Ultrasequencer board is refused here, whatever key or button made it. It logs its own line.
+        if (sbs.modid.client.helper.experiment.logic.ExperimentationTable.getInstance()
+                .onContainerInput(containerId, slotId, button, input)) {
+            ci.cancel();
+            return;
+        }
         if (SlotLock.blocks(player, slotId, button, input)) {
             SlotLock.denied();
             skyblockSimplified$logVeto("slot lock", input, slotId, button);

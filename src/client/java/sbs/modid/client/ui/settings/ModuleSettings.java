@@ -161,6 +161,18 @@ public final class ModuleSettings {
                 sbs.modid.client.core.api.GuiStateManager.getInstance().getCurrentScreen()));
     }
 
+    /** The picker for one M7 Tick Timers colour; an unset row starts on the colour it follows. */
+    private static void openTickTimerPicker(String label, java.util.function.Supplier<String> getter,
+                                            int stock, java.util.function.Consumer<String> setter) {
+        String current = getter.get();
+        if (sbs.modid.client.core.render.OverlayColor.parseHex(current) == null) {
+            current = String.format(java.util.Locale.ROOT, "%06X", stock & 0xFFFFFF);
+        }
+        open(new sbs.modid.client.ui.theme.ThemeColorPickerScreen("Tick Timer  •  " + label,
+                current, setter,
+                sbs.modid.client.core.api.GuiStateManager.getInstance().getCurrentScreen()));
+    }
+
     private static SBSConfig.BarColorSettings barColors() {
         return cfg().hypixelGui.barColors;
     }
@@ -551,6 +563,7 @@ public final class ModuleSettings {
 
     /** Guards "Reset All Screen Opacity" - it drops every per-screen value at once. */
     private static final ConfirmClick SCREEN_OPACITY_RESET = new ConfirmClick();
+    private static final ConfirmClick BACKUP_PRICES_CLEAR = new ConfirmClick();
 
     /**
      * One slider + reset per screen that has its own opacity, and a two-click "reset all". Rows are
@@ -782,6 +795,24 @@ public final class ModuleSettings {
                             () -> cfg().itemOverlay.rarityOpacity,
                             value -> { cfg().itemOverlay.rarityOpacity = value; save(); }, "%")
                             .describe("How strong that rarity tint is."),
+                    SettingRow.toggle("Gradient Filler Panes", () -> cfg().itemOverlay.gradientPanes,
+                            () -> { cfg().itemOverlay.gradientPanes = !cfg().itemOverlay.gradientPanes; save(); })
+                            .describe("Draws the blank glass panes that fill out SkyBlock menus as "
+                                    + "one smooth colour surface instead of glass. Panes that say "
+                                    + "something - on/off switches, order states - stay as they are, "
+                                    + "and so do terminals, the Experimentation Table and other menus "
+                                    + "whose panes are the puzzle. Looks only; clicks are unchanged."),
+                    SettingRow.segmented("Filler Pane Style", List.of("Gradient", "Chroma"),
+                            () -> cfg().itemOverlay.gradientPanesMode,
+                            value -> { cfg().itemOverlay.gradientPanesMode = value; save(); })
+                            .describe("Gradient: each pane's own colour, light to dark across the "
+                                    + "menu. Chroma: one moving rainbow across the whole menu, at the "
+                                    + "Chroma Speed set in Theme."),
+                    SettingRow.rangeSlider("Filler Pane Opacity", 20, 100,
+                            () -> cfg().itemOverlay.gradientPanesOpacity,
+                            value -> { cfg().itemOverlay.gradientPanesOpacity = value; save(); }, "%")
+                            .describe("How solid the filler surface is; lower lets the menu "
+                                    + "background show through."),
                     SettingRow.toggle("Show LBIN", () -> cfg().itemOverlay.showLbin,
                             () -> {
                                 cfg().itemOverlay.showLbin = !cfg().itemOverlay.showLbin;
@@ -802,6 +833,35 @@ public final class ModuleSettings {
                             })
                             .describe("Adds the item's Bazaar price to its tooltip, for items "
                                     + "traded there instead of the Auction House."),
+                    SettingRow.toggle("Backup Prices", () -> cfg().itemOverlay.backupPrices,
+                            () -> { cfg().itemOverlay.backupPrices = !cfg().itemOverlay.backupPrices; save(); })
+                            .describe("Remembers the last price every item was seen at, on the "
+                                    + "Auction House or the Bazaar, and uses it when the item has no "
+                                    + "listing right now - so a rare item that is listed once a month "
+                                    + "is not counted as worth nothing. Filled from prices the mod "
+                                    + "already reads; it never asks for extra data."),
+                    SettingRow.toggle("Mark Backup Prices", () -> cfg().itemOverlay.markBackupPrices,
+                            () -> { cfg().itemOverlay.markBackupPrices = !cfg().itemOverlay.markBackupPrices; save(); })
+                            .describe("Shows a value that contains a remembered price with a "
+                                    + "leading \"≈\", in grey, with when the price was last seen - so "
+                                    + "an old price never looks like today's."),
+                    SettingRow.intField("Backup Price Max Age", 0, 3650,
+                            () -> cfg().itemOverlay.backupPriceMaxAgeDays,
+                            value -> { cfg().itemOverlay.backupPriceMaxAgeDays = value; save(); }, "days")
+                            .describe("Remembered prices older than this are not used. 0 means no "
+                                    + "limit, which is the point for rare items: their last sale may "
+                                    + "be weeks old and still the best figure there is."),
+                    SettingRow.button("Clear Backup Prices", () -> {
+                                if (BACKUP_PRICES_CLEAR.click()) {
+                                    sbs.modid.client.economy.prices.BackupPrices.getInstance().clear();
+                                    sbs.modid.client.social.chat.logic.SBSChat.send("Backup prices cleared.");
+                                } else {
+                                    sbs.modid.client.social.chat.logic.SBSChat.send(
+                                            "Click Clear Backup Prices again within 5s to confirm.");
+                                }
+                            })
+                            .describe("Forgets every remembered price. They fill in again as you "
+                                    + "play. Two clicks within 5 seconds."),
                     SettingRow.toggle("Estimated Item Value", () -> cfg().itemOverlay.showItemValue,
                             () -> {
                                 cfg().itemOverlay.showItemValue = !cfg().itemOverlay.showItemValue;
@@ -865,6 +925,11 @@ public final class ModuleSettings {
                             () -> { cfg().itemOverlay.stackTipDungeonPasses = !cfg().itemOverlay.stackTipDungeonPasses; save(); })
                             .describe("The floor a Catacombs Pass is for, top-left on its icon; "
                                     + "Master Mode passes read M7."),
+                    SettingRow.toggle("Stack Tip: Dungeon Item Quality", () -> cfg().itemOverlay.stackTipDungeonQuality,
+                            () -> { cfg().itemOverlay.stackTipDungeonQuality = !cfg().itemOverlay.stackTipDungeonQuality; save(); })
+                            .describe("A dungeon drop's quality as a % of the best roll, top-left on "
+                                    + "its icon (gold at max, green from 80), plus a Quality line "
+                                    + "in its tooltip."),
                     SettingRow.toggle("Stack Tip: Skill Level", () -> cfg().itemOverlay.stackTipSkills,
                             () -> { cfg().itemOverlay.stackTipSkills = !cfg().itemOverlay.stackTipSkills; save(); })
                             .describe("Each skill's level on its icon in the Skills menu. Not yet "
@@ -873,6 +938,14 @@ public final class ModuleSettings {
                             () -> { cfg().itemOverlay.stackTipCollections = !cfg().itemOverlay.stackTipCollections; save(); })
                             .describe("Each collection's tier on its icon in a collection menu. Not "
                                     + "yet checked against the live menu, so it is off by default."),
+                    SettingRow.toggle("Stack Tip: Counter Enchant XP", () -> cfg().itemOverlay.stackTipCounterEnchant,
+                            () -> { cfg().itemOverlay.stackTipCounterEnchant = !cfg().itemOverlay.stackTipCounterEnchant; save(); })
+                            .describe("The Champion or Toxophilite total in short form (3.4M) in the "
+                                    + "top-left corner of the item's icon."),
+                    SettingRow.toggle("Stack Tip: New Year Cake Year", () -> cfg().itemOverlay.stackTipCakeYears,
+                            () -> { cfg().itemOverlay.stackTipCakeYears = !cfg().itemOverlay.stackTipCakeYears; save(); })
+                            .describe("The SkyBlock year a New Year Cake is from, top-left on its "
+                                    + "icon - in the New Year Cake Bag and everywhere else."),
                     SettingRow.segmented("Stack Tips Show In",
                             List.of(StackTipScope.CONTAINERS.displayName(), StackTipScope.HOTBAR.displayName(),
                                     StackTipScope.BOTH.displayName()),
@@ -887,6 +960,11 @@ public final class ModuleSettings {
                                     + "hold the item and run /sbs itemrename <new name>; /sbs "
                                     + "itemoriginalname restores it."),
                     SettingRow.label("/sbs itemrename <new name>  •  /sbs itemoriginalname"),
+                    SettingRow.toggle("Counter Enchant XP", () -> cfg().itemOverlay.counterEnchantXp,
+                            () -> { cfg().itemOverlay.counterEnchantXp = !cfg().itemOverlay.counterEnchantXp; save(); })
+                            .describe("Champion and Toxophilite XP on the item: progress to the next "
+                                    + "level, and the total and how far past it you are once the "
+                                    + "enchant is maxed. Hold Shift for the full numbers."),
                     SettingRow.toggle("Hold Shift: Missing Enchantments",
                             () -> cfg().itemOverlay.shiftMissingEnchants,
                             () -> { cfg().itemOverlay.shiftMissingEnchants = !cfg().itemOverlay.shiftMissingEnchants; save(); })
@@ -1198,7 +1276,7 @@ public final class ModuleSettings {
                                     + "lava mid-fight. Never inside a dungeon, where that key is "
                                     + "your class ability and dropping is off anyway."),
                     SettingRow.label("Stops the drop key (Q) throwing a locked hotbar item while playing"),
-                    SettingRow.toggle("Sound When Blocked", () -> cfg().slotLock.denySound,
+                    SettingRow.soundToggle("Sound When Blocked", () -> cfg().slotLock.denySound,
                             () -> { cfg().slotLock.denySound = !cfg().slotLock.denySound; save(); })
                             .describe("A short sound when a click is blocked by a lock, so you "
                                     + "know the lock did something."),
@@ -1937,6 +2015,11 @@ public final class ModuleSettings {
                     SettingRow.toggle("!downtime / !undowntime", () -> cfg().partyCommands.downtime,
                             () -> { cfg().partyCommands.downtime = !cfg().partyCommands.downtime; save(); })
                             .describe("!downtime marks you AFK to the party until !undowntime."),
+                    SettingRow.toggle("!up / !down / !same", () -> cfg().partyCommands.requeue,
+                            () -> { cfg().partyCommands.requeue = !cfg().partyCommands.requeue; save(); })
+                            .describe("Steps the next Auto Requeue one floor or tier up or down (same "
+                                    + "mode: F stays F, M stays M), or back to the same one. Answered "
+                                    + "only by the party leader's client, with Auto Requeue on."),
                     SettingRow.toggle("!boop", () -> cfg().partyCommands.boop,
                             () -> { cfg().partyCommands.boop = !cfg().partyCommands.boop; save(); })
                             .describe("!boop <name> sends that player a /boop."),
@@ -2247,6 +2330,36 @@ public final class ModuleSettings {
                             .describe("Marks the next button on the phase-3 Simon Says device, read "
                                     + "off the lit sequence on the wall. Display only - it shows "
                                     + "where to press, it never presses."),
+                    SettingRow.toggle("Arrow Align Helper", () -> cfg().dungeons.arrowAlign,
+                            () -> { cfg().dungeons.arrowAlign = !cfg().dungeons.arrowAlign; save(); })
+                            .describe("Shows on each frame of the phase-3 Arrow Align device how "
+                                    + "many right clicks it still needs, and a tick once it is "
+                                    + "right - live, including your team's clicks. Works only for "
+                                    + "layouts already recorded; others say so. Display only - it "
+                                    + "never turns a frame."),
+                    SettingRow.toggle("Arrow Align Misclick Guard", () -> cfg().dungeons.arrowAlignMisclickGuard,
+                            () -> { cfg().dungeons.arrowAlignMisclickGuard = !cfg().dungeons.arrowAlignMisclickGuard; save(); })
+                            .describe("Ignores your right click on an Arrow Align frame that is "
+                                    + "already right, so it is not turned past its target. Only "
+                                    + "for a recorded layout; whenever anything is uncertain the "
+                                    + "click goes through. Sneak to click anyway."),
+                    SettingRow.toggle("Lights Device", () -> cfg().dungeons.lightsDevice,
+                            () -> { cfg().dungeons.lightsDevice = !cfg().dungeons.lightsDevice; save(); })
+                            .describe("Phase-3 Lights device. Watches which lamps each lever turns "
+                                    + "on or off (yours and your teammates' flips alike) and, once that "
+                                    + "is known, boxes the levers still to flip. Until then it shows "
+                                    + "'recording'. Display only - it never flips a lever."),
+                    SettingRow.toggle("Lights Device Guard", () -> cfg().dungeons.lightsDeviceGuard,
+                            () -> { cfg().dungeons.lightsDeviceGuard = !cfg().dungeons.lightsDeviceGuard; save(); })
+                            .describe("Ignores your own right-click on a Lights lever that is not "
+                                    + "in the current answer, so a misclick cannot undo a lamp. Only "
+                                    + "acts once every lever's wiring is known; otherwise every click "
+                                    + "goes through. Never clicks anything itself."),
+                    SettingRow.toggle("Shoot the Target", () -> cfg().dungeons.shootTarget,
+                            () -> { cfg().dungeons.shootTarget = !cfg().dungeons.shootTarget; save(); })
+                            .describe("Marks the block that is the target on the phase-3 Shoot the "
+                                    + "Target device, faintly marks the ones already hit, and counts "
+                                    + "the hits. Display only - it never aims or shoots for you."),
                     SettingRow.toggle("Terminal Progress", () -> cfg().dungeons.terminalProgress,
                             () -> { cfg().dungeons.terminalProgress = !cfg().dungeons.terminalProgress; save(); })
                             .describe("A card for the Goldor gates: terminals, devices and levers "
@@ -2272,26 +2385,31 @@ public final class ModuleSettings {
                             .describe("Half-width of a statue box in blocks. Hypixel does not "
                                     + "publish the radius it checks, so this is tunable."),
                     SettingRow.label("Statues learn themselves; /sbs dragons <colour> corrects one, /sbs dragons clear resets"),
-                    SettingRow.toggle("Puzzle Solver (Blaze)", () -> cfg().dungeons.puzzleSolver,
-                            () -> { cfg().dungeons.puzzleSolver = !cfg().dungeons.puzzleSolver; save(); })
-                            .describe("Boxes the blaze to shoot next in the Higher-Or-Lower "
-                                    + "puzzle room."),
-                    SettingRow.toggle("Blaze Highest First", () -> cfg().dungeons.blazeHighestFirst,
-                            () -> { cfg().dungeons.blazeHighestFirst = !cfg().dungeons.blazeHighestFirst; save(); })
-                            .describe("Which way your puzzle variant goes: highest health first "
-                                    + "or lowest first. Flip this if the solver marks the wrong "
-                                    + "end."),
-                    SettingRow.label("Boxes the next blaze in Higher-Or-Lower (flip order if your variant is reversed)"),
-                    SettingRow.toggle("Puzzle: Quiz", () -> cfg().dungeons.puzzleQuiz,
-                            () -> { cfg().dungeons.puzzleQuiz = !cfg().dungeons.puzzleQuiz; save(); })
-                            .describe("Boxes the correct answer to Oruo's questions. Default on. "
-                                    + "A question that is not in the answer set shows nothing "
-                                    + "rather than a guess - one wrong click fails the room."),
-                    SettingRow.toggle("Puzzle: Three Weirdos", () -> cfg().dungeons.puzzleThreeWeirdos,
-                            () -> { cfg().dungeons.puzzleThreeWeirdos = !cfg().dungeons.puzzleThreeWeirdos; save(); })
-                            .describe("Records the weirdos' statements to the log so the solver can "
-                                    + "be finished from real wording. Default on. It does not "
-                                    + "highlight a chest yet."),
+                    SettingRow.toggle("M7 Relic Waypoints", () -> cfg().dungeons.m7RelicWaypoints,
+                            () -> { cfg().dungeons.m7RelicWaypoints = !cfg().dungeons.m7RelicWaypoints; save(); })
+                            .describe("In the M7 dragon phase, a marker on each relic's spawn "
+                                    + "(Red Relic, Blue Relic ...), and once you pick one up, a marker "
+                                    + "on where it goes. Markers only appear for relics whose spots "
+                                    + "have been recorded."),
+                    SettingRow.options("Relic Filter",
+                            () -> List.of("All", "Red", "Orange", "Green", "Blue", "Purple"),
+                            () -> {
+                                var colour = sbs.modid.client.dungeons.floorseven.model.RelicColour
+                                        .byWord(cfg().dungeons.m7RelicFilter);
+                                return colour == null ? "All" : colour.label();
+                            },
+                            label -> {
+                                var colour = sbs.modid.client.dungeons.floorseven.model.RelicColour.byWord(label);
+                                cfg().dungeons.m7RelicFilter = colour == null ? "ALL" : colour.name();
+                                save();
+                            })
+                            .describe("Which relic spawns are marked: all five, or only yours. The "
+                                    + "marker for the relic you carry is always shown."),
+                    SettingRow.toggle("Relic Guide Line", () -> cfg().dungeons.m7RelicGuideLine,
+                            () -> { cfg().dungeons.m7RelicGuideLine = !cfg().dungeons.m7RelicGuideLine; save(); })
+                            .describe("While you carry a relic, a line from your crosshair to the "
+                                    + "spot it goes."),
+                    SettingRow.label("Puzzle solvers moved to their own card: Dungeons > Puzzle Solvers"),
                     SettingRow.button("Terminal Simulator",
                             () -> open(new sbs.modid.client.dungeons.terminal.TerminalSimulatorScreen()))
                             .describe("Practice the F7 terminals outside the dungeon, with a "
@@ -2366,10 +2484,20 @@ public final class ModuleSettings {
                             () -> { cfg().dungeons.roomWaypoints = !cfg().dungeons.roomWaypoints; save(); })
                             .describe("Marks the known secrets of the room you are in (chests, "
                                     + "levers, bats) with waypoints from the SBS room database."),
-                    SettingRow.toggle("Box Stared Mobs", () -> cfg().dungeons.boxStarredMobs,
+                    SettingRow.toggle("Highlight Starred Mobs", () -> cfg().dungeons.boxStarredMobs,
                             () -> { cfg().dungeons.boxStarredMobs = !cfg().dungeons.boxStarredMobs; save(); })
-                            .describe("Boxes the starred (✯) mobs that must die for the clear "
-                                    + "percentage."),
+                            .describe("Highlights the starred (✯) mobs that must die for the clear "
+                                    + "percentage - only while you can actually see them."),
+                    SettingRow.enumOptions("Starred Mob Style", () -> cfg().dungeons.starredMobStyle,
+                            value -> { cfg().dungeons.starredMobStyle = value; save(); }, v -> v.displayName())
+                            .describe("Hitbox draws a box around the mob, Outline traces its "
+                                    + "silhouette, Both does both. Click to cycle."),
+                    SettingRow.color("Starred Mob Color", () -> cfg().dungeons.starredMobColor,
+                            () -> 0xFFFFE000,
+                            () -> openPicker("Starred Mob", () -> cfg().dungeons.starredMobColor,
+                                    hex -> { cfg().dungeons.starredMobColor = hex == null || hex.isEmpty()
+                                            ? "FFE000" : hex; save(); }))
+                            .describe("Colour of the starred-mob highlight and of its pointer line."),
                     SettingRow.toggle("Show Pointer Lines", () -> cfg().dungeons.showTracers,
                             () -> { cfg().dungeons.showTracers = !cfg().dungeons.showTracers; save(); })
                             .anchor("show_tracers")
@@ -2421,6 +2549,43 @@ public final class ModuleSettings {
                             .describe("Prints the phase times into your own chat at the end of "
                                     + "the run. Nothing is sent to other players."),
                     SettingRow.label("§8Printed to your own chat at the score summary - nothing is sent"),
+                    SettingRow.toggle("M7 Tick Timers", () -> cfg().dungeons.m7TickTimers,
+                            () -> { cfg().dungeons.m7TickTimers = !cfg().dungeons.m7TickTimers; save(); })
+                            .describe("A countdown to the next Storm pad crush in the Storm phase and "
+                                    + "the next Goldor tick in the Goldor phase, counted on the "
+                                    + "server's own ticks. The cycles are estimates and marked est. "
+                                    + "on the card. Display only."),
+                    SettingRow.toggle("Tick Timers Also On F7", () -> cfg().dungeons.m7TickTimersOnF7,
+                            () -> { cfg().dungeons.m7TickTimersOnF7 = !cfg().dungeons.m7TickTimersOnF7; save(); })
+                            .describe("Shows the tick timers on Floor 7 too, not only on Master Mode 7."),
+                    SettingRow.toggle("Storm Pad Timer", () -> cfg().dungeons.m7TickTimerPad,
+                            () -> { cfg().dungeons.m7TickTimerPad = !cfg().dungeons.m7TickTimerPad; save(); })
+                            .describe("The countdown to the next pad crush while Storm is up."),
+                    SettingRow.intField("Storm Pad Period", 0, 400,
+                            () -> cfg().dungeons.m7PadPeriodTicks,
+                            value -> { cfg().dungeons.m7PadPeriodTicks = value; save(); }, "ticks")
+                            .describe("Server ticks between two pad crushes. Not measured yet, so it "
+                                    + "starts at 0, which shows \"?\" instead of a guess. 20 ticks "
+                                    + "are one second."),
+                    SettingRow.toggle("Goldor Tick Timer", () -> cfg().dungeons.m7TickTimerGoldor,
+                            () -> { cfg().dungeons.m7TickTimerGoldor = !cfg().dungeons.m7TickTimerGoldor; save(); })
+                            .describe("The countdown to Goldor's next tick during the terminals. "
+                                    + "Assumes a tick every 60 server ticks (3 seconds), an estimate."),
+                    SettingRow.toggle("Big Centre Countdown", () -> cfg().dungeons.m7TickTimerCentre,
+                            () -> { cfg().dungeons.m7TickTimerCentre = !cfg().dungeons.m7TickTimerCentre; save(); })
+                            .describe("In the last second before a crush or tick, a large countdown in "
+                                    + "the middle of the screen as well."),
+                    SettingRow.color("Tick Timer Color", () -> cfg().dungeons.m7TickTimerColorHex,
+                            () -> SBSTheme.TEXT,
+                            () -> openTickTimerPicker("Countdown", () -> cfg().dungeons.m7TickTimerColorHex,
+                                    SBSTheme.TEXT, v -> cfg().dungeons.m7TickTimerColorHex = v))
+                            .describe("The colour of the countdown while there is more than a second "
+                                    + "left. Unset, it follows your theme's text colour."),
+                    SettingRow.color("Tick Timer Warning Color", () -> cfg().dungeons.m7TickTimerSoonColorHex,
+                            () -> SBSTheme.WARN,
+                            () -> openTickTimerPicker("Warning", () -> cfg().dungeons.m7TickTimerSoonColorHex,
+                                    SBSTheme.WARN, v -> cfg().dungeons.m7TickTimerSoonColorHex = v))
+                            .describe("The colour the countdown fades into over its last second."),
                     SettingRow.toggle("Fire Freeze Timer (F3/M3)", () -> cfg().dungeons.fireFreezeTimer,
                             () -> { cfg().dungeons.fireFreezeTimer = !cfg().dungeons.fireFreezeTimer; save(); })
                             .describe("Counts down to the moment the Fire Freeze Staff should be "
@@ -2456,6 +2621,24 @@ public final class ModuleSettings {
                             .describe("How long a killed terracotta takes to come back on Master 6. "
                                     + "12s measured - correct it here if your runs disagree."),
                     SettingRow.label("Boxes each terracotta's death spot with the time until it respawns there"),
+                    SettingRow.toggle("Boss Bar Health", () -> cfg().dungeons.bossBarHealth,
+                            () -> { cfg().dungeons.bossBarHealth = !cfg().dungeons.bossBarHealth; save(); })
+                            .describe("Adds the boss's health as a number to the boss bar in the "
+                                    + "Catacombs. Read off the boss's own nametag when it is in "
+                                    + "range; otherwise worked out from the bar and the boss's "
+                                    + "known maximum, marked with ≈; otherwise just the percentage "
+                                    + "left - never a guessed number."),
+                    SettingRow.toggle("Boss Bar Health Max", () -> cfg().dungeons.bossBarHealthMax,
+                            () -> { cfg().dungeons.bossBarHealthMax = !cfg().dungeons.bossBarHealthMax; save(); })
+                            .describe("Also shows the boss's full health after the current one, "
+                                    + "as in 412M / 800M."),
+                    SettingRow.toggle("Boss Bar Health Percent", () -> cfg().dungeons.bossBarHealthPercent,
+                            () -> { cfg().dungeons.bossBarHealthPercent = !cfg().dungeons.bossBarHealthPercent; save(); })
+                            .describe("Also shows how much is left in percent, after the number."),
+                    SettingRow.toggle("Boss Bar Health Colour", () -> cfg().dungeons.bossBarHealthColour,
+                            () -> { cfg().dungeons.bossBarHealthColour = !cfg().dungeons.bossBarHealthColour; save(); })
+                            .describe("Colours the health green over half, yellow over a quarter "
+                                    + "and red below that. Off draws it white."),
                     SettingRow.toggle("Giant HP (F6/M6)", () -> cfg().dungeons.giantHp,
                             () -> { cfg().dungeons.giantHp = !cfg().dungeons.giantHp; save(); })
                             .describe("Lists the giants that are still up with their health, "
@@ -2507,11 +2690,12 @@ public final class ModuleSettings {
                     SettingRow.label("§8A thin box + \"?\" means the pick is still the guess, not proof"),
                     SettingRow.button("Edit Dungeon GUI", () -> open(new HudEditorScreen(
                             new HudElement[] {HudElement.DUNGEON_MAP, HudElement.LIVID_TRACKER,
-                                    HudElement.F7_PHASE_TIMER, HudElement.FIRE_FREEZE,
+                                    HudElement.F7_PHASE_TIMER, HudElement.M7_TICK_TIMERS,
+                                    HudElement.FIRE_FREEZE,
                                     HudElement.GIANT_HP, HudElement.GUARDIAN_HP},
                             "Edit Dungeon GUI")))
                             .describe("Opens the editor where you drag the dungeon map, Livid "
-                                    + "card, phase timer, Fire Freeze, Giant HP and Guardian HP "
+                                    + "card, phase timer, M7 tick timers, Fire Freeze, Giant HP and Guardian HP "
                                     + "cards anywhere on the screen and scale them.")));
 
             // Licence + privacy share a page because they are the same subject from the user's
@@ -2733,7 +2917,7 @@ public final class ModuleSettings {
                                     + "misread never looks like an empty sack."),
                     SettingRow.enumOptions("Show Enderchest Preview",
                             () -> cfg().skyblockMenu.previewMode,
-                            value -> { cfg().skyblockMenu.previewMode = value; save(); }, v -> v.displayName())
+                            value -> { cfg().skyblockMenu.setPreviewMode(value, "settings row"); save(); }, v -> v.displayName())
                             .describe("Hovering an Ender Chest page or Backpack shows its "
                                     + "contents without opening it. Full UI adds the central "
                                     + "item search across all your storage. Click to cycle "
@@ -2762,6 +2946,31 @@ public final class ModuleSettings {
                                     + "pages next to the search bar. Uses the prices the mod "
                                     + "already has loaded. A '+' after a value means some item in "
                                     + "it has no known price, so the real value is higher."),
+                    SettingRow.toggle("Remember Island Chests", () -> cfg().storageSearch.rememberIslandChests,
+                            () -> { cfg().storageSearch.rememberIslandChests = !cfg().storageSearch.rememberIslandChests; save(); })
+                            .describe("Chests you open on your Private Island are remembered by "
+                                    + "where they stand, even after a restart, so the search can "
+                                    + "tell you which chest holds an item. Chests in dungeons, hubs "
+                                    + "and other worlds are only kept until you leave."),
+                    SettingRow.toggle("Include Garden Chests", () -> cfg().storageSearch.rememberGardenChests,
+                            () -> { cfg().storageSearch.rememberGardenChests = !cfg().storageSearch.rememberGardenChests; save(); })
+                            .describe("Also remember the chests you open on the Garden."),
+                    SettingRow.toggle("Mark Chests From the Search", () -> cfg().storageSearch.markChests,
+                            () -> { cfg().storageSearch.markChests = !cfg().storageSearch.markChests; save(); })
+                            .describe("Clicking an item in the search boxes every remembered chest "
+                                    + "that holds it, with how many are inside. Opening a marked "
+                                    + "chest removes its marker; leaving the island removes all."),
+                    SettingRow.toggle("Path to Marked Chests", () -> cfg().storageSearch.chestMarkerPath,
+                            () -> { cfg().storageSearch.chestMarkerPath = !cfg().storageSearch.chestMarkerPath; save(); })
+                            .describe("Also draws a path line to the nearest marked chest."),
+                    SettingRow.intField("Chest Markers Last", 1, 60,
+                            () -> cfg().storageSearch.chestMarkerMinutes,
+                            value -> { cfg().storageSearch.chestMarkerMinutes = value; save(); }, "min")
+                            .describe("Chest markers clear themselves after this many minutes."),
+                    SettingRow.keybind("Clear Chest Markers", () -> cfg().storageSearch.clearMarkersKey,
+                            key -> { cfg().storageSearch.clearMarkersKey = key; save(); })
+                            .describe("A key that removes the chest markers right away. The item "
+                                    + "search also has a button for it while markers are shown."),
                     SettingRow.label("§8Full UI keeps one workspace over Storage, Ender Chest and Backpacks"),
                     SettingRow.label("Storages are indexed as you open them"),
                     storageToggle(sbs.modid.client.helper.storage.StorageSource.Kind.INVENTORY)
@@ -2854,6 +3063,15 @@ public final class ModuleSettings {
                                     + "grid fills. 100% runs from the top of the screen to the "
                                     + "search bar; lower keeps it docked to the menu and compact."),
                     SettingRow.label("Static panel only - the windowed panel is sized by dragging it"),
+                    SettingRow.keybind("Recipe Lookup Key", () -> cfg().recipeViewer.lookupKey,
+                            key -> { cfg().recipeViewer.lookupKey = key; save(); })
+                            .describe("Hover an item in any container and press it to open its "
+                                    + "recipe; with Shift, its usages. Default: R."),
+                    SettingRow.keybind("Enchanted Form Recipe", () -> cfg().recipeViewer.enchantedFormKey,
+                            key -> { cfg().recipeViewer.enchantedFormKey = key; save(); })
+                            .describe("Hover an item and press it to open the recipe of its "
+                                    + "enchanted form: Wheat opens Enchanted Wheat, Enchanted Wheat "
+                                    + "opens Enchanted Hay Bale. Unbound by default."),
                     SettingRow.toggle("Group Enchant Books", () -> cfg().recipeViewer.groupEnchants,
                             () -> { cfg().recipeViewer.groupEnchants = !cfg().recipeViewer.groupEnchants; save(); })
                             .describe("Collapses each enchantment's levels (Legion 1 to max) "
@@ -3510,7 +3728,7 @@ public final class ModuleSettings {
                             () -> cfg().fishing.alertColorHex,
                             v -> { cfg().fishing.alertColorHex = v.trim(); save(); })
                             .describe("The spawn alert's color as a hex code."),
-                    SettingRow.toggle("Alert Sound", () -> cfg().fishing.alertSound,
+                    SettingRow.soundToggle("Alert Sound", () -> cfg().fishing.alertSound,
                             () -> { cfg().fishing.alertSound = !cfg().fishing.alertSound; save(); })
                             .describe("A ping along with the spawn alert."),
                     SettingRow.toggle("Alert Animation", () -> cfg().fishing.alertAnimation,
@@ -3533,11 +3751,78 @@ public final class ModuleSettings {
                             .describe("A panel counting the Attribute Shards you fish up."),
                     SettingRow.toggle("Profit Tracker", () -> cfg().fishing.profitTracker,
                             () -> { cfg().fishing.profitTracker = !cfg().fishing.profitTracker; save(); })
-                            .describe("A panel with what this fishing session has earned, at "
-                                    + "live prices."),
+                            .describe("The Profit section of the fishing tracker: what this session "
+                                    + "has earned at live prices. Its four lines can each be "
+                                    + "switched off below. On by default."),
+                    SettingRow.toggle("Profit: Times Fished", () -> cfg().fishing.profitTimesFished,
+                            () -> { cfg().fishing.profitTimesFished = !cfg().fishing.profitTimesFished; save(); })
+                            .describe("The Times Fished line: how many casts this session made. On "
+                                    + "by default.")
+                            .disabledWhile(() -> !cfg().fishing.profitTracker),
+                    SettingRow.toggle("Profit: Session", () -> cfg().fishing.profitSession,
+                            () -> { cfg().fishing.profitSession = !cfg().fishing.profitSession; save(); })
+                            .describe("The Session line: everything caught this session at live "
+                                    + "prices, minus the baits used. On by default.")
+                            .disabledWhile(() -> !cfg().fishing.profitTracker),
+                    SettingRow.toggle("Profit: Per Hour", () -> cfg().fishing.profitPerHour,
+                            () -> { cfg().fishing.profitPerHour = !cfg().fishing.profitPerHour; save(); })
+                            .describe("The Per Hour line: the session profit over the time you "
+                                    + "actually fished. On by default.")
+                            .disabledWhile(() -> !cfg().fishing.profitTracker),
+                    SettingRow.toggle("Profit: Time", () -> cfg().fishing.profitTime,
+                            () -> { cfg().fishing.profitTime = !cfg().fishing.profitTime; save(); })
+                            .describe("The Time line: how long you have fished this session, breaks "
+                                    + "left out. On by default.")
+                            .disabledWhile(() -> !cfg().fishing.profitTracker),
+                    SettingRow.rangeSlider("Session Pause", 30, 600,
+                            () -> cfg().fishing.sessionPauseSec,
+                            v -> { cfg().fishing.sessionPauseSec = v; save(); }, "s")
+                            .describe("How long you can go between casts, bites and catches before "
+                                    + "the session clock treats it as a break and stops counting. "
+                                    + "Time and Per Hour use it. Default 120s."),
+                    SettingRow.toggle("Baits Used", () -> cfg().fishing.baitsUsedSection,
+                            () -> { cfg().fishing.baitsUsedSection = !cfg().fishing.baitsUsedSection; save(); })
+                            .describe("The Baits Used section: each bait this session consumed and "
+                                    + "what it cost. The cost is subtracted from the profit either "
+                                    + "way. On by default."),
+                    SettingRow.button("Arrange Tracker Sections", () -> open(
+                            new sbs.modid.client.ui.hud.card.CardSectionOrderScreen(
+                                    sbs.modid.client.core.api.GuiStateManager.getInstance().getCurrentScreen(),
+                                    new sbs.modid.client.skills.fishing.logic.FishingCardLayout())))
+                            .describe("Opens the section editor: drag Catches, Rare Drops, Shards, "
+                                    + "Reel Timer, Baits Used and Profit into the order the tracker "
+                                    + "shows them, e.g. Profit above Catches. Shift+arrows move a "
+                                    + "section without dragging; Undo and Reset are there too."),
                     SettingRow.toggle("Show Values", () -> cfg().fishing.showValues,
                             () -> { cfg().fishing.showValues = !cfg().fishing.showValues; save(); })
                             .describe("Adds each drop's coin value to the tracker rows."),
+                    SettingRow.toggle("Rare Drops", () -> cfg().fishing.rareDropTracker,
+                            () -> { cfg().fishing.rareDropTracker = !cfg().fishing.rareDropTracker; save(); })
+                            .describe("Its own section for sea-creature drops such as the Magma Lord "
+                                    + "Fragment. One only counts when a creature that drops it died "
+                                    + "near you shortly before, so items from trades, the Bazaar, "
+                                    + "the Auction House or your stash never show up here."),
+                    SettingRow.rangeSlider("Rare Drop Window", 10, 300,
+                            () -> cfg().fishing.rareDropWindowSec,
+                            v -> { cfg().fishing.rareDropWindowSec = v; save(); }, "s")
+                            .describe("How long after a sea creature dies its drop may still reach "
+                                    + "you and count. Raise it if your sack summary arrives late."),
+                    SettingRow.rangeSlider("Rare Drop Radius", 4, 48,
+                            () -> cfg().fishing.rareDropRadius,
+                            v -> { cfg().fishing.rareDropRadius = v; save(); }, " blocks")
+                            .describe("How close you must have been to a sea creature when it died "
+                                    + "for its drops to count as yours."),
+                    SettingRow.toggle("Reel Timer", () -> cfg().fishing.reelTimer,
+                            () -> { cfg().fishing.reelTimer = !cfg().fishing.reelTimer; save(); })
+                            .describe("Shows how long the bobber has been waiting for a bite, plus "
+                                    + "your average wait. Only casts you reeled in on a bite count "
+                                    + "toward the average - until a bite marker has been seen at all, "
+                                    + "the reel itself counts as the bite. On by default."),
+                    SettingRow.rangeSlider("Reel Average Casts", 3, 100,
+                            () -> cfg().fishing.reelRollingCasts,
+                            v -> { cfg().fishing.reelRollingCasts = v; save(); }, "")
+                            .describe("How many of your latest reeled casts the Reel Timer's "
+                                    + "\"Last N\" average covers."),
                     SettingRow.toggle("Scroll Full List in Inventory", () -> cfg().fishing.expandInInventory,
                             () -> { cfg().fishing.expandInInventory = !cfg().fishing.expandInInventory; save(); })
                             .describe("With the inventory open, the trackers show their full "
@@ -3755,6 +4040,12 @@ public final class ModuleSettings {
                                     + "of jumping to the screen center - clicking through "
                                     + "repeated menus keeps its rhythm."),
                     SettingRow.label("§8The cursor stays put when a menu opens."),
+                    SettingRow.toggle("Center On First Menu", () -> cfg().convenience.centerMouseOnFirstOpen,
+                            () -> { cfg().convenience.centerMouseOnFirstOpen = !cfg().convenience.centerMouseOnFirstOpen; save(); })
+                            .describe("With Keep Mouse Position on, opening a menu while you are "
+                                    + "not in one puts the cursor in the screen center as usual. "
+                                    + "Switching pages or menus after that still keeps it."),
+                    SettingRow.label("§8Fresh menus start centered; page switches stay put."),
                     SettingRow.toggle("Auto Sprint", () -> cfg().convenience.autoSprint,
                             () -> { cfg().convenience.autoSprint = !cfg().convenience.autoSprint; save(); })
                             .describe("You sprint automatically whenever you walk - no more "

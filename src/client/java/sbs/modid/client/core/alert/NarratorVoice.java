@@ -8,6 +8,9 @@
 
 package sbs.modid.client.core.alert;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.util.SpokenNumbers;
 
@@ -37,6 +40,13 @@ import sbs.modid.client.core.util.SpokenNumbers;
  * A minimum gap between utterances keeps a rapid sequence from becoming a backlog in the first
  * place. Both are enforced before handing anything to the OS, because once speech is queued there
  * it cannot be recalled.
+ *
+ * <h2>One narrator, on its own thread</h2>
+ * {@code Narrator.getNarrator()} builds a fresh backend on every call - on Windows that is a COM
+ * initialisation plus a new SAPI voice, and nothing ever destroys it. So exactly one instance is
+ * created, lazily, on the {@code sbs-tts} daemon thread, and every call into it happens there: the
+ * COM apartment stays with the thread that created it, and the tick thread never waits on SAPI.
+ * {@link #shutdown()} destroys it when the game closes.
  */
 public final class NarratorVoice {
 
@@ -59,6 +69,12 @@ public final class NarratorVoice {
     /** Cached availability probe; the library is loaded once and its verdict does not change. */
     private static volatile Boolean available;
 
+    /** The only thread that touches {@link #narrator}. Created on first use. */
+    private static volatile ExecutorService thread;
+
+    /** The one backend instance; read and written on {@link #thread} only. */
+    private static com.mojang.text2speech.Narrator narrator;
+
     private NarratorVoice() {
     }
 
@@ -76,7 +92,8 @@ public final class NarratorVoice {
         }
         boolean probe;
         try {
-            probe = com.mojang.text2speech.Narrator.getNarrator().active();
+            // Once per session, and the backend has to be built on its own thread anyway: wait for it.
+            probe = thread().submit(() -> narrator().active()).get(5, TimeUnit.SECONDS);
         } catch (Throwable t) {
             // A missing or broken speech backend must not take a feature down with it.
             probe = false;
@@ -128,19 +145,62 @@ public final class NarratorVoice {
         }
     }
 
-    /** Hands one utterance to the OS. Never interrupts what is already being read. */
+    /** Hands one utterance to the TTS thread. Never interrupts what is already being read. */
     private static boolean say(String text, int volumePercent, NarratorLanguage language, long now) {
-        try {
-            float volume = Math.max(1, Math.min(100, volumePercent)) / 100.0f;
-            com.mojang.text2speech.Narrator.getNarrator().say(spoken(text, language), false, volume);
-            lastSpokeAt = now;
-            return true;
-        } catch (Throwable t) {
-            available = false;
-            SkyblockSimplifiedSBS.LOGGER.warn(
-                    "[SBS][Narrator] speaking failed - the narrator channel is off for this session.", t);
-            return false;
+        float volume = Math.max(1, Math.min(100, volumePercent)) / 100.0f;
+        String words = spoken(text, language);
+        lastSpokeAt = now;
+        thread().execute(() -> {
+            try {
+                narrator().say(words, false, volume);
+            } catch (Throwable t) {
+                available = false;
+                SkyblockSimplifiedSBS.LOGGER.warn(
+                        "[SBS][Narrator] speaking failed - the narrator channel is off for this session.", t);
+            }
+        });
+        return true;
+    }
+
+    private static ExecutorService thread() {
+        ExecutorService t = thread;
+        if (t == null) {
+            synchronized (NarratorVoice.class) {
+                t = thread;
+                if (t == null) {
+                    t = Executors.newSingleThreadExecutor(r -> {
+                        Thread th = new Thread(r, "sbs-tts");
+                        th.setDaemon(true);
+                        return th;
+                    });
+                    thread = t;
+                }
+            }
         }
+        return t;
+    }
+
+    /** The backend, built on first use. Call on {@link #thread} only. */
+    private static com.mojang.text2speech.Narrator narrator() {
+        if (narrator == null) {
+            narrator = com.mojang.text2speech.Narrator.getNarrator();
+        }
+        return narrator;
+    }
+
+    /** Game closing: release the backend on its own thread, then let the thread go. */
+    public static void shutdown() {
+        ExecutorService t = thread;
+        if (t == null) {
+            return;
+        }
+        t.execute(() -> {
+            if (narrator != null) {
+                narrator.destroy();
+                narrator = null;
+            }
+        });
+        t.shutdown();
     }
 
     /**

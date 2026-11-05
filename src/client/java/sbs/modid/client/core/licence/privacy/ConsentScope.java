@@ -93,7 +93,7 @@ public enum ConsentScope {
     PRESENCE_NEARBY("presence_nearby", 1, Kind.CONSENT, Availability.PLANNED),
 
     /** Party id, member uuids and the requirements/stats a party is matched and filtered on. */
-    PARTY_FINDER("party_finder", 1, Kind.CONSENT, Availability.AVAILABLE),
+    PARTY_FINDER("party_finder", 2, Kind.CONSENT, Availability.AVAILABLE),
 
     /**
      * Your Minecraft name published on the shared carry-ticket board, with the tickets you open,
@@ -109,7 +109,7 @@ public enum ConsentScope {
     CARRY_TICKETS("carry_tickets", 1, Kind.CONSENT, Availability.AVAILABLE),
 
     /** SkyBlock profile id plus inventory- and collection-derived data, for stats and appraisals. */
-    PROFILE_DATA("profile_data", 1, Kind.CONSENT, Availability.AVAILABLE),
+    PROFILE_DATA("profile_data", 2, Kind.CONSENT, Availability.AVAILABLE),
 
     /**
      * Crystal Hollows Structure Sharing: the lobby id you are in, the structures you walk into and

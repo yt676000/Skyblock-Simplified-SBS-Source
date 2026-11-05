@@ -8,6 +8,8 @@
 
 package sbs.modid.client.dungeons.run.logic;
 
+import it.unimi.dsi.fastutil.ints.IntArrays;
+import it.unimi.dsi.fastutil.ints.IntComparator;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -19,6 +21,10 @@ import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.dev.RoomMapReader;
+import sbs.modid.client.core.perf.Perf;
+import sbs.modid.client.core.world.BudgetedScan;
+import sbs.modid.client.core.world.ChunkRevisions;
+import sbs.modid.client.core.world.WorldTransitions;
 import sbs.modid.client.dungeons.run.model.DungeonState;
 import sbs.modid.client.dungeons.run.render.DungeonHighlight;
 
@@ -46,7 +52,8 @@ import java.util.Set;
  * (or a radius around the player) along the 32-grid seams, clusters the hits per material and
  * verifies each cluster as a door position against the map connector. A scanned cluster gives the
  * exact box of a door and replaces the map-derived estimate; a door whose spot was swept with no
- * coal left counts as opened.
+ * coal left counts as opened. The sweep runs as a {@link BudgetedScan} - a few thousand blocks per
+ * tick, chunks unchanged since the last pass reused unread - and the boxes update when a pass ends.
  *
  * <p>Runs off the client tick via {@code GuiTrackingMixin}, gated hard on the Catacombs scoreboard;
  * the boxes are drawn by {@link DungeonHighlight}. Nothing here scans in the render pass. The info is
@@ -202,11 +209,26 @@ public final class WitherDoorTracker {
         if (bloodKey && now - bloodKeyAt > KEY_TIMEOUT_MS) {
             bloodKey = false;
         }
-        if (now - lastScanAt < SCAN_MS) {
-            return;
+        long generation = WorldTransitions.generation();
+        if (!scan.active()) {
+            if (now - lastScanAt < SCAN_MS) {
+                return;
+            }
+            lastScanAt = now;
+            sweep = sweepArea(player.blockPosition());
+            scan.begin(sweep.minX(), DOOR_BAND_MIN_Y, sweep.minZ(), sweep.maxX(), DOOR_BAND_MAX_Y, sweep.maxZ(),
+                    generation);
         }
-        lastScanAt = now;
-        doorBoxes = build(level, player.blockPosition(), cfg.witherDoorsShowAll);
+        boolean done;
+        scanLevel = level;
+        try (Perf.Section ignored = Perf.tick("dungeons.witherDoorScan")) {
+            done = scan.step(generation);
+        } finally {
+            scanLevel = null;
+        }
+        if (done) {
+            doorBoxes = build(level, player.blockPosition(), cfg.witherDoorsShowAll);
+        }
     }
 
     private void clearBoxes() {
@@ -223,12 +245,14 @@ public final class WitherDoorTracker {
         opened.clear();
         lastRanked = List.of();
         lastNextEdge = null;
+        scan.reset();
+        lastScanAt = 0L;
     }
 
+    /** Builds the boxes from the pass that just completed over {@link #sweep}. */
     private List<DoorBox> build(ClientLevel level, BlockPos player, boolean showAll) {
-        Sweep sweep = sweepArea(player);
         Map<Long, RoomMapReader.MapTile> mapTiles = mapTilesByCell();
-        List<Cluster> clusters = scan(level, sweep, mapTiles);
+        List<Cluster> clusters = collect(mapTiles);
 
         RoomMapReader.MapSnapshot snapshot = RoomMapReader.isAnchored() ? DungeonState.getInstance().snapshot() : null;
         if (snapshot == null) {
@@ -382,27 +406,66 @@ public final class WitherDoorTracker {
     /** Whether the last scan hit {@link #MAX_COAL}: its absence of coal then proves nothing. */
     private boolean lastScanTruncated;
 
-    private List<Cluster> scan(ClientLevel level, Sweep sweep, Map<Long, RoomMapReader.MapTile> mapTiles) {
-        // Collect the two door materials, but only in the band along the 32-grid seams where doors
-        // live (see onSeam): sweeping a whole room stays cheap, and décor coal in the room interior
-        // can never fill the position budget before a real door is reached. Kept apart per material
-        // so coal and red clay never merge into one cluster.
+    /** Block budget per tick for the room sweep; a 2x2 room's seam band is ~40k blocks, cached chunks ~0. */
+    private static final int SCAN_BLOCKS_PER_TICK = 8192;
+    private static final long SCAN_NANOS_PER_TICK = 500_000L;
+    private static final int TAG_COAL = 0;
+    private static final int TAG_RED_CLAY = 1;
+
+    /**
+     * The room sweep, spread over ticks. Only the band along the 32-grid seams where doors live is
+     * read (see {@link #onSeam}): sweeping a whole room stays cheap, and décor coal in the room
+     * interior can never fill the position budget before a real door is reached.
+     */
+    private final BudgetedScan scan = new BudgetedScan("witherDoors", this::classify,
+            (x, z) -> onSeam(x) || onSeam(z), ChunkRevisions::revision, SCAN_BLOCKS_PER_TICK, SCAN_NANOS_PER_TICK);
+    private final BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+    /** The level for the step in progress; set only around {@link BudgetedScan#step}. */
+    private ClientLevel scanLevel;
+    /** The rectangle of the pass in progress / last completed. */
+    private Sweep sweep = new Sweep(0, -1, 0, -1);
+    /** Hit indices in the order the single-tick sweep visited them (X, then Z, then Y). */
+    private int[] order = new int[64];
+    private final IntComparator sweepOrder = (a, b) -> {
+        int c = Integer.compare(scan.hitX(a), scan.hitX(b));
+        if (c == 0) {
+            c = Integer.compare(scan.hitZ(a), scan.hitZ(b));
+        }
+        return c != 0 ? c : Integer.compare(scan.hitY(a), scan.hitY(b));
+    };
+
+    private int classify(int x, int y, int z) {
+        var state = scanLevel.getBlockState(cursor.set(x, y, z));
+        if (state.is(Blocks.COAL_BLOCK)) {
+            return TAG_COAL;
+        }
+        return state.is(BLOOD_DOOR_BLOCK) ? TAG_RED_CLAY : -1;
+    }
+
+    private List<Cluster> collect(Map<Long, RoomMapReader.MapTile> mapTiles) {
+        // The scan visits chunk by chunk; clustering is greedy and order-sensitive, so the hits are
+        // put back into the X, Z, Y order of the old single-tick sweep - the same clusters, and the
+        // same MAX_COAL cut-off, as before. Kept apart per material so coal and red clay never merge
+        // into one cluster.
+        int n = scan.hitCount();
+        if (order.length < n) {
+            order = new int[Math.max(n, order.length * 2)];
+        }
+        for (int i = 0; i < n; i++) {
+            order[i] = i;
+        }
+        IntArrays.quickSort(order, 0, n, sweepOrder);
         List<int[]> coal = new ArrayList<>();
         List<int[]> redClay = new ArrayList<>();
-        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        for (int x = sweep.minX(); x <= sweep.maxX(); x++) {
-            for (int z = sweep.minZ(); z <= sweep.maxZ(); z++) {
-                if (!(onSeam(x) || onSeam(z))) {
-                    continue;
+        for (int k = 0; k < n; k++) {
+            int i = order[k];
+            int[] pos = {scan.hitX(i), scan.hitY(i), scan.hitZ(i)};
+            if (scan.hitTag(i) == TAG_COAL) {
+                if (coal.size() < MAX_COAL) {
+                    coal.add(pos);
                 }
-                for (int y = DOOR_BAND_MIN_Y; y <= DOOR_BAND_MAX_Y; y++) {
-                    var state = level.getBlockState(cursor.set(x, y, z));
-                    if (state.is(Blocks.COAL_BLOCK) && coal.size() < MAX_COAL) {
-                        coal.add(new int[] {x, y, z});
-                    } else if (state.is(BLOOD_DOOR_BLOCK) && redClay.size() < MAX_COAL) {
-                        redClay.add(new int[] {x, y, z});
-                    }
-                }
+            } else if (redClay.size() < MAX_COAL) {
+                redClay.add(pos);
             }
         }
         lastScanTruncated = coal.size() >= MAX_COAL || redClay.size() >= MAX_COAL;

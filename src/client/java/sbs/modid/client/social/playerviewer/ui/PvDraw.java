@@ -8,6 +8,9 @@
 
 package sbs.modid.client.social.playerviewer.ui;
 
+import java.util.function.IntConsumer;
+import sbs.modid.client.ui.component.SciFiScrollbar;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -106,11 +109,17 @@ public final class PvDraw {
      */
     public static int iconRow(GuiGraphicsExtractor g, Font font, int x, int y, int w,
                               Item icon, String label, JsonArray entry) {
+        return iconRow(g, font, x, y, w, icon == null ? null : new ItemStack(icon), label, entry);
+    }
+
+    /** {@link #iconRow} with a ready stack, for icons that are not a plain item (a head). */
+    public static int iconRow(GuiGraphicsExtractor g, Font font, int x, int y, int w,
+                              ItemStack icon, String label, JsonArray entry) {
         int level = entry.get(0).getAsInt();
         int promille = entry.size() > 1 ? entry.get(1).getAsInt() : 1000;
         boolean maxed = promille >= 1000;
         if (icon != null) {
-            g.item(new ItemStack(icon), x, y);
+            g.item(icon, x, y);
         }
         int textX = x + 18;
         String lvlText = maxed ? "MAX" : String.valueOf(level);
@@ -154,13 +163,43 @@ public final class PvDraw {
         }
     }
 
-    /** Slim scrollbar: full-height track with a thumb sized and placed by the visible window. */
+    /**
+     * The one scrollbar of the page on screen: a real, draggable {@link SciFiScrollbar}. Pages keep
+     * calling {@link #scrollbar} where they always drew their bar; the shell offers it clicks, drags
+     * and releases ahead of the page ({@link #scrollbarClick}...), so every page's bar can be grabbed
+     * without each page routing input itself. Only one page renders per frame, so one bar suffices.
+     */
+    private static final SciFiScrollbar BAR = new SciFiScrollbar();
+    private static boolean barShown;
+    private static int barMouseX;
+    private static int barMouseY;
+
+    /** Called by the shell before the page renders: no bar until a page draws one this frame. */
+    public static void beginFrame(int mouseX, int mouseY) {
+        barShown = false;
+        barMouseX = mouseX;
+        barMouseY = mouseY;
+    }
+
+    /** The page's scrollbar over the track {@code x, y, h}, for {@code total} rows of which {@code visible} fit. */
     public static void scrollbar(GuiGraphicsExtractor g, int x, int y, int h,
                                  int total, int visible, int scroll) {
-        g.fill(x, y, x + 3, y + h, SBSTheme.CARD_BG_DISABLED);
-        int thumbH = Math.max(8, h * visible / Math.max(1, total));
-        int thumbY = y + (int) ((long) (h - thumbH) * scroll / Math.max(1, total - visible));
-        g.fill(x, thumbY, x + 3, thumbY + thumbH, SBSTheme.ACCENT);
+        // The old bar was 3px wide at x; the real one is a pixel wider, so it moves left by one.
+        BAR.set(x - 1, y, h, total, visible);
+        barShown = true;
+        BAR.render(g, scroll, barMouseX, barMouseY);
+    }
+
+    public static boolean scrollbarClick(double mouseX, double mouseY, int scroll, IntConsumer apply) {
+        return barShown && BAR.handleClick(mouseX, mouseY, scroll, apply);
+    }
+
+    public static boolean scrollbarDrag(double mouseY, IntConsumer apply) {
+        return BAR.handleDrag(mouseY, apply);
+    }
+
+    public static boolean scrollbarRelease() {
+        return BAR.release();
     }
 
     // ------------------------------------------------------------------
@@ -175,10 +214,59 @@ public final class PvDraw {
     /** The renderable icon for a backend slot object, re-dyed to its leather color when present. */
     public static ItemStack iconFor(JsonObject slot) {
         int count = slot.has("count") ? slot.get("count").getAsInt() : 1;
-        ItemStack stack = SkyBlockItemIcons.getInstance().icon(str(slot, "id"), null, count);
+        // A skinned piece shows its own head texture, not the item's default one.
+        ItemStack stack = slot.has("skull") ? skinnedHead(slot.get("skull").getAsString()).copyWithCount(Math.max(1, count))
+                : SkyBlockItemIcons.getInstance().icon(str(slot, "id"), null, count);
         if (slot.has("color") && !slot.get("color").isJsonNull()) {
             stack.set(DataComponents.DYED_COLOR, new DyedItemColor(slot.get("color").getAsInt()));
         }
+        return stack;
+    }
+
+    /** Stacks built by {@link #stack}, for the profile they were built from. */
+    private static final java.util.IdentityHashMap<JsonObject, ItemStack> STACKS = new java.util.IdentityHashMap<>();
+    private static JsonObject stacksOwner;
+
+    /**
+     * A real {@link ItemStack} for a slot: the icon, plus the item's own name, lore and SkyBlock
+     * attributes ({@code custom_data}, from the slot's {@code ea}). That is what the rarity tint and
+     * the offline appraisal read, so a viewed item is tinted and priced exactly like one in your own
+     * storage - enchantments, stars and gems included. Built once per slot object and kept while the
+     * same profile view is on screen; a barrier (icon not resolved yet) is never kept, so it is
+     * replaced as soon as the icon arrives.
+     */
+    public static ItemStack stack(JsonObject profile, JsonObject slot) {
+        if (profile != stacksOwner) {
+            STACKS.clear();
+            stacksOwner = profile;
+        }
+        ItemStack cached = STACKS.get(slot);
+        if (cached != null) {
+            return cached;
+        }
+        ItemStack stack = iconFor(slot);
+        if (stack.is(net.minecraft.world.item.Items.BARRIER)) {
+            return stack;
+        }
+        stack.set(DataComponents.CUSTOM_NAME, Component.literal(str(slot, "name")));
+        if (slot.has("lore") && slot.get("lore").isJsonArray()) {
+            List<Component> lines = new ArrayList<>();
+            for (JsonElement line : slot.getAsJsonArray("lore")) {
+                lines.add(Component.literal(line.getAsString()));
+            }
+            stack.set(DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(lines));
+        }
+        if (slot.has("ea") && slot.get("ea").isJsonPrimitive()) {
+            try {
+                stack.set(DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.of(
+                        net.minecraft.nbt.TagParser.parseCompoundFully(slot.get("ea").getAsString())));
+            } catch (com.mojang.brigadier.exceptions.CommandSyntaxException | RuntimeException e) {
+                // Priced by its id alone; the icon, name and lore are still right.
+                sbs.modid.client.social.playerviewer.logic.PvParser.logOnce("inventory",
+                        "item attributes unreadable, priced by id only");
+            }
+        }
+        STACKS.put(slot, stack);
         return stack;
     }
 
@@ -261,6 +349,18 @@ public final class PvDraw {
         return y + h;
     }
 
+    /**
+     * The neutral "unavailable" state: a framed notice, visibly different from an empty page, for
+     * a section whose data failed validation or could not be decoded.
+     */
+    public static void unavailable(GuiGraphicsExtractor g, PvContext ctx, String text) {
+        int h = ctx.font.lineHeight + 12;
+        SciFiRender.roundedRectWithBorder(g, ctx.x, ctx.y + 4, ctx.width, h, SBSTheme.CORNER_RADIUS,
+                SBSTheme.CARD_BG, SBSTheme.CARD_BORDER);
+        g.centeredText(ctx.font, Component.literal("§7" + trim(ctx.font, text, ctx.width - 8)),
+                ctx.x + ctx.width / 2, ctx.y + 10, SBSTheme.TEXT_MUTED);
+    }
+
     /** Centered "nothing here" text, so an empty page still explains itself. */
     public static void empty(GuiGraphicsExtractor g, PvContext ctx, String text) {
         g.centeredText(ctx.font, Component.literal("§7" + text),
@@ -277,6 +377,23 @@ public final class PvDraw {
 
     public static JsonObject obj(JsonObject o, String key) {
         return o != null && o.has(key) && o.get(key).isJsonObject() ? o.getAsJsonObject(key) : null;
+    }
+
+    /**
+     * {@code inventories} keys that were renamed, new -> old. The Bait Sack replaced the Fishing Bag
+     * (2026-09-21): the server serves it as {@code bait_sack}, while cached and older payloads still
+     * carry {@code fishing_bag}, so a page asking for the new key falls back to the old one.
+     */
+    private static final java.util.Map<String, String> LEGACY_CONTAINER_KEYS =
+            java.util.Map.of("bait_sack", "fishing_bag");
+
+    /** The key {@code invs} actually holds for container {@code key}: itself, else its legacy name. */
+    public static String containerKey(JsonObject invs, String key) {
+        if (invs == null || invs.has(key)) {
+            return key;
+        }
+        String legacy = LEGACY_CONTAINER_KEYS.get(key);
+        return legacy != null && invs.has(legacy) ? legacy : key;
     }
 
     public static JsonArray arr(JsonObject o, String key) {
@@ -338,6 +455,41 @@ public final class PvDraw {
         }
         return sbs.modid.client.helper.visual.render.Chroma.color(x * 0.012,
                 sbs.modid.client.helper.visual.render.Chroma.speed());
+    }
+
+    /** Heads built from a texture, by texture; bounded, built once each. */
+    private static final Map<String, ItemStack> HEADS = new java.util.LinkedHashMap<>(64, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, ItemStack> eldest) {
+            return size() > 512;
+        }
+    };
+
+    private static ItemStack skinnedHead(String texture) {
+        return HEADS.computeIfAbsent(texture, t -> SkyBlockItemIcons.playerHead(t, "pv-skull:" + t.hashCode()));
+    }
+
+    /**
+     * A pet's icon with its applied skin: the skin item ({@code PET_SKIN_<skin>}) carries the skinned
+     * head; until it resolves, or with no skin, the pet's default head.
+     */
+    public static ItemStack petIcon(String type, String skin) {
+        if (skin != null && !skin.isEmpty()) {
+            ItemStack skinned = SkyBlockItemIcons.getInstance().iconShared("PET_SKIN_" + skin, null, 1);
+            if (skinned != null && !skinned.isEmpty() && !skinned.is(net.minecraft.world.item.Items.BARRIER)) {
+                return skinned;
+            }
+        }
+        return petIcon(type);
+    }
+
+    /** The skin's display name ("GOLDEN_DRAGON_ANUBIS" -> "Anubis"), or "" without a skin. */
+    public static String petSkinName(String type, String skin) {
+        if (skin == null || skin.isEmpty()) {
+            return "";
+        }
+        String rest = type != null && skin.startsWith(type + "_") ? skin.substring(type.length() + 1) : skin;
+        return pretty(rest);
     }
 
     /** A pet's icon: the fetched skull texture, falling back to the repo icon and finally a bone. */

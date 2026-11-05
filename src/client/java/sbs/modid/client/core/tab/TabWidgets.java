@@ -29,8 +29,12 @@ import java.util.List;
  * from an actual player, and it is the same test {@link FarmingTracker} has always used – this
  * class simply makes it available to every Garden feature instead of one.
  *
- * <p>Nothing is cached: the list is tiny, the callers are already throttled, and a cache here would
- * only add a way for two features to disagree about what the tab currently says.
+ * <p>On the client thread the lines are a snapshot, re-read only after a tab or team packet (or a
+ * connection change) marked the tab dirty - every poller shares it instead of re-sorting the entries
+ * and re-splitting the footer for itself. The snapshot is exactly what a live read would return, so
+ * two features still cannot disagree about what the tab says; any other thread reads live. A
+ * {@link #revision()} moves exactly when the lines, their components or the footer change, so a
+ * caller that derives something per frame can key it on that and skip the reread.
  *
  * <p>The tab list's <b>footer</b> ({@link #footerLines()}) is a different thing entirely: not a fake
  * entry but the block of text Hypixel draws below the player columns ("Active Effects", "Cookie
@@ -39,7 +43,65 @@ import java.util.List;
  */
 public final class TabWidgets {
 
+    // Revision state. Dirty is set by SidebarTabPacketsMixin after a tab-list or team packet; the
+    // connection is tracked because leaving a server empties the tab with no packet at all.
+    private static volatile boolean dirty = true;
+    private static volatile int revision;
+    private static Object source;
+    private static volatile List<String> seenLines = List.of();
+    private static volatile List<Component> seenComponents = List.of();
+    private static volatile List<String> seenFooter = List.of();
+
     private TabWidgets() {
+    }
+
+    /** Called after the client applies a packet that can change the tab (any thread; cheap). */
+    public static void markDirty() {
+        dirty = true;
+    }
+
+    /** Re-reads the tab when dirty. Called from the client tick. */
+    public static void onClientTick() {
+        refresh();
+    }
+
+    /**
+     * A number that goes up by one each time {@link #lines()}, {@link #components()} or
+     * {@link #footerLines()} would answer differently. Re-read first when a packet arrived since the
+     * last check and this is the client thread, so it is as current as the lists themselves.
+     */
+    public static int revision() {
+        onClientThread();
+        return revision;
+    }
+
+    /** True on the client thread, after bringing the snapshot up to date. */
+    private static boolean onClientThread() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && mc.isSameThread()) {
+            refresh();
+            return true;
+        }
+        return false;
+    }
+
+    private static void refresh() {
+        Minecraft mc = Minecraft.getInstance();
+        Object current = mc.player == null ? null : mc.getConnection();
+        if (!dirty && current == source) {
+            return;
+        }
+        dirty = false;
+        source = current;
+        List<String> lines = List.copyOf(readLines());
+        List<Component> components = List.copyOf(readComponents());
+        List<String> footer = List.copyOf(readFooterLines());
+        if (!lines.equals(seenLines) || !components.equals(seenComponents) || !footer.equals(seenFooter)) {
+            seenLines = lines;
+            seenComponents = components;
+            seenFooter = footer;
+            revision++;
+        }
     }
 
     /**
@@ -72,6 +134,10 @@ public final class TabWidgets {
      * makes the line order match what is on screen.
      */
     public static List<String> lines() {
+        return onClientThread() ? seenLines : readLines();
+    }
+
+    private static List<String> readLines() {
         Minecraft mc = Minecraft.getInstance();
         // Null client is the offline-tooling case, null player the main-menu case: no tab list
         // either way, which is what an empty list already means to every caller.
@@ -102,6 +168,10 @@ public final class TabWidgets {
      * instead of picking one.
      */
     public static List<Component> components() {
+        return onClientThread() ? seenComponents : readComponents();
+    }
+
+    private static List<Component> readComponents() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
             return List.of();
@@ -147,6 +217,10 @@ public final class TabWidgets {
      * separator lines dropped - so a header ("Cookie Buff") is always directly followed by its value.
      */
     public static List<String> footerLines() {
+        return onClientThread() ? seenFooter : readFooterLines();
+    }
+
+    private static List<String> readFooterLines() {
         Component footer = footer();
         if (footer == null) {
             return List.of();

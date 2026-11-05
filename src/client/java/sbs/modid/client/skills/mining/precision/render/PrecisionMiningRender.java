@@ -18,7 +18,8 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig.MiningHelpersSettings;
 import sbs.modid.client.core.render.WorldRender;
@@ -95,7 +96,7 @@ public final class PrecisionMiningRender {
         onTarget = on;
 
         int rgb = on ? cfg.precisionOnRgb() : cfg.precisionOffRgb();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         drawSquare(g, viewProjection, camPos, centre, face, cfg.precisionMarkerSize / 200.0, rgb);
         if (cfg.precisionCrosshairRing) {
             drawRing(g, 0xFF000000 | rgb);
@@ -144,7 +145,7 @@ public final class PrecisionMiningRender {
     }
 
     /** A filled square of half-edge {@code half} lying on {@code face}, centred on {@code centre}. */
-    private static void drawSquare(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawSquare(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                    Vec3 centre, PrecisionTarget.Face face, double half, int rgb) {
         Vec3 u;
         Vec3 v;

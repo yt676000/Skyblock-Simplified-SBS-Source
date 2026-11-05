@@ -391,6 +391,81 @@ public final class SBSConfig {
         public boolean auctionClaimsEarn = true;
     }
 
+    /** Dice Profit: Archfiend / High Class Archfiend Dice rolls, spending and payouts. */
+    public DiceProfitSettings diceProfit = new DiceProfitSettings();
+
+    public static final class DiceProfitSettings {
+        /** Master toggle. Off until the probe has confirmed the 6 / 7 and High Class lines. */
+        @Shareable(Kind.BOOL)
+        public boolean enabled = false;
+        /** Show this profile's all-time counts instead of the session's. */
+        @Shareable(Kind.BOOL)
+        public boolean showAllTime = false;
+        /** Add the 1-7 roll distribution line. */
+        @Shareable(Kind.BOOL)
+        public boolean showDistribution = false;
+        /** Take the lowest BIN of a dice used up by a 6 or 7 off the net. */
+        @Shareable(Kind.BOOL)
+        public boolean countDiceLoss = true;
+        /** Show the card only for {@link #showSeconds} after a roll, instead of always. */
+        @Shareable(Kind.BOOL)
+        public boolean showOnlyAfterRoll = true;
+        /** How long the card stays after a roll, in seconds. */
+        @Shareable(value = Kind.INT, min = 1, max = 120)
+        public int showSeconds = 10;
+    }
+
+    /** Dragon Profit Tracker: End dragon fights, eyes placed against loot, damage and position. */
+    public DragonProfitSettings dragonProfit = new DragonProfitSettings();
+
+    public static final class DragonProfitSettings {
+        /** Master toggle. Display only, so on by default. */
+        @Shareable(Kind.BOOL)
+        public boolean enabled = true;
+        /** Show the card on every island, not only in The End. */
+        @Shareable(Kind.BOOL)
+        public boolean showEverywhere = false;
+        /** Show this profile's all-time totals instead of the session's. */
+        @Shareable(Kind.BOOL)
+        public boolean showAllTime = false;
+        /** One line per dragon type. */
+        @Shareable(Kind.BOOL)
+        public boolean showPerType = false;
+        /** Bazaar items at the sell offer price instead of instant sell. */
+        @Shareable(Kind.BOOL)
+        public boolean sellOffer = false;
+        /** Fragments at instant sell even with {@link #sellOffer} on. */
+        @Shareable(Kind.BOOL)
+        public boolean fragmentsAtInstantSell = true;
+    }
+
+    /** Sacrifice Altar Profit: what each sacrifice in The End gave against what the item was worth. */
+    public SacrificeAltarSettings sacrificeAltar = new SacrificeAltarSettings();
+
+    public static final class SacrificeAltarSettings {
+        /** Master toggle. Display only. */
+        @Shareable(Kind.BOOL)
+        public boolean enabled = true;
+        /** Show this profile's all-time counts instead of the session's. */
+        @Shareable(Kind.BOOL)
+        public boolean showAllTime = false;
+        /** Price Bazaar items at instant-sell (true) or instant-buy (false). */
+        @Shareable(Kind.BOOL)
+        public boolean sellSide = true;
+        /** Value a sacrificed item with its reforge and enchants (true) or as the base item (false). */
+        @Shareable(Kind.BOOL)
+        public boolean fullAppraisal = true;
+        /**
+         * Where the player stood at their last sacrifice: the card shows only near it (asked
+         * 2026-10-16). The altar's zone name is not on record, so the place is learnt, not looked up.
+         * Same for every profile - the altar does not move. Not shareable: it is a place, not a choice.
+         */
+        public boolean altarKnown = false;
+        public int altarX;
+        public int altarY;
+        public int altarZ;
+    }
+
     /** Fallen Star: crash alert, zone waypoint and HUD line in the Dwarven Mines. */
     public FallenStarSettings fallenStar = new FallenStarSettings();
 
@@ -505,6 +580,15 @@ public final class SBSConfig {
         @Shareable(Kind.BOOL)
         public boolean blockMisclicks = false;
 
+        /**
+         * Refusals in a row before the misclick guard stands down for the round (MisclickValve
+         * VETO_LIMIT). A double-click on one wrong tile counts once.
+         */
+        public int misclickVetoLimit = 2;
+
+        /** Chronomatron: ms of a quiet board before the guard stands down (MisclickValve STALE_MS). */
+        public int misclickIdleMs = 3000;
+
         /** Chronomatron highlight of the 1st button still to click, ARGB (default green). */
         public int chronomatronColor1 = 0xFF55FF55;
         /** Chronomatron highlight of the 2nd button still to click, ARGB (default yellow). */
@@ -531,6 +615,17 @@ public final class SBSConfig {
         /** Reaction time added to the lead, in ms. 250 = a young adult's average (ESTIMATED). */
         public int harpReactionMs = 250;
         // harpHitRow was removed: the hit row is fixed (HarpModel.HIT_ROW). Gson skips the old key.
+
+        /** Experiment Profit card: claims and the value of their rewards. Off by default (niche). */
+        @Shareable(Kind.BOOL)
+        public boolean profitTracker = false;
+        /** Show this session's claims instead of today's. */
+        @Shareable(Kind.BOOL)
+        public boolean profitShowSession = false;
+        /** Which end of the market rewards are priced at: 0 = sell (instant sell / lowest BIN), 1 = buy. */
+        public int profitPriceSide = 0;
+        /** Coins charged once per table session (Bits, coins - whatever the player counts). 0 = none. */
+        public int profitSessionCost = 0;
         /** Cue and preview colour, RRGGBB. */
         public String harpColorHex = "5DE0A0";
         /** Write "NOW" on the lit hit slot. */
@@ -865,6 +960,57 @@ public final class SBSConfig {
         public String templeCheeseColorHex = "";
     }
 
+    /** Dungeon Profit Tracker: profit per run, per session and per floor. */
+    public DungeonProfitSettings dungeonProfit = new DungeonProfitSettings();
+
+    public static final class DungeonProfitSettings {
+        /** Master toggle. Reads chat and open chest menus only; sends nothing. */
+        @Shareable(Kind.BOOL)
+        public boolean enabled = true;
+        /** The Dungeon Profit card. */
+        @Shareable(Kind.BOOL)
+        public boolean card = true;
+        /** Show the card outside the Catacombs and the Dungeon Hub too. */
+        @Shareable(Kind.BOOL)
+        public boolean showEverywhere = false;
+        /** Count the Wither Essence every party member gains when anyone finds one. */
+        @Shareable(Kind.BOOL)
+        public boolean countEveryoneEssence = true;
+        /** 0 = Bazaar instant-sell, 1 = sell offer. */
+        public int priceSide = 0;
+        /** Floor shown on the card and the screen; "" = every floor. */
+        public String floorFilter = "";
+        /** The player's own extra cost per run in coins (keys, a carry; potions are counted). */
+        public int userCostPerRun = 0;
+        /** Dungeon Potion cost: 0 = market (Bazaar, price side above), 1 = this session's purchase price. */
+        public int potionCostSide = 0;
+        /** The card's "Costs" line: chest, Kismet, potions, extra of the open or last run. */
+        @Shareable(Kind.BOOL)
+        public boolean cardCosts = true;
+    }
+
+    /** Kuudra Profit Tracker: profit per run, per session and per tier. */
+    public KuudraProfitSettings kuudraProfit = new KuudraProfitSettings();
+
+    public static final class KuudraProfitSettings {
+        /** Master toggle. Reads chat only; sends nothing. */
+        @Shareable(Kind.BOOL)
+        public boolean enabled = true;
+        /** The Kuudra Profit card. */
+        @Shareable(Kind.BOOL)
+        public boolean card = true;
+        /** Show the card outside Kuudra's Hollow and the Crimson Isle too. */
+        @Shareable(Kind.BOOL)
+        public boolean showEverywhere = false;
+        /** 0 = Bazaar instant-sell, 1 = sell offer. */
+        public int priceSide = 0;
+        /** Charge a paid chest what its key was bought for (when seen), not today's key price. */
+        @Shareable(Kind.BOOL)
+        public boolean keyAtPurchasePrice = true;
+        /** Tier shown on the card and the screen; 0 = every tier. */
+        public int tierFilter = 0;
+    }
+
     /** Mining Routes module: custom waypoint routes with connecting lines. */
     public MiningRoutesSettings miningRoutes = new MiningRoutesSettings();
 
@@ -1050,8 +1196,29 @@ public final class SBSConfig {
         public String brokenColorHex = "";
         public int brokenOpacity = 40;
 
+        /**
+         * Riftstalker: flash "STEAK!" the moment your own boss can be finished with the Steak Stake.
+         * Independent of {@link #enabled}, which only governs the effigy scan; it rides on the
+         * Slayer module's boss tracking.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean steakCallout = true;
+
+        /** Box your boss in a strong colour while it is inside the stake window. */
+        @Shareable(Kind.BOOL)
+        public boolean steakBox = true;
+
+        /** Health share (percent) at or below which the stake works. 20 is the wiki figure. */
+        public int steakThreshold = 20;
+
         /** Which channels the base-hit warning goes out on. */
         public int alertChannels = sbs.modid.client.core.alert.AlertChannels.TITLE_AND_SOUND;
+
+        /**
+         * Debug: log block changes, chat, nametags and health drops near you during your own
+         * Riftstalker fight, to measure the Mania phase. Log only; off by default.
+         */
+        public boolean maniaProbe = false;
     }
 
     /** Enigma Souls: waypoints for the Rift's souls, in found / missing / unknown. */
@@ -1371,6 +1538,32 @@ public final class SBSConfig {
          * picked again - so trying a preset out is never destructive.
          */
         public Set<String> customHidden = new LinkedHashSet<>();
+
+        /**
+         * "Limit particle spam": per-type token buckets refilled every client tick. Independent of
+         * {@link #enabled} and off by default - off means every particle spawns exactly as vanilla.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean limitSpam = false;
+
+        /** Explosion + explosion-emitter particles admitted per tick. */
+        @Shareable(value = Kind.INT, min = 0, max = 64)
+        public int capExplosion = 4;
+
+        /** Crit + enchanted-hit particles admitted per tick. */
+        @Shareable(value = Kind.INT, min = 0, max = 200)
+        public int capCrit = 20;
+
+        /** Firework spark particles admitted per tick. */
+        @Shareable(value = Kind.INT, min = 0, max = 200)
+        public int capFirework = 20;
+
+        /** Block-break effects (one per broken block, a burst of dust each) admitted per tick. */
+        @Shareable(value = Kind.INT, min = 0, max = 32)
+        public int capBlockBreak = 4;
+
+        /** Registry ids ("minecraft:crit") the limiter must never cap, whatever their slider says. */
+        public Set<String> neverLimit = new LinkedHashSet<>();
     }
 
     /** Far Terrain (Visuals): remembered island terrain served back to the renderer. */
@@ -1496,6 +1689,18 @@ public final class SBSConfig {
         public int emergencyPercent = 95;
     }
 
+    /** Local API Server: the 127.0.0.1-only HTTP API for external developer tooling. */
+    public LocalApiSettings localApi = new LocalApiSettings();
+
+    public static final class LocalApiSettings {
+        /**
+         * Off by default: a listening port is something you ask for. Deliberately not
+         * {@code @Shareable} - a shared config must never be able to open a port on someone else's
+         * machine.
+         */
+        public boolean enabled = false;
+    }
+
     /** Alerts: the shared channel system every feature that tells you something goes through. */
     public AlertSettings alerts = new AlertSettings();
 
@@ -1514,6 +1719,15 @@ public final class SBSConfig {
      * narrator channel speaks through the OS voice, which a fullscreen game cannot swallow.
      */
     public static final class AlertSettings {
+
+        /**
+         * "SBS Sounds": master switch for every sound the mod plays itself - alert tones, pings,
+         * protection denies. Off by default, for new and existing configs alike. Each feature's own
+         * sound toggle and channel mask stay as configured underneath it. Game and server sounds,
+         * and the Sound Manager, are not affected. Read through {@code core/audio/SbsSounds}.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean sbsSounds = false;
 
         /**
          * Volume of the mod's own alert pings, in percent.
@@ -1581,6 +1795,26 @@ public final class SBSConfig {
 
         /** Per-sound volume in percent, keyed by sound id. Absent means 100. */
         public java.util.Map<String, Integer> volumes = new java.util.HashMap<>();
+
+        /**
+         * Drops further copies of a sound once {@link #spamMaxSounds} of the same sound started
+         * within {@link #spamWindowTicks} ticks and {@link #spamRadius} blocks of each other.
+         * Off by default: with it off the sound path behaves exactly as before.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean limitSpam = false;
+
+        /** Copies of one sound allowed per window and radius; further ones are dropped. */
+        @Shareable(value = Kind.INT, min = 1, max = 16)
+        public int spamMaxSounds = 3;
+
+        /** Length of the window in client ticks. */
+        @Shareable(value = Kind.INT, min = 1, max = 20)
+        public int spamWindowTicks = 2;
+
+        /** Blocks within which two copies count as "the same place". */
+        @Shareable(value = Kind.INT, min = 1, max = 32)
+        public int spamRadius = 5;
     }
 
     /** Pelt Tracker (Trapper's Den): find the animal Trevor sends you after. */
@@ -1890,6 +2124,12 @@ public final class SBSConfig {
         public sbs.modid.client.core.render.OverlayColor phaseBeaconColor = sbs.modid.client.core.render.OverlayColor.RED;
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
         public sbs.modid.client.core.render.OverlayColor phaseHitsColor = sbs.modid.client.core.render.OverlayColor.YELLOW;
+        /** "Shield: N hits" over the crosshair while your own Voidgloom's hit shield is up. */
+        @Shareable(Kind.BOOL)
+        public boolean voidgloomShieldHud = true;
+        /** Countdown through your own Voidgloom's laser phase (detection and length estimated). */
+        @Shareable(Kind.BOOL)
+        public boolean voidgloomLaserTimer = true;
 
         // --- Zombie (Revenant) ---
         /** Alert when the boss enrages (T3/T4 Mad/Enraged) or the Atoned Horror charges its blast. */
@@ -2049,6 +2289,19 @@ public final class SBSConfig {
         /** Yellow box around the hotbar slot holding the dagger that can reach the needed mode. */
         @Shareable(Kind.BOOL)
         public boolean daggerHighlight = true;
+        /** Boxes around Quazii and Typhoeus while your boss is split into them. Experimental: off until the demon wording is confirmed in game. */
+        @Shareable(Kind.BOOL)
+        public boolean demonHighlight = false;
+        /** Colour the demon boxes in the attunement each demon is wearing, rather than per demon. */
+        @Shareable(Kind.BOOL)
+        public boolean demonAttunementColor = true;
+        @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
+        public sbs.modid.client.core.render.OverlayColor quaziiColor = sbs.modid.client.core.render.OverlayColor.PURPLE;
+        @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
+        public sbs.modid.client.core.render.OverlayColor typhoeusColor = sbs.modid.client.core.render.OverlayColor.ORANGE;
+        /** Small HUD line: the Inferno phase and its time. Experimental: off until the phase signal is confirmed in game. */
+        @Shareable(Kind.BOOL)
+        public boolean infernoPhaseTimer = false;
 
         // --- Vampire (Riftstalker) ---
         /** Big alert on the boss's Twinclaws attack. */
@@ -2102,17 +2355,31 @@ public final class SBSConfig {
         @Shareable(Kind.KEYCODE)
         public int hideChatKey = 0;
 
-        /** Preset filter: hide the "You are sending commands too fast!" spam. */
-        @Shareable(Kind.BOOL)
-        public boolean hideCommandsTooFast = false;
+        /**
+         * One-click spam filters, keyed by {@link sbs.modid.client.social.chat.model.ChatSpamPreset#id};
+         * a missing key is {@code OFF}. The presets themselves are the table in {@code ChatSpamPreset}.
+         */
+        public Map<String, sbs.modid.client.social.chat.model.SpamFilterMode> spamFilters =
+                new LinkedHashMap<>();
 
-        /** Preset filter: hide the "You do not have enough mana" ability spam. */
-        @Shareable(Kind.BOOL)
-        public boolean hideNotEnoughMana = false;
+        /** @deprecated migrated into {@link #spamFilters} ("commandsTooFast"); null once migrated. */
+        @Deprecated
+        public Boolean hideCommandsTooFast;
 
-        /** Preset filter: hide the "There are blocks in the way!" teleport/ability spam. */
-        @Shareable(Kind.BOOL)
-        public boolean hideBlocksInTheWay = false;
+        /** @deprecated migrated into {@link #spamFilters} ("notEnoughMana"); null once migrated. */
+        @Deprecated
+        public Boolean hideNotEnoughMana;
+
+        /** @deprecated migrated into {@link #spamFilters} ("blocksInTheWay"); null once migrated. */
+        @Deprecated
+        public Boolean hideBlocksInTheWay;
+
+        /** The mode of one spam preset; {@code OFF} when unset. */
+        public sbs.modid.client.social.chat.model.SpamFilterMode spamMode(
+                sbs.modid.client.social.chat.model.ChatSpamPreset preset) {
+            var mode = spamFilters == null ? null : spamFilters.get(preset.id);
+            return mode == null ? sbs.modid.client.social.chat.model.SpamFilterMode.OFF : mode;
+        }
 
         /** Custom hide list: messages containing any of these (comma-separated) are removed. */
         public String hideContaining = "";
@@ -2576,6 +2843,33 @@ public final class SBSConfig {
         public boolean skyblockBlockNames = true;
     }
 
+    /** Spring Boots Charge (Quality of Life): how far the "To the Moon!" sneak jump is charged. */
+    public SpringBootsSettings springBoots = new SpringBootsSettings();
+
+    public static final class SpringBootsSettings {
+        /** Master toggle. Display only, and drawn only while sneaking in Spring Boots. */
+        @Shareable(Kind.BOOL)
+        public boolean enabled = true;
+
+        /** Draw the meter under the crosshair; off = the movable HUD element. */
+        @Shareable(Kind.BOOL)
+        public boolean pinToCrosshair = true;
+
+        /** Append the height measured for that step count this session, when one was measured. */
+        @Shareable(Kind.BOOL)
+        public boolean showHeight = true;
+
+        /** One sound at full charge, through the SBS Sounds master. */
+        @Shareable(Kind.BOOL)
+        public boolean fullChargeSound = false;
+
+        /**
+         * Part of the sound id that marks one charge step, matched as a substring. Empty = the step
+         * is estimated from sneak time. Not shipped with a value: the real sound is unverified.
+         */
+        public String chargeSound = "";
+    }
+
     /** Pest Status module: the Pests widget's spray / repellent / bonus rows as a Garden-only card. */
     public PestStatusSettings pestStatus = new PestStatusSettings();
 
@@ -2713,6 +3007,33 @@ public final class SBSConfig {
          * SkyBlock calendar the next time the player opens it, whichever happens first.
          */
         public int jacobPhase = -1;
+
+        /** The Weather row: the next (and next extreme) island weather, or the running one. */
+        @Shareable(Kind.BOOL)
+        public boolean showWeather = true;
+
+        /** Append what the weather gives (stat names, the extreme bonus) to the row. */
+        @Shareable(Kind.BOOL)
+        public boolean weatherShowStats = true;
+
+        /** Island whose weather the row shows while you are somewhere without weather ("" = hide). */
+        public String weatherFavouriteIsland = "";
+
+        /** Alert one minute before a weather starts on the shown island. */
+        @Shareable(Kind.BOOL)
+        public boolean weatherAlert = false;
+
+        /** How the weather alert reaches you (an AlertChannels mask). */
+        public int weatherAlertChannels = 1 | (1 << 3);
+
+        /** Islands the weather alert stays quiet for. */
+        public java.util.Set<String> weatherAlertHidden = new java.util.LinkedHashSet<>();
+
+        /**
+         * {@code floorMod(UTC epoch hour, 3)} of the hours whose weather is extreme ({@code -1} = not
+         * known yet). Not published by Hypixel; pinned the first time the sidebar names an extreme one.
+         */
+        public int weatherExtremePhase = -1;
     }
 
     /** Milestone module: the tab widget's "Your Milestone" line as a HUD card. */
@@ -3068,6 +3389,46 @@ public final class SBSConfig {
     /** Rejoin Timer (Quality of Life): a countdown after a SkyBlock kick, then "try rejoining now". */
     public RejoinTimerSettings rejoinTimer = new RejoinTimerSettings();
 
+    /** Auto Requeue (Dungeons): queues the next Catacombs / Kuudra run after a completed one. */
+    public AutoRequeueSettings autoRequeue = new AutoRequeueSettings();
+
+    /**
+     * Auto Requeue. Sends one {@code /joininstance} after a completed run, which the no-automation
+     * exception in {@code AGENTS.md} allows only bounded, single-shot, cancellable and off by default
+     * (maintainer decision 2026-10-06, {@code docs/features/auto-requeue.md}). Those bounds live in
+     * {@code RequeueController}; "cancel on any input" is part of them and deliberately not a setting.
+     */
+    public static final class AutoRequeueSettings {
+        /** Requeue the Catacombs floor just completed. Off by default, as the exception requires. */
+        @Shareable(Kind.BOOL)
+        public boolean dungeons = false;
+
+        /** Requeue the Kuudra tier just completed. Off by default, as the exception requires. */
+        @Shareable(Kind.BOOL)
+        public boolean kuudra = false;
+
+        /** Seconds between arriving outside the instance and the requeue (0-60). */
+        public int dungeonsDelay = 5;
+
+        /** Seconds between arriving on the Crimson Isle and the requeue (0-60). */
+        public int kuudraDelay = 5;
+
+        /** Stop after this many requeues in a row (1-10). There is no "unlimited". */
+        public int maxConsecutive = 3;
+
+        /** Also requeue after a lost Kuudra run (DEFEAT). */
+        @Shareable(Kind.BOOL)
+        public boolean afterLoss = false;
+
+        /** Key that cancels a running countdown (GLFW key code; 0 = unbound). */
+        @Shareable(Kind.KEYCODE)
+        public int cancelKey = 0;
+
+        /** Show the countdown card. */
+        @Shareable(Kind.BOOL)
+        public boolean showHud = true;
+    }
+
     public static final class RejoinTimerSettings {
         /** Master toggle for the Rejoin Timer. */
         @Shareable(Kind.BOOL)
@@ -3298,6 +3659,46 @@ public final class SBSConfig {
 
     /** Recipe Viewer module preferences. */
     public RecipeViewerSettings recipeViewer = new RecipeViewerSettings();
+
+    /** Craft Helper: recipe trees with have / need, favourites, and the pinned tree on the HUD. */
+    public CraftHelperSettings craftHelper = new CraftHelperSettings();
+
+    public static final class CraftHelperSettings {
+        /**
+         * The whole feature: the Tree view in the Recipe Viewer and the HUD panel. Nothing shows on
+         * the HUD until the player puts an item there, so on by default costs nothing.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean enabled = true;
+
+        /** Count what is in the player's own inventory. */
+        @Shareable(Kind.BOOL)
+        public boolean countInventory = true;
+
+        /**
+         * Count sack contents, from the sack snapshots the storage index keeps. The amount is read
+         * from each sack slot's lore, whose wording is still unconfirmed in game - see
+         * {@code docs/features/craft-helper.md}.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean countSacks = true;
+
+        /** Count Ender Chest pages, backpacks, the vault and island chests the storage index saw. */
+        @Shareable(Kind.BOOL)
+        public boolean countStorage = true;
+
+        /** Deepest tree level expanded; the item itself is level 0. */
+        @Shareable(value = Kind.INT, min = 1, max = 12)
+        public int maxDepth = 8;
+
+        /** Fold a branch away once everything in it is held or craftable from what is held. */
+        @Shareable(Kind.BOOL)
+        public boolean collapseCompleted = true;
+
+        /** How many tree rows the HUD panel shows before it scrolls. */
+        @Shareable(value = Kind.INT, min = 4, max = 30)
+        public int hudRows = 12;
+    }
 
     /** Calculator module preferences (the floating in-game calculator window). */
     public CalculatorSettings calculator = new CalculatorSettings();
@@ -3696,6 +4097,60 @@ public static final class CaseOpeningSettings {
 
         /** Channels for "your Golden Fish progress is about to reset". */
         public int goldenFishResetChannels = sbs.modid.client.core.alert.AlertChannels.TITLE_AND_SOUND;
+
+        /** Reel Timer section on the fishing tracker: the live wait for a bite and its averages. */
+        @Shareable(Kind.BOOL)
+        public boolean reelTimer = true;
+
+        /** How many of the latest reeled casts the Reel Timer's rolling average covers. */
+        @Shareable(value = Kind.INT, min = 3, max = 100)
+        public int reelRollingCasts = 10;
+
+        /** Rare Drops section: creature-specific drops booked only after a nearby kill. */
+        @Shareable(Kind.BOOL)
+        public boolean rareDropTracker = true;
+
+        /** How long after an eligible sea-creature death its rare drop may still arrive, in seconds. */
+        @Shareable(value = Kind.INT, min = 10, max = 300)
+        public int rareDropWindowSec = 60;
+
+        /** How close the player must have been to a sea creature when it died, in blocks. */
+        @Shareable(value = Kind.INT, min = 4, max = 48)
+        public int rareDropRadius = 16;
+
+        /**
+         * Session clock: a gap between two casts / reels / bites / catches up to this many seconds
+         * counts as fishing time, a longer one is a break and counts nothing.
+         */
+        @Shareable(value = Kind.INT, min = 30, max = 600)
+        public int sessionPauseSec = 120;
+
+        /** Baits Used section on the fishing tracker: the consumed baits, the session's cost side. */
+        @Shareable(Kind.BOOL)
+        public boolean baitsUsedSection = true;
+
+        /** Profit section line: how many casts this session made. */
+        @Shareable(Kind.BOOL)
+        public boolean profitTimesFished = true;
+
+        /** Profit section line: the session's total profit. */
+        @Shareable(Kind.BOOL)
+        public boolean profitSession = true;
+
+        /** Profit section line: the profit per hour of fished time. */
+        @Shareable(Kind.BOOL)
+        public boolean profitPerHour = true;
+
+        /** Profit section line: the fished time. */
+        @Shareable(Kind.BOOL)
+        public boolean profitTime = true;
+
+        /**
+         * The fishing tracker card's section order, by stable section id
+         * ({@link sbs.modid.client.skills.fishing.model.FishingCardSection}). Null or partial is fine:
+         * {@link sbs.modid.client.ui.hud.card.CardSections#resolve} fills in what is missing.
+         */
+        public java.util.List<String> sectionOrder;
 
         /** The "Reel in now!" line under the "!!!" – independent of the marks themselves. */
         @Shareable(Kind.BOOL)
@@ -4816,6 +5271,13 @@ public static final class CaseOpeningSettings {
         @Shareable(Kind.BOOL)
         public boolean keepMousePosition = false;
 
+        /**
+         * With Keep Mouse Position on: the first menu opened from gameplay (no menu open before)
+         * still starts with the cursor in the centre; only menu-to-menu switches keep it.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean centerMouseOnFirstOpen = false;
+
         /** Sprint without holding the key. */
         @Shareable(Kind.BOOL)
         public boolean autoSprint = false;
@@ -5361,6 +5823,21 @@ public static final class CaseOpeningSettings {
         @Shareable(value = Kind.INT, min = 5, max = 80)
         public int rarityOpacity = 25;
 
+        /**
+         * Draws the blank filler glass panes of SkyBlock menus as one smooth colour surface instead
+         * of the glass texture ({@code GradientPanes}). Display only; off by default.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean gradientPanes = false;
+
+        /** {@code GradientPanes.MODE_GRADIENT} (the pane's own dye, light to dark) or {@code MODE_CHROMA}. */
+        @Shareable(value = Kind.INT, min = 0, max = 1)
+        public int gradientPanesMode = 0;
+
+        /** Opacity of the gradient surface in percent (20-100). */
+        @Shareable(value = Kind.INT, min = 20, max = 100)
+        public int gradientPanesOpacity = 85;
+
         /** Client-side item renaming via {@code /sbs itemrename <new name>} (held item only). */
         @Shareable(Kind.BOOL)
         public boolean itemRenamer = true;
@@ -5466,6 +5943,21 @@ public static final class CaseOpeningSettings {
         @Shareable(Kind.BOOL)
         public boolean showLbin = true;
 
+        /**
+         * Keep the last price every item was seen at (economy/prices/BackupPrices) and use it when
+         * the live markets have none. Off: nothing is recorded and nothing falls back.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean backupPrices = true;
+
+        /** Mark values that contain a backup price with a leading "≈", grey text and their age. */
+        @Shareable(Kind.BOOL)
+        public boolean markBackupPrices = true;
+
+        /** Backup prices older than this many days are not used; 0 = no limit. */
+        @Shareable(value = Kind.INT, min = 0, max = 3650)
+        public int backupPriceMaxAgeDays = 0;
+
         /** Inject a "Lowest Bazaar Price" line at the bottom of item tooltips (fetched + cached). */
         @Shareable(Kind.BOOL)
         public boolean showBazaarPrice = true;
@@ -5521,6 +6013,13 @@ public static final class CaseOpeningSettings {
         @Shareable(Kind.BOOL)
         public boolean stackTipDungeonPasses = true;
 
+        /**
+         * Item Stack Tips: a dungeon drop's quality roll as a % of the maximum, plus the matching
+         * "Quality: 48/50 (96%)" tooltip line.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean stackTipDungeonQuality = true;
+
         /** Item Stack Tips: skill level in the Skills menu. Off: the name shape is unverified. */
         @Shareable(Kind.BOOL)
         public boolean stackTipSkills = false;
@@ -5528,6 +6027,21 @@ public static final class CaseOpeningSettings {
         /** Item Stack Tips: collection tier in a collection menu. Off: the name shape is unverified. */
         @Shareable(Kind.BOOL)
         public boolean stackTipCollections = false;
+
+        /** Item Stack Tips: a counter enchant's compact total (Champion, Toxophilite) on the item. */
+        @Shareable(Kind.BOOL)
+        public boolean stackTipCounterEnchant = false;
+
+        /**
+         * One tooltip line with a counter enchant's running total (Champion, Toxophilite): progress
+         * to the next level below max, the total and the amount past it at max.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean counterEnchantXp = true;
+
+        /** Item Stack Tips: the SkyBlock year on New Year Cakes, wherever a cake is drawn. */
+        @Shareable(Kind.BOOL)
+        public boolean stackTipCakeYears = true;
 
         /** Where Item Stack Tips draw: open menus, the HUD hotbar, or both. */
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.helper.stacktips.StackTipScope.class)
@@ -6381,6 +6895,19 @@ public static final class CaseOpeningSettings {
         public int toggleKey = -1;
     }
 
+    /** Disable View Bobbing (self-registered module, see {@code sbs.modid.client.helper.camera.ViewBobbingModule}). */
+    public ViewBobbingSettings viewBobbing = new ViewBobbingSettings();
+
+    public static final class ViewBobbingSettings {
+        /**
+         * Suppresses the walking camera and hand sway in the render path. ON by default - a
+         * deliberate exception to the opt-in rule (see {@code ViewBobbingModule}). The vanilla
+         * "View Bobbing" option is never written; with this off, it decides again.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean disable = true;
+    }
+
     /** Performance (self-registered module, see {@code sbs.modid.client.helper.performance.PerformanceModule}). */
     public PerformanceSettings performance = new PerformanceSettings();
 
@@ -6434,13 +6961,41 @@ public static final class CaseOpeningSettings {
         @Shareable(Kind.BOOL)
         public boolean npcHint = true;
 
+        /** Also hide other players' pets (their name stand), keeping the same Always-Show groups. */
+        @Shareable(Kind.BOOL)
+        public boolean hidePets = false;
+
         /** Toggles {@link #hiding}; 0 = unbound. */
         @Shareable(Kind.KEYCODE)
         public int toggleKey = 0;
+
+        /** Hide Low-Level Players: master switch. Off by default - it changes what you see. */
+        @Shareable(Kind.BOOL)
+        public boolean lowLevelEnabled = false;
+
+        /** Players with a known SkyBlock level below this are hidden. */
+        @Shareable(value = Kind.INT, min = 0, max = 500)
+        public int minLevel = 100;
+
+        /** Hide their public chat lines. */
+        @Shareable(Kind.BOOL)
+        public boolean lowLevelChat = true;
+
+        /** Do not draw their player models. */
+        @Shareable(Kind.BOOL)
+        public boolean lowLevelWorld = true;
+
+        /** Leave them out of the SBS tab list. */
+        @Shareable(Kind.BOOL)
+        public boolean lowLevelTab = true;
+
+        /** A "N messages hidden" line in chat, at most once a minute. */
+        @Shareable(Kind.BOOL)
+        public boolean lowLevelNotice = false;
     }
 
     public static final class PerformanceSettings {
-        /** Master switch for the armor-stand render / tick culling. */
+        /** Master switch for the armor-stand render culling. */
         @Shareable(Kind.BOOL)
         public boolean enabled = true;
 
@@ -6451,9 +7006,23 @@ public static final class CaseOpeningSettings {
         /** Armor stands farther than this many blocks are not rendered (0 = vanilla, no limit). */
         public int standRenderDistance = 24;
 
-        /** Also skip the client tick of armor stands that are not rendered anyway. */
+        /**
+         * Nametag distance by type: common-mob labels use {@link #trashNametagDistance}, NPC,
+         * hologram and exception-list labels are never distance-culled. Off = one distance for all.
+         */
         @Shareable(Kind.BOOL)
-        public boolean tickCulling = true;
+        public boolean nametagClasses = false;
+
+        /** Common-mob label distance in blocks while {@link #nametagClasses} is on (0 = normal distance). */
+        public int trashNametagDistance = 12;
+
+        /** Comma-separated name keywords whose labels are always shown (case-insensitive substring). */
+        public String nametagAlwaysShow = "Inquisitor, Minos, Sphinx, Manticore, Minotaur, Gaia Construct, "
+                + "Siamese Lynx, Horror, Broodfather, Packmaster, Seraph, Demonlord, Bloodfiend, Spawned by";
+
+        /** Also hide mob labels behind blocks, re-checked every few ticks per label. */
+        @Shareable(Kind.BOOL)
+        public boolean nametagOcclusion = false;
 
         /**
          * The mod-wide budget: when SBS's own tick work goes over {@link #tickBudgetMs}, work marked
@@ -7447,6 +8016,41 @@ public static final class CaseOpeningSettings {
         public boolean debugLog = false;
     }
 
+    /** Gyro Helper: ring where the Gyrokinetic Wand's Gravity Storm would land and pull. */
+    public GyroHelperSettings gyroHelper = new GyroHelperSettings();
+
+    public static final class GyroHelperSettings {
+        @Shareable(Kind.BOOL)
+        public boolean enabled = true;
+
+        /** Only draw inside a dungeon. */
+        @Shareable(Kind.BOOL)
+        public boolean dungeonsOnly = false;
+
+        /** Cast range in blocks; 0 = the lore's number, else the wiki's 24. */
+        public int rangeOverride = 0;
+
+        /** Pull radius in blocks; 0 = the lore's number, else the wiki's 10. */
+        public int radiusOverride = 0;
+
+        @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
+        public sbs.modid.client.core.render.OverlayColor readyColor =
+                sbs.modid.client.core.render.OverlayColor.PURPLE;
+
+        /** Drawn at reduced opacity while Gravity Storm is cooling down. */
+        @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.core.render.OverlayColor.class)
+        public sbs.modid.client.core.render.OverlayColor cooldownColor =
+                sbs.modid.client.core.render.OverlayColor.WHITE;
+
+        /** "N in range" next to the centre marker. */
+        @Shareable(Kind.BOOL)
+        public boolean showMobCount = true;
+
+        /** "out of range" beside the crosshair when no block is within reach. */
+        @Shareable(Kind.BOOL)
+        public boolean showOutOfRange = true;
+    }
+
     /** Death-Save Timers module: Bonzo's Mask / Spirit Mask / Phoenix cooldown card. */
     public AbilityTimerSettings abilityTimers = new AbilityTimerSettings();
 
@@ -7475,6 +8079,18 @@ public static final class CaseOpeningSettings {
         public int bonzoSeconds = 180;
         public int spiritSeconds = 30;
         public int phoenixSeconds = 60;
+
+        /**
+         * Tactical Insertion: the 3 s countdown to the Gorilla Tactics teleport back. Independent of
+         * {@link #enabled}, which is the death-save master switch.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean tacTimer = true;
+        /** Where it is drawn: 0 = the timer card, 1 = under the crosshair, 2 = both. */
+        public int tacDisplay = 1;
+        /** Show "hit N" for 2 s after the return. */
+        @Shareable(Kind.BOOL)
+        public boolean tacShowHits = true;
     }
 
     public static final class SbsPlayersSettings {
@@ -7572,7 +8188,7 @@ public static final class CaseOpeningSettings {
         @Shareable(Kind.BOOL)
         public boolean chatInGame = true;
 
-        /** Leader convenience: auto-run {@code /party invite <name>} when someone joins the SBS party. */
+        /** Leader convenience: a chat notice when someone joins the SBS party (inviting stays on Invite All). */
         @Shareable(Kind.BOOL)
         public boolean autoInvite = false;
     }
@@ -7626,6 +8242,13 @@ public static final class CaseOpeningSettings {
         /** {@code !downtime} / {@code !dt} + {@code !undowntime} / {@code !undt} end-of-run reminder. */
         @Shareable(Kind.BOOL)
         public boolean downtime = true;
+
+        /**
+         * {@code !up} / {@code !down} / {@code !same}: step the next Auto Requeue one floor or tier.
+         * Only the leader's client answers, since only the leader sends the requeue.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean requeue = true;
 
         /** {@code !boop [name]} → {@code /boop <name>}. */
         @Shareable(Kind.BOOL)
@@ -7702,6 +8325,15 @@ public static final class CaseOpeningSettings {
          */
         @Shareable(value = Kind.INT, min = sbs.modid.client.economy.recipe.ui.RecipeOverlay.MIN_PANEL_SIZE, max = 100)
         public int panelSize = 55;
+
+        /** Hover an item and press it for its recipes (Shift: usages). GLFW key code; default R, 0 = unbound. */
+        public int lookupKey = 82;
+
+        /**
+         * Hover an item and press it for the recipe of its enchanted (compacted) form: Wheat opens
+         * Enchanted Wheat, Enchanted Wheat opens Enchanted Hay Bale. GLFW key code; 0 = unbound.
+         */
+        public int enchantedFormKey = 0;
 
         /** Collapse enchant-book levels (Legion 1..max) into one grouped search row; hover shows the group. */
         @Shareable(Kind.BOOL)
@@ -7965,6 +8597,42 @@ public static final class CaseOpeningSettings {
         @Shareable(Kind.BOOL)
         public boolean deviceSolver = false;
 
+        /**
+         * Phase-3 Arrow Align device: per-frame click counts from captured solved layouts, and the
+         * [SBS][ArrowAlign] probe. Display only - it never rotates a frame.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean arrowAlign = true;
+
+        /**
+         * Arrow Align misclick guard: swallow a right click on a frame that is already correct. Only
+         * when the layout is known; anything uncertain lets the click through. Sneak bypasses it.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean arrowAlignMisclickGuard = false;
+
+        /**
+         * Phase-3 Lights device: records which lamps each lever toggles and, once the wiring is
+         * known, boxes the levers that still need flipping. Display only - it never flips anything.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean lightsDevice = false;
+
+        /**
+         * Lights device guard: ignores your own right-click on a device lever that is not part of the
+         * current answer. Only acts while the full wiring is known; otherwise every click goes through.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean lightsDeviceGuard = false;
+
+        /**
+         * Phase-3 "Shoot the Target" device: a box on the block that is the target right now, faint
+         * marks on the ones already hit, and a hit count. Display only - it never aims or shoots.
+         * The device's blocks and hit count are ESTIMATED until the probe log confirms them.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean shootTarget = false;
+
         /** F7/M7 phase-3 progress card: terminals, devices and levers done, and who did them. */
         @Shareable(Kind.BOOL)
         public boolean terminalProgress = false;
@@ -7988,8 +8656,92 @@ public static final class CaseOpeningSettings {
          */
         @Shareable(Kind.BOOL)
         public boolean puzzleQuiz = true;
+        /** Boxes the Three Weirdos reward chest once the deciding weirdo has spoken. */
         @Shareable(Kind.BOOL)
         public boolean puzzleThreeWeirdos = true;
+        /** Three Weirdos: also draw a faint red box on the two chests without the reward. */
+        @Shareable(Kind.BOOL)
+        public boolean puzzleWeirdosMarkWrong = false;
+        /** Ice Fill: the remaining walk as one line in the Ice Fill colour (on), or a box per straight run (off). */
+        @Shareable(Kind.BOOL)
+        public boolean puzzleIceFillLine = true;
+        /** The blaze solver ({@code dungeons/puzzle/logic/BlazeSolver}); was gated on the master alone. */
+        @Shareable(Kind.BOOL)
+        public boolean puzzleHigherOrLower = true;
+        // Probe-stage solvers default off; a solver promoted to FINISHED defaults on (see SolverStage).
+        @Shareable(Kind.BOOL)
+        public boolean puzzleCreeperBeams = false;
+        @Shareable(Kind.BOOL)
+        public boolean puzzleTicTacToe = true;
+        @Shareable(Kind.BOOL)
+        public boolean puzzleWaterBoard = false;
+        @Shareable(Kind.BOOL)
+        public boolean puzzleTeleportMaze = false;
+        @Shareable(Kind.BOOL)
+        public boolean puzzleBoulder = true;
+        @Shareable(Kind.BOOL)
+        public boolean puzzleIceFill = true;
+        @Shareable(Kind.BOOL)
+        public boolean puzzleIcePath = true;
+        /**
+         * Silverfish was merged into Ice Path (2026-10-13). Read once on load by {@code
+         * PuzzleSettings.migrateSilverfish}, which moves it onto {@link #puzzleIcePath}. Kept for one
+         * release so older configs carry over; drop it and its colour after that.
+         */
+        @Deprecated
+        public boolean puzzleSilverfish = false;
+
+        /**
+         * The answer colour of each puzzle's highlight, {@code RRGGBB}; empty = that puzzle's default
+         * (see {@code PuzzleSettings}). Read through {@code PuzzleSettings.argb}, which caches the
+         * parse, never parsed per frame.
+         */
+        @Shareable(Kind.HEX_COLOR)
+        public String puzzleQuizColorHex = "";
+        @Shareable(Kind.HEX_COLOR)
+        public String puzzleThreeWeirdosColorHex = "";
+        @Shareable(Kind.HEX_COLOR)
+        public String puzzleHigherOrLowerColorHex = "";
+        @Shareable(Kind.HEX_COLOR)
+        public String puzzleCreeperBeamsColorHex = "";
+        @Shareable(Kind.HEX_COLOR)
+        public String puzzleTicTacToeColorHex = "";
+        @Shareable(Kind.HEX_COLOR)
+        public String puzzleWaterBoardColorHex = "";
+        @Shareable(Kind.HEX_COLOR)
+        public String puzzleTeleportMazeColorHex = "";
+        @Shareable(Kind.HEX_COLOR)
+        public String puzzleBoulderColorHex = "";
+        @Shareable(Kind.HEX_COLOR)
+        public String puzzleIceFillColorHex = "";
+        @Shareable(Kind.HEX_COLOR)
+        public String puzzleIcePathColorHex = "";
+        /** Merged into {@link #puzzleIcePathColorHex}; see {@link #puzzleSilverfish}. */
+        @Deprecated
+        public String puzzleSilverfishColorHex = "";
+
+        /**
+         * A strip under the SBS Dungeon Map listing this run's puzzles from the tab list, each with
+         * its state. Independent of {@link #puzzleSolver}: it reads the tab, it solves nothing.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean puzzleChecklist = true;
+
+        /**
+         * After a puzzle fails, remind the player that an Architect's First Draft can reset it and
+         * how many they hold. Display only. Independent of {@link #puzzleSolver}.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean architectDraftReminder = true;
+        /** With no drafts held, add the Bazaar buy price to the reminder. */
+        @Shareable(Kind.BOOL)
+        public boolean architectDraftShowPrice = true;
+        /** Keep a "room failed" line under the dungeon map until the room is reset or the run ends. */
+        @Shareable(Kind.BOOL)
+        public boolean architectDraftCardLine = true;
+        /** How the reminder reaches the player; an {@code AlertChannels} bitmask. */
+        public int architectDraftChannels = sbs.modid.client.core.alert.AlertChannel.CHAT.bit()
+                | sbs.modid.client.core.alert.AlertChannel.SOUND.bit();
 
         /** GLFW key (0 = unbound) that opens the Terminal Simulator practice screen. */
         @Shareable(Kind.KEYCODE)
@@ -8021,9 +8773,27 @@ public static final class CaseOpeningSettings {
         @Shareable(Kind.BOOL)
         public boolean roomWaypoints = true;
 
-        /** Yellow hitbox around every visible dungeon mob whose nametag carries the ✯ star. */
+        /**
+         * Highlight every visible dungeon mob whose nametag carries the ✯ star. The id predates the
+         * style setting and stays as it is - config ids are player state.
+         */
         @Shareable(Kind.BOOL)
         public boolean boxStarredMobs = true;
+
+        /** Starred-mob highlight: hitbox, silhouette outline, or both. */
+        @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.dungeons.run.model.StarredMobStyle.class)
+        public sbs.modid.client.dungeons.run.model.StarredMobStyle starredMobStyle =
+                sbs.modid.client.dungeons.run.model.StarredMobStyle.HITBOX;
+
+        /** Starred-mob highlight and pointer-line colour, RRGGBB. Default: the original yellow. */
+        @Shareable(Kind.HEX_COLOR)
+        public String starredMobColor = "FFE000";
+
+        /** The starred-mob colour actually used, as opaque ARGB (the original yellow if unparsable). */
+        public int starredMobArgb() {
+            Integer custom = sbs.modid.client.core.render.OverlayColor.parseHex(starredMobColor);
+            return 0xFF000000 | (custom != null ? custom : 0xFFE000);
+        }
 
         /**
          * F7/M7 phase timer: how long Maxor, Storm, Goldor, Necron and (M7) the dragons each took,
@@ -8035,6 +8805,44 @@ public static final class CaseOpeningSettings {
         /** Print the finished splits once to chat at the end-of-run summary (client-side only). */
         @Shareable(Kind.BOOL)
         public boolean phaseTimerChat = true;
+
+        /**
+         * M7 Tick Timers: a countdown to the next Storm pad crush (P2) and the next Goldor tick (P3),
+         * counted in server ticks. Off by default - the periods and anchors are not measured yet.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean m7TickTimers = false;
+
+        /** Also show the tick timers on F7, not only on M7. */
+        @Shareable(Kind.BOOL)
+        public boolean m7TickTimersOnF7 = false;
+
+        /** The Storm pad countdown in P2. */
+        @Shareable(Kind.BOOL)
+        public boolean m7TickTimerPad = true;
+
+        /** The Goldor tick countdown in P3. */
+        @Shareable(Kind.BOOL)
+        public boolean m7TickTimerGoldor = true;
+
+        /** A large countdown in the middle of the screen during the last second before a firing. */
+        @Shareable(Kind.BOOL)
+        public boolean m7TickTimerCentre = false;
+
+        /**
+         * Storm pad crush period in server ticks. 0 = unknown: the pad line shows "?" instead of a
+         * number nobody has measured.
+         */
+        @Shareable(value = Kind.INT, min = 0, max = 400)
+        public int m7PadPeriodTicks = 0;
+
+        /** Countdown colour, {@code RRGGBB}; empty follows the theme text colour. */
+        @Shareable(Kind.HEX_COLOR)
+        public String m7TickTimerColorHex = "";
+
+        /** The colour the countdown fades to as it nears zero; empty follows the theme warning red. */
+        @Shareable(Kind.HEX_COLOR)
+        public String m7TickTimerSoonColorHex = "";
 
         /**
          * M7 dragon phase: a card with every dragon that is up, what it has left, and whether it is
@@ -8064,6 +8872,24 @@ public static final class CaseOpeningSettings {
 
         /** The statues as learned or set, per dragon: {@code {"POWER":[x,y,z]}}. */
         public java.util.Map<String, double[]> m7DragonStatues = new java.util.HashMap<>();
+
+        /**
+         * M7 phase 5: a marker on each Corrupted Relic's spawn, and after your own pickup one on
+         * where that relic goes. Positions are bundled data from our own captures; a relic whose
+         * points are not captured yet draws nothing.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean m7RelicWaypoints = true;
+
+        /**
+         * Which relic spawns are marked: {@code "ALL"} or one {@code RelicColour} id
+         * ({@code "RED"} ...). An unknown value reads as {@code "ALL"}.
+         */
+        public String m7RelicFilter = "ALL";
+
+        /** A line from the crosshair to the carried relic's target. */
+        @Shareable(Kind.BOOL)
+        public boolean m7RelicGuideLine = false;
 
         /**
          * F3/M3 Fire Freeze card: the countdown from the Professor's phase-turn line to the moment
@@ -8111,6 +8937,25 @@ public static final class CaseOpeningSettings {
          */
         @Shareable(Kind.BOOL)
         public boolean giantHp = false;
+
+        /**
+         * Boss Bar Health: the Catacombs boss bar carries the boss's health as a number - read off
+         * its nametag, else estimated from the bar and a tabled maximum, else a percentage.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean bossBarHealth = true;
+
+        /** Boss Bar Health: also show the boss's maximum health. */
+        @Shareable(Kind.BOOL)
+        public boolean bossBarHealthMax = true;
+
+        /** Boss Bar Health: also show the percentage left. */
+        @Shareable(Kind.BOOL)
+        public boolean bossBarHealthPercent = true;
+
+        /** Boss Bar Health: colour the number green, yellow or red by what is left. */
+        @Shareable(Kind.BOOL)
+        public boolean bossBarHealthColour = true;
 
         /** Also draw each giant's health low on its body, not just on the card. */
         @Shareable(Kind.BOOL)
@@ -8383,6 +9228,21 @@ public static final class CaseOpeningSettings {
         @Deprecated
         public Boolean enderchestBackpackPreview;
 
+        /**
+         * The one write path for {@link #previewMode} outside config load. Logs every change with
+         * its reason, so a setting that flips "by itself" names its writer in the log. Callers save.
+         *
+         * @param reason the explicit player action behind the change - never a side effect
+         */
+        public void setPreviewMode(sbs.modid.client.helper.storage.StoragePreviewMode mode, String reason) {
+            if (mode == null || mode == previewMode) {
+                return;
+            }
+            sbs.modid.SkyblockSimplifiedSBS.LOGGER.info("[SBS][Storage] previewMode {} -> {} by {}",
+                    previewMode, mode, reason);
+            previewMode = mode;
+        }
+
         /** SBS Loadouts: full-grid loadout overlay with 3D player previews over Hypixel's menu. */
         @Shareable(Kind.BOOL)
         public boolean sbsWardrobe = true;
@@ -8448,6 +9308,32 @@ public static final class CaseOpeningSettings {
          */
         @Shareable(Kind.BOOL)
         public boolean showStorageValue = true;
+
+        /**
+         * Remember the chests opened on the Private Island by position, per profile and across
+         * restarts, so the search can say - and mark - which chest holds an item.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean rememberIslandChests = true;
+
+        /** Also remember chests on the Garden (another island whose layout is the player's own). */
+        @Shareable(Kind.BOOL)
+        public boolean rememberGardenChests = false;
+
+        /** Clicking an item in the search marks the remembered chests that hold it. */
+        @Shareable(Kind.BOOL)
+        public boolean markChests = true;
+
+        /** Route a path line to the nearest marked chest, on top of the box and beam. */
+        @Shareable(Kind.BOOL)
+        public boolean chestMarkerPath = false;
+
+        /** Minutes after which chest markers clear themselves. */
+        public int chestMarkerMinutes = 5;
+
+        /** GLFW key that clears the chest markers in-world; {@code 0} = unbound. */
+        @Shareable(Kind.KEYCODE)
+        public int clearMarkersKey = 0;
 
         /** Item identities the player starred; they sort above everything else. */
         public List<String> favorites = new ArrayList<>();
@@ -9017,6 +9903,14 @@ public static final class CaseOpeningSettings {
         /** A coloured tag in front of a noted player's nametag in the world. */
         @Shareable(Kind.BOOL)
         public boolean nametagMarker = false;
+
+        /** Your note after each noted player in Hypixel's /friend list and /ignore list output. */
+        @Shareable(Kind.BOOL)
+        public boolean listNotes = true;
+
+        /** A [+note] / [edit] button on every player line of those lists. */
+        @Shareable(Kind.BOOL)
+        public boolean listButtons = true;
 
         /**
          * How a warning reaches you (an {@code AlertChannels} mask). The chat channel is the
@@ -9618,6 +10512,31 @@ public static final class CaseOpeningSettings {
         /** How many finished sessions are kept per profile. */
         @Shareable(value = Kind.INT, min = 1, max = 50)
         public int farmingSessionHistory = 10;
+
+        /** Farming Net card: crops + pests + visitors - costs, per session and per active hour. */
+        @Shareable(Kind.BOOL)
+        public boolean farmingNet = true;
+
+        /** Show the per-crop and per-cost lines under the Farming Net totals. */
+        @Shareable(Kind.BOOL)
+        public boolean farmingNetBreakdown = false;
+
+        /** What a crop is worth on the Farming Net card. */
+        @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.skills.farming.net.CropPriceSource.class)
+        public sbs.modid.client.skills.farming.net.CropPriceSource farmingNetPriceSource =
+                sbs.modid.client.skills.farming.net.CropPriceSource.INSTANT_SELL;
+
+        /** Count served visitors (copper in, items given out) on the Farming Net card. */
+        @Shareable(Kind.BOOL)
+        public boolean farmingNetVisitors = true;
+
+        /** What one copper is worth to you, in coins; 0 leaves copper unvalued (marked "+"). */
+        @Shareable(value = Kind.INT, min = 0, max = 100_000)
+        public int farmingNetCoinsPerCopper = 0;
+
+        /** A cost you set yourself per active farming hour (cookie, potions...), in coins. */
+        @Shareable(value = Kind.INT, min = 0, max = 100_000_000)
+        public int farmingNetExtraCostPerHour = 0;
 
         /** Visitor Timer card: waiting visitors and when the next one arrives, from the tab widget. */
         @Shareable(Kind.BOOL)
@@ -10308,6 +11227,24 @@ public static final class CaseOpeningSettings {
         /** Count burrows, mobs, drops and coins across the event. */
         @Shareable(Kind.BOOL)
         public boolean tracker = true;
+
+        /** Value what the event pays - feathers, coins, rare drops - on the Diana Profit card. */
+        @Shareable(Kind.BOOL)
+        public boolean lootProfit = true;
+
+        /** Persisted {@code LootPriceSource}: sell order, instant sell or lowest BIN. */
+        public String lootPriceSource = "SELL_ORDER";
+
+        /** Whether dug-out coins count towards the profit. */
+        @Shareable(Kind.BOOL)
+        public boolean lootCountCoins = true;
+
+        /** Show the profile's all-time totals on the card instead of this session's. */
+        @Shareable(Kind.BOOL)
+        public boolean lootShowAllTime = false;
+
+        /** Coins per active hour taken off the profit - the player's own upkeep estimate. 0 = none. */
+        public int lootCostPerHour = 0;
 
         /** @deprecated the session totals lines; migrated as {@link #chainsHud} is. */
         @Deprecated

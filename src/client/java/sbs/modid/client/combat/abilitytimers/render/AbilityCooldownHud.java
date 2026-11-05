@@ -13,7 +13,9 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import sbs.modid.client.combat.abilitytimers.logic.AbilityCooldownTracker;
+import sbs.modid.client.combat.abilitytimers.logic.TacTimerTracker;
 import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.ui.hud.edit.logic.HudLayout;
 import sbs.modid.client.ui.hud.edit.model.HudElement;
 import sbs.modid.client.ui.hud.render.HudCard;
@@ -37,38 +39,77 @@ public final class AbilityCooldownHud {
     private static final int LINE_GAP = 3;
     private static final int MIN_W = 108;
     private static final int READY_COLOR = 0xFF66E27A;
+    private static final int TAC_COLOR = 0xFFFFC040;
+    /** {@code tacDisplay} values; 2 is "both". */
+    private static final int DISPLAY_CARD = 0;
+    private static final int DISPLAY_CROSSHAIR = 1;
+    /** Pixels below the screen centre - clear of the crosshair, above any subtitle. */
+    private static final int CROSSHAIR_OFFSET = 12;
+
+    private static String tacText;
+    private static Component tacLine;
 
     private AbilityCooldownHud() {
     }
 
     /** Called from the HUD render hook once per frame. */
     public static void render(GuiGraphicsExtractor g) {
-        if (!ConfigManager.getInstance().get().abilityTimers.enabled
-                || Minecraft.getInstance().player == null
-                || HudLayout.isHidden(HudElement.ABILITY_TIMERS)) {
+        if (Minecraft.getInstance().player == null) {
             return;
         }
-        List<AbilityCooldownTracker.Entry> entries = AbilityCooldownTracker.getInstance().entries();
-        if (entries.isEmpty()) {
+        SBSConfig.AbilityTimerSettings cfg = ConfigManager.getInstance().get().abilityTimers;
+        // The Tac Timer is not a death save and has its own switch - its row shows with the
+        // death-save master off.
+        String tac = TacTimerTracker.getInstance().text();
+        Component tacLine = tacComponent(tac);
+        if (tacLine != null && cfg.tacDisplay != DISPLAY_CARD) {
+            drawUnderCrosshair(g, tacLine);
+        }
+        String cardTac = cfg.tacDisplay != DISPLAY_CROSSHAIR ? tac : null;
+        if (HudLayout.isHidden(HudElement.ABILITY_TIMERS)) {
+            return;
+        }
+        List<AbilityCooldownTracker.Entry> entries = cfg.enabled
+                ? AbilityCooldownTracker.getInstance().entries() : List.of();
+        if (entries.isEmpty() && cardTac == null) {
             return;
         }
         HudElement.Bounds bounds = HudElement.ABILITY_TIMERS.defaultBounds(g.guiWidth(), g.guiHeight());
         HudLayout.begin(g, HudElement.ABILITY_TIMERS);
-        draw(g, entries, (int) bounds.x(), (int) bounds.y());
+        draw(g, entries, cardTac == null ? null : tacLine, (int) bounds.x(), (int) bounds.y());
         HudLayout.end(g);
     }
 
+    /** The Tac countdown, centred a little below the crosshair. */
+    private static void drawUnderCrosshair(GuiGraphicsExtractor g, Component line) {
+        Font font = Minecraft.getInstance().font;
+        g.centeredText(font, line, g.guiWidth() / 2, g.guiHeight() / 2 + CROSSHAIR_OFFSET, TAC_COLOR);
+    }
+
+    /** One component per text change (10 Hz at most), not one per frame. */
+    private static Component tacComponent(String text) {
+        if (text == null) {
+            return null;
+        }
+        if (!text.equals(tacText)) {
+            tacText = text;
+            tacLine = Component.literal(text);
+        }
+        return tacLine;
+    }
+
     private static void draw(GuiGraphicsExtractor g, List<AbilityCooldownTracker.Entry> entries,
-                             int x, int y) {
+                             Component tac, int x, int y) {
         Font font = Minecraft.getInstance().font;
 
-        int contentW = 0;
+        int contentW = tac == null ? 0 : font.width(tac);
         for (AbilityCooldownTracker.Entry entry : entries) {
             contentW = Math.max(contentW, font.width(text(entry)));
         }
+        int rows = entries.size() + (tac == null ? 0 : 1);
         int width = Math.max(MIN_W, PAD * 2 + contentW);
         int lineH = font.lineHeight + LINE_GAP;
-        int height = PAD * 2 + lineH * entries.size() - LINE_GAP;
+        int height = PAD * 2 + lineH * rows - LINE_GAP;
         HudLayout.measure(HudElement.ABILITY_TIMERS, x, y, width, height);
 
         HudCard.draw(g, x, y, width, height);
@@ -79,6 +120,9 @@ public final class AbilityCooldownHud {
             g.text(font, Component.literal(text(entry)), ix, iy,
                     entry.ready() ? READY_COLOR : entry.ability().color());
             iy += lineH;
+        }
+        if (tac != null) {
+            g.text(font, tac, ix, iy, TAC_COLOR);
         }
     }
 

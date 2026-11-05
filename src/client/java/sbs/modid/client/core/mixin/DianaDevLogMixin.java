@@ -26,6 +26,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import sbs.modid.client.core.dev.PacketThreadCheck;
 import sbs.modid.client.combat.diana.devlog.DevLogEvents;
 import sbs.modid.client.combat.diana.devlog.DianaDevLog;
 
@@ -64,6 +65,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "handleSoundEvent", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logSound(ClientboundSoundPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logSound");
         if (DianaDevLog.enabled) {
             DianaDevLog.onSound(packet);
         }
@@ -71,6 +73,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "handleSoundEntityEvent", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logSoundEntity(ClientboundSoundEntityPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logSoundEntity");
         if (DianaDevLog.enabled) {
             DianaDevLog.onSoundEntity(packet);
         }
@@ -78,6 +81,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "handleParticleEvent", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logParticle(ClientboundLevelParticlesPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logParticle");
         if (DianaDevLog.enabled) {
             DianaDevLog.onParticle(packet);
         }
@@ -85,6 +89,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "handleAddEntity", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logAddEntity(ClientboundAddEntityPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logAddEntity");
         if (DianaDevLog.enabled) {
             DianaDevLog.onAddEntity(packet);
         }
@@ -92,6 +97,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "handleSetEntityData", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logEntityData(ClientboundSetEntityDataPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logEntityData");
         if (DianaDevLog.enabled) {
             DianaDevLog.onEntityData(packet);
         }
@@ -99,6 +105,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "handleSetEquipment", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logEquipment(ClientboundSetEquipmentPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logEquipment");
         if (DianaDevLog.enabled) {
             DianaDevLog.onEquipment(packet);
         }
@@ -106,6 +113,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "handleRemoveEntities", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logRemoveEntities(ClientboundRemoveEntitiesPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logRemoveEntities");
         if (DianaDevLog.enabled) {
             DianaDevLog.onRemoveEntities(packet);
         }
@@ -113,6 +121,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "handleBlockUpdate", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logBlockUpdate(ClientboundBlockUpdatePacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logBlockUpdate");
         if (DianaDevLog.enabled) {
             DianaDevLog.onBlockUpdate(packet);
         }
@@ -120,6 +129,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "handleChunkBlocksUpdate", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logSectionBlocks(ClientboundSectionBlocksUpdatePacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logSectionBlocks");
         if (DianaDevLog.enabled) {
             DianaDevLog.onSectionBlocks(packet);
         }
@@ -127,6 +137,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "handleSystemChat", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logSystemChat(ClientboundSystemChatPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logSystemChat");
         if (DianaDevLog.enabled) {
             DianaDevLog.onText(packet.overlay() ? DevLogEvents.ACTIONBAR : DevLogEvents.CHAT,
                     packet.content(), packet.overlay(), "system_chat");
@@ -135,6 +146,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "setActionBarText", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logActionBar(ClientboundSetActionBarTextPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logActionBar");
         if (DianaDevLog.enabled) {
             DianaDevLog.onText(DevLogEvents.ACTIONBAR, packet.text(), true, "set_action_bar_text");
         }
@@ -142,6 +154,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "setTitleText", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logTitle(ClientboundSetTitleTextPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logTitle");
         if (DianaDevLog.enabled) {
             DianaDevLog.onText(DevLogEvents.TITLE, packet.text(), false, "set_title_text");
         }
@@ -149,6 +162,7 @@ public class DianaDevLogMixin {
 
     @Inject(method = "setSubtitleText", at = @At(value = "INVOKE", target = ENSURE, shift = At.Shift.AFTER), require = 0)
     private void skyblockSimplified$logSubtitle(ClientboundSetSubtitleTextPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("DianaDevLogMixin.logSubtitle");
         if (DianaDevLog.enabled) {
             DianaDevLog.onText(DevLogEvents.SUBTITLE, packet.text(), false, "set_subtitle_text");
         }

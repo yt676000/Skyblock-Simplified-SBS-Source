@@ -136,11 +136,16 @@ final class HybridPlanner {
      * @return {@code true} once done - goal reached, or an A* piece could not get through
      */
     boolean step(int budget) {
+        return step(budget, Long.MAX_VALUE);
+    }
+
+    /** {@link #step(int)}, stopping once {@code deadlineNanos} has passed - the per-tick ceiling. */
+    boolean step(int budget, long deadlineNanos) {
         int left = budget;
-        while (!finished && left > 0) {
+        while (!finished && left > 0 && System.nanoTime() <= deadlineNanos) {
             if (fine != null) {
                 int before = fine.expanded();
-                boolean done = fine.step(left);
+                boolean done = fine.step(left, deadlineNanos);
                 int spent = Math.max(1, fine.expanded() - before);
                 nodes += spent;
                 left -= spent;

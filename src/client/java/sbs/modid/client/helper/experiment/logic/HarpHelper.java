@@ -27,6 +27,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Melody's Harp helper: which lane to click and when, with the cue moved earlier by ping + reaction.
@@ -45,6 +46,7 @@ public final class HarpHelper {
     private static final long CHAT_WINDOW_MS = 2_000L;
     private static final long PING_EVERY_MS = 2_000L;
     private static final int PING_SAMPLES = 10;
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     private final HarpModel model = new HarpModel();
     private final Deque<Integer> pings = new ArrayDeque<>();
@@ -67,12 +69,12 @@ public final class HarpHelper {
     }
 
     /** "La Vie en Rose" when {@code title} is a Harp board, else {@code null}. */
-    static String songOf(String title) {
+    public static String songOf(String title) {
         return title != null && title.startsWith(TITLE_PREFIX) ? title.substring(TITLE_PREFIX.length()).trim() : null;
     }
 
     private static String titleOf(AbstractContainerScreen<?> screen) {
-        return screen.getTitle() == null ? "" : screen.getTitle().getString().replaceAll("§.", "").trim();
+        return screen.getTitle() == null ? "" : FORMATTING.matcher(screen.getTitle().getString()).replaceAll("").trim();
     }
 
     private boolean logging() {
@@ -226,6 +228,6 @@ public final class HarpHelper {
             return;
         }
         SkyblockSimplifiedSBS.LOGGER.info("[SBS][Harp] chat t={} '{}'", System.currentTimeMillis(),
-                text.replaceAll("§.", ""));
+                FORMATTING.matcher(text).replaceAll(""));
     }
 }

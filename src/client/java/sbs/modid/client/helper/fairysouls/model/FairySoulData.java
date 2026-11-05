@@ -105,6 +105,23 @@ public final class FairySoulData implements VersionedDocument {
         }
     }
 
+    /**
+     * The generator's soul count for {@code island}, or {@code 0} when the island is not in the file.
+     * The count, not the coordinate list: with partial coverage the two differ, and a question about
+     * how many souls an island has is about the game, not about what this file ships.
+     */
+    public int countOn(String island) {
+        if (islands == null || island == null) {
+            return 0;
+        }
+        for (Island entry : islands) {
+            if (entry != null && island.equalsIgnoreCase(entry.island)) {
+                return entry.count;
+            }
+        }
+        return 0;
+    }
+
     /** Every soul across every island. */
     public List<FairySoul> all() {
         List<FairySoul> out = new ArrayList<>();

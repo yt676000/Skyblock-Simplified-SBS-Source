@@ -21,6 +21,7 @@ import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The Livid card: which Livid was identified and how sure the tracker is of it, its health, how many
@@ -34,6 +35,7 @@ public final class LividHud {
     private static final int LINE_GAP = 3;
     private static final int MIN_W = 140;
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     private LividHud() {
     }
@@ -120,6 +122,6 @@ public final class LividHud {
     }
 
     private static String strip(String text) {
-        return text.replaceAll(SECTION_SIGN + ".", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 }

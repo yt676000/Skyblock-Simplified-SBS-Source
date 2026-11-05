@@ -25,6 +25,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -56,6 +57,8 @@ public final class CalendarEvents {
     private String minister = "";
     /** Occurrences already alerted, keyed by event id and the minute it starts. */
     private final Set<String> alerted = new HashSet<>();
+    /** Bumped when the tab reading, the mayor or the minister changes; part of the Timers card's model key. */
+    private volatile int revision;
 
     private CalendarEvents() {
     }
@@ -79,12 +82,29 @@ public final class CalendarEvents {
     }
 
     /** Once a second, from the timers' scan: re-read the tab, then fire a due alert. */
+    /** Moves when the tab reading, the mayor or the minister changes; compare for change, never for order. */
+    int revision() {
+        return revision;
+    }
+
+    /** The loaded calendar document, or {@code null} before the first load; a reload swaps the instance. */
+    Object data() {
+        return store.get();
+    }
+
     void tick(long minuteOfYear) {
         List<String> lines = TabWidgets.lines();
-        tab = EventWidget.parse(lines);
+        EventWidget.Reading reading = EventWidget.parse(lines);
+        String newMayor = DianaEvent.official(lines, DianaEvent.MAYOR_ROW);
+        String newMinister = DianaEvent.official(lines, DianaEvent.MINISTER_ROW);
+        if (!Objects.equals(reading, tab) || !Objects.equals(newMayor, mayor)
+                || !Objects.equals(newMinister, minister)) {
+            revision++;
+        }
+        tab = reading;
         tabReadAt = System.currentTimeMillis();
-        mayor = DianaEvent.official(lines, DianaEvent.MAYOR_ROW);
-        minister = DianaEvent.official(lines, DianaEvent.MINISTER_ROW);
+        mayor = newMayor;
+        minister = newMinister;
         alert(minuteOfYear);
     }
 

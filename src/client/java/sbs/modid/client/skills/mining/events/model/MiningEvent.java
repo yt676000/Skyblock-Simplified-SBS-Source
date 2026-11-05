@@ -9,6 +9,7 @@
 package sbs.modid.client.skills.mining.events.model;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The Dwarven Mines / Crystal Hollows lobby events, as the game names them in chat.
@@ -28,6 +29,8 @@ public enum MiningEvent {
     MITHRIL_GOURMAND("Mithril Gourmand", Kind.OBJECTIVE),
     /** A name not listed above. The raw name travels with it. */
     UNKNOWN("Unknown event", Kind.PASSIVE);
+
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
     /**
      * The subtitle line under the header. {@code Passive Active Event} events run their full time;
@@ -68,7 +71,7 @@ public enum MiningEvent {
         if (name == null) {
             return UNKNOWN;
         }
-        String wanted = name.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        String wanted = WHITESPACE.matcher(name.trim()).replaceAll(" ").toLowerCase(Locale.ROOT);
         for (MiningEvent event : values()) {
             if (event != UNKNOWN && event.displayName.toLowerCase(Locale.ROOT).equals(wanted)) {
                 return event;

@@ -161,7 +161,7 @@ public final class SeaCreatureAnnouncerModule implements SbsModule {
                 .describe("Puts the creature's name across the middle of the screen with its "
                         + "rarity underneath, through the shared alert titles."));
 
-        rows.add(SettingRow.toggle("Play Sound", () -> cfg().sound,
+        rows.add(SettingRow.soundToggle("Play Sound", () -> cfg().sound,
                         () -> { cfg().sound = !cfg().sound; save(); })
                 .describe("A ping on the mod's own audio output, so it is audible with the game "
                         + "muted and follows your alert volume."));

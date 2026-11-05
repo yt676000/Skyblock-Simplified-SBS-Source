@@ -56,6 +56,8 @@ import java.util.regex.Pattern;
  */
 public final class BeaconTuningSolver {
 
+    private static final Pattern NON_ALNUM = Pattern.compile("[^a-z0-9]");
+
     /**
      * A trait a beat is made of. The label is matched loosely on its stem: both spellings of colour
      * turn up in Hypixel menus, and a menu is free to write "Colours" or "Pitch (Note)".
@@ -417,7 +419,7 @@ public final class BeaconTuningSolver {
 
     /** Values compare on letters and digits only, so "Light Blue" and {@code light_blue} agree. */
     private static String norm(String raw) {
-        return raw == null ? "" : raw.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        return raw == null ? "" : NON_ALNUM.matcher(raw.toLowerCase(Locale.ROOT)).replaceAll("");
     }
 
     // ------------------------------------------------------------------

@@ -11,12 +11,12 @@ package sbs.modid.client.helper.scoreboard;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.scores.DisplaySlot;
 import net.minecraft.world.scores.Objective;
-import net.minecraft.world.scores.PlayerScoreEntry;
-import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
+import sbs.modid.client.core.render.CachedModel;
+import sbs.modid.client.core.scoreboard.ScoreboardSnapshot;
+import sbs.modid.client.core.scoreboard.ScoreboardSnapshots;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -42,20 +42,19 @@ public final class ScoreboardReader {
     private static final char SECTION_SIGN = (char) 0x00A7;
 
     /** Highest score at the top, matching the vanilla sidebar. */
-    private static final Comparator<PlayerScoreEntry> BY_SCORE_DESC =
-            Comparator.comparingInt(PlayerScoreEntry::value).reversed();
+    private static final Comparator<ScoreboardSnapshot.Line> BY_SCORE_DESC =
+            Comparator.comparingInt(ScoreboardSnapshot.Line::score).reversed();
+
+    /** The display rows, derived once per sidebar change rather than once per frame. */
+    private static final CachedModel<ScoreboardSnapshot, List<ScoreboardLine>> LINES =
+            new CachedModel<>("scoreboard.lines", ScoreboardReader::displayLines);
 
     private ScoreboardReader() {
     }
 
-    /** True when a sidebar objective is currently displayed. */
+    /** True when a sidebar objective is currently displayed and has rows. */
     public static boolean hasSidebar() {
-        Scoreboard scoreboard = scoreboard();
-        if (scoreboard == null) {
-            return false;
-        }
-        Objective sidebar = scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
-        return sidebar != null && !scoreboard.listPlayerScores(sidebar).isEmpty();
+        return ScoreboardSnapshots.current().hasSidebar();
     }
 
     /** The sidebar's title component, or {@code null} when there is no sidebar. */
@@ -64,28 +63,33 @@ public final class ScoreboardReader {
         return sidebar == null ? null : sidebar.getDisplayName();
     }
 
-    /** The sidebar rows top-to-bottom (highest score first), colours intact; empty when none. */
+    /**
+     * The sidebar rows top-to-bottom (highest score first), colours intact; empty when none.
+     *
+     * <p>Built from the shared {@link ScoreboardSnapshot} and cached on it, so a frame on which the
+     * sidebar has not changed costs a lookup. The list is immutable and shared - copy it to change it.
+     */
     public static List<ScoreboardLine> lines() {
-        List<ScoreboardLine> lines = new ArrayList<>();
-        Scoreboard scoreboard = scoreboard();
-        if (scoreboard == null) {
-            return lines;
-        }
-        Objective sidebar = scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
-        if (sidebar == null) {
-            return lines;
-        }
-        List<PlayerScoreEntry> entries = new ArrayList<>(scoreboard.listPlayerScores(sidebar));
+        return LINES.get(ScoreboardSnapshots.current());
+    }
+
+    /**
+     * The snapshot's rows in vanilla's order - score descending, capped at {@value #MAX_LINES}. The
+     * sort is stable over the snapshot's own order, which is the order {@code listPlayerScores} gave,
+     * so ties land exactly where the old per-call sort put them.
+     */
+    private static List<ScoreboardLine> displayLines(ScoreboardSnapshot snapshot) {
+        List<ScoreboardSnapshot.Line> entries = new ArrayList<>(snapshot.lines());
         entries.sort(BY_SCORE_DESC);
-        for (PlayerScoreEntry entry : entries) {
+        List<ScoreboardLine> lines = new ArrayList<>(Math.min(entries.size(), MAX_LINES));
+        for (ScoreboardSnapshot.Line entry : entries) {
             if (lines.size() >= MAX_LINES) {
                 break;
             }
-            Component display = lineComponent(scoreboard, entry);
-            String stripped = strip(display.getString());
-            lines.add(new ScoreboardLine(display, stripped, signatureOf(stripped)));
+            // entry.text() is strip(display.getString()) - the same stripping this class does.
+            lines.add(new ScoreboardLine(entry.display(), entry.text(), signatureOf(entry.text())));
         }
-        return lines;
+        return List.copyOf(lines);
     }
 
     /**
@@ -108,25 +112,6 @@ public final class ScoreboardReader {
     private static Objective sidebarObjective() {
         Scoreboard scoreboard = scoreboard();
         return scoreboard == null ? null : scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
-    }
-
-    /**
-     * Rebuilds a line's coloured component from its team prefix/suffix around the owner – the same
-     * {@code prefix + owner + suffix} composite vanilla renders (and that
-     * {@link sbs.modid.client.dungeons.run.logic.DungeonScoreboard} strips for its area checks), so what the SBS
-     * panel shows matches the vanilla sidebar character for character.
-     */
-    private static Component lineComponent(Scoreboard scoreboard, PlayerScoreEntry entry) {
-        String owner = entry.owner();
-        PlayerTeam team = scoreboard.getPlayersTeam(owner);
-        if (team == null) {
-            return Component.literal(owner);
-        }
-        MutableComponent line = Component.empty();
-        line.append(team.getPlayerPrefix());
-        line.append(Component.literal(owner));
-        line.append(team.getPlayerSuffix());
-        return line;
     }
 
     /** Removes {@code §x} colour / format codes from a string. */

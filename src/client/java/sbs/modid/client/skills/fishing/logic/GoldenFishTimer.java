@@ -95,6 +95,11 @@ public final class GoldenFishTimer {
         warned = false;
     }
 
+    /** Whether {@link #tick} can return anything but {@link Event#NONE}: a session or a fish is up. */
+    public boolean active() {
+        return sessionStart != 0 || fishUpAt != 0;
+    }
+
     public Event tick(long now) {
         if (fishUpAt != 0 && now - fishUpAt > GoldenFishRules.STAY_MS) {
             endFish(now);

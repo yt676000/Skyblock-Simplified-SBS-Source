@@ -52,6 +52,9 @@ public final class ChatPatternRegistry {
 
     private final List<Entry> entries = new CopyOnWriteArrayList<>();
 
+    /** Labels whose handler failure was already logged at WARN; later ones stay at DEBUG. */
+    private final java.util.Set<String> warnedLabels = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private ChatPatternRegistry() {
     }
 
@@ -64,9 +67,13 @@ public final class ChatPatternRegistry {
      * on the client thread (chat is added there) and must not block.
      */
     public void register(Pattern pattern, BiConsumer<Matcher, Component> handler, String label) {
-        if (pattern != null && handler != null) {
-            entries.add(new Entry(pattern, handler, label));
-        }
+        // Loud on purpose. This used to skip a null silently, and a singleton whose INSTANCE is
+        // declared above its static Pattern registers exactly that: the puzzle solvers, the tab
+        // reader's result lines and the draft reminder never received a chat line (found 2026-10-16).
+        java.util.Objects.requireNonNull(pattern, () -> "null pattern for chat handler '" + label
+                + "' - is the registering class's INSTANCE declared above its static Pattern fields?");
+        java.util.Objects.requireNonNull(handler, () -> "null handler for '" + label + "'");
+        entries.add(new Entry(pattern, handler, label));
     }
 
     /** Convenience overload for handlers that only need the matched groups, not the raw component. */
@@ -109,8 +116,15 @@ public final class ChatPatternRegistry {
                     }
                 }
             } catch (RuntimeException e) {
-                SkyblockSimplifiedSBS.LOGGER.debug("[SBS][Dungeon] chat handler '{}' failed: {}",
-                        entry.label(), e.toString());
+                // The first failure per handler is a WARN with its stack: at DEBUG alone a handler
+                // that throws on every line - the puzzle solvers' chat, say - fails invisibly.
+                if (warnedLabels.add(entry.label())) {
+                    SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Dungeon] chat handler '{}' failed on '{}'",
+                            entry.label(), text, e);
+                } else {
+                    SkyblockSimplifiedSBS.LOGGER.debug("[SBS][Dungeon] chat handler '{}' failed: {}",
+                            entry.label(), e.toString());
+                }
             }
         }
     }

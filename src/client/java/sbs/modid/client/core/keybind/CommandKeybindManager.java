@@ -117,10 +117,11 @@ public final class CommandKeybindManager {
      * {@link KeybindDispatch} only while in-world with no screen open, with a key, a mouse button or
      * a wheel direction – all one {@link Keys} code here.
      */
-    public void onPressed(int code, int modifiers) {
+    public boolean onPressed(int code, int modifiers) {
         if (code == CommandKeybind.UNBOUND) {
-            return;
+            return false;
         }
+        boolean fired = false;
         int mods = modifiers & (CommandKeybind.MOD_SHIFT | CommandKeybind.MOD_CTRL | CommandKeybind.MOD_ALT);
         // Copy first: an action may run something that mutates the list.
         for (CommandKeybind keybind : new ArrayList<>(binds())) {
@@ -131,7 +132,9 @@ public final class CommandKeybindManager {
                 continue;
             }
             runActions(keybind);
+            fired = true;
         }
+        return fired;
     }
 
     /**

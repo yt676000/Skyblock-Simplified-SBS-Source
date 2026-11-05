@@ -44,7 +44,7 @@ public abstract class PlayerNoteNametagMixin {
         SBSConfig.PlayerNotesSettings cfg = ConfigManager.getInstance().get().playerNotes;
         // Streamer Mode hides it: on a stream the marker would publish your opinion of the player.
         if (!cfg.enabled || !cfg.nametagMarker || state.nameTag == null
-                || !(entity instanceof Player player) || !sbs.modid.client.core.player.RealPlayers.isRealPlayer(entity)
+                || !(entity instanceof Player player) || !sbs.modid.client.core.player.RealPlayers.hasPlayerListEntry(entity)
                 || sbs.modid.client.helper.streamer.logic.StreamerNames.getInstance().active()) {
             return;
         }

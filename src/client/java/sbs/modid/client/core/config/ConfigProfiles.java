@@ -166,6 +166,8 @@ public final class ConfigProfiles {
         if (isDefault(name)) {
             return false;
         }
+        // Config saves are deferred: land them first, so none recreates the file after it is gone.
+        ConfigManager.getInstance().flush();
         try {
             Files.deleteIfExists(SBSFiles.configProfileFile(name));
             SkyblockSimplifiedSBS.LOGGER.info("[SBS] Deleted config profile '{}'", name);
@@ -194,6 +196,8 @@ public final class ConfigProfiles {
             return null;   // unchanged – not a failure, just nothing to do
         }
         String name = unique(target);
+        // Land a deferred config save under the old name before the file moves away from it.
+        ConfigManager.getInstance().flush();
         try {
             Files.move(SBSFiles.configProfileFile(from), SBSFiles.configProfileFile(name));
             if (from.equals(active)) {

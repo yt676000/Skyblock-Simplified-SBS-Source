@@ -36,6 +36,8 @@ import java.util.regex.Pattern;
  */
 public final class VisitorShoppingList {
 
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+
     /** One visitor's known offer. {@code copper} is -1 when the menu did not show it. */
     public record Offer(String visitor, List<Required> items, int copper, String rareReward) {
     }
@@ -129,7 +131,7 @@ public final class VisitorShoppingList {
 
     /** The map key for a visitor name: case and spacing never make two entries. */
     public static String key(String visitor) {
-        return visitor == null ? "" : visitor.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        return visitor == null ? "" : WHITESPACE.matcher(visitor.trim()).replaceAll(" ").toLowerCase(Locale.ROOT);
     }
 
     // ------------------------------------------------------------------ the sums

@@ -19,6 +19,7 @@ import sbs.modid.client.dungeons.run.model.DungeonTeamClasses;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Teammate low-health warning: reads the teammate rows of the dungeon sidebar and warns when one
@@ -38,6 +39,7 @@ public final class TeamHealthTracker {
     /** The sidebar changes on a server tick; four reads a second is plenty. */
     private static final long SCAN_MS = 250L;
     private static final int MAX_LOGGED = 16;
+    private static final Pattern DIGIT = Pattern.compile("\\d");
 
     private final LowHealthMonitor monitor = new LowHealthMonitor();
     private final Set<String> logged = new HashSet<>();
@@ -111,7 +113,7 @@ public final class TeamHealthTracker {
     /** The probe: one line per run for the first readable row, one per distinct unreadable row. */
     private void note(String line, TeamHealthParser.Reading reading) {
         if (reading.state() == TeamHealthParser.State.UNKNOWN) {
-            String shape = line.replaceAll("\\d", "#").toLowerCase(Locale.ROOT);
+            String shape = DIGIT.matcher(line).replaceAll("#").toLowerCase(Locale.ROOT);
             if (logged.size() < MAX_LOGGED && logged.add(shape)) {
                 SkyblockSimplifiedSBS.LOGGER.info("[SBS][TeamHealth] teammate row with no readable "
                         + "health (format unverified): \"{}\"", line);

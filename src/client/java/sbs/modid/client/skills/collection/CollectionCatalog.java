@@ -8,6 +8,10 @@
 
 package sbs.modid.client.skills.collection;
 
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -25,6 +29,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * The SkyBlock collection catalogue: display name → tier requirements, fed by the official
@@ -49,6 +54,7 @@ public final class CollectionCatalog {
 // ============================================================================
     private static final String URL = "https://api.hypixel.net/v2/resources/skyblock/collections";
     private static final long REFRESH_MS = 7L * 24 * 60 * 60 * 1000;
+    private static final Pattern NON_ALNUM = Pattern.compile("[^A-Z0-9]");
 
     /** One collection: item id, pretty name, and the cumulative amount required per tier. */
     public record Info(String id, String name, long[] tierAmounts) {
@@ -100,7 +106,7 @@ public final class CollectionCatalog {
 
     /** Upper-cased, alphanumeric-only key ("Hard Stone"/"Hardstone"/"HARD_STONE" -> "HARDSTONE"). */
     public static String normalizeKey(String value) {
-        return value == null ? "" : value.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+        return value == null ? "" : NON_ALNUM.matcher(value.toUpperCase(Locale.ROOT)).replaceAll("");
     }
 
     /** The collection matching a name OR an id (normalized), or {@code null}. */
@@ -135,12 +141,11 @@ public final class CollectionCatalog {
     }
 
     private static void fetch() {
-        try (HttpClient client = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .connectTimeout(Duration.ofSeconds(15)).build()) {
+        try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(URL))
                     .timeout(Duration.ofSeconds(30)).build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = SecureHttp.send(MessageTypes.HYPIXEL_COLLECTIONS, request,
+                    HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() / 100 != 2) {
                 SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Collections] resource HTTP {}",
                         response.statusCode());
@@ -157,7 +162,14 @@ public final class CollectionCatalog {
     /** {@code collections.<CATEGORY>.items.<ID> = {name, tiers:[{tier, amountRequired}]}}. */
     private static void parse(String json) {
         Map<String, Info> parsed = new HashMap<>();
-        JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+        JsonObject root;
+        try {
+            // The cached copy is re-validated on every load, so a damaged or altered file is refused
+            // the same way a bad response is.
+            root = MessageSchemas.parse(MessageTypes.HYPIXEL_COLLECTIONS, json).getAsJsonObject();
+        } catch (sbs.modid.client.core.net.validation.ValidationException invalid) {
+            return;
+        }
         JsonObject categories = root.getAsJsonObject("collections");
         if (categories == null) {
             return;

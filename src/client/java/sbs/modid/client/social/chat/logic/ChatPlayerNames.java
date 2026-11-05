@@ -31,6 +31,9 @@ public final class ChatPlayerNames {
     /** A Minecraft username: 1-16 word characters. Guards against pasting arbitrary text as a name. */
     private static final Pattern USERNAME = Pattern.compile("\\w{1,16}");
 
+    /** Whitespace runs between a click command's arguments. */
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+
     /** Commands whose first argument is a player name. */
     private static final String[] NAME_COMMANDS = {
             "msg", "tell", "w", "whisper", "socialoptions", "profile", "pv", "ah", "visit"};
@@ -65,7 +68,7 @@ public final class ChatPlayerNames {
         if (trimmed.startsWith("/")) {
             trimmed = trimmed.substring(1);
         }
-        String[] parts = trimmed.split("\\s+");
+        String[] parts = WHITESPACE.split(trimmed);
         if (parts.length < 2) {
             return null;
         }

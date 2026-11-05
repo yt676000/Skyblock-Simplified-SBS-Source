@@ -16,7 +16,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import org.joml.Vector4f;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.dev.DevMode;
@@ -58,7 +59,11 @@ public final class DungeonHighlight {
     private final List<BlockPos> testWaypoints = new ArrayList<>();
 
     private static final int COLOR_COMPLEX = 0xFFFFE000; // gold – room complex box
-    private static final int COLOR_STARRED = 0xFFFFE000; // yellow – starred mob hitbox
+    /** Starred-mob colour and style, resolved once per config revision rather than per frame. */
+    private int starredRevision = Integer.MIN_VALUE;
+    private int starredColor = 0xFFFFE000;
+    private boolean starredBox = true;
+    private boolean starredOutline;
     /** Opacity (percent) of the known wither doors that are not the next one ("Show All Wither Doors"). */
     private static final int FAINT_DOOR_OPACITY = 35;
     /** Height (blocks) of the drawn room-complex box above the floor. */
@@ -69,6 +74,14 @@ public final class DungeonHighlight {
 
     /** Starred (✯) dungeon mobs to box, refreshed every client tick by the tracker. */
     private volatile List<net.minecraft.world.entity.Entity> starredMobs = List.of();
+
+    /**
+     * Ids of the same line-of-sight-filtered starred mobs, read by the outline mixin on the render
+     * thread: an immutable snapshot swapped by the tick, so a lookup is one hash probe.
+     */
+    private volatile it.unimi.dsi.fastutil.ints.IntSet starredIds = it.unimi.dsi.fastutil.ints.IntSets.EMPTY_SET;
+    /** Opaque outline colour, or 0 while the style draws no outline. */
+    private volatile int outlineColor;
 
     /** Debug scan overlay (dev only): the tested door + each scanned block and whether it matched. */
     private volatile BlockPos debugDoor;
@@ -148,10 +161,38 @@ public final class DungeonHighlight {
     /** Replaces the starred-mob list (collected once per client tick, never in the render pass). */
     public void setStarredMobs(List<net.minecraft.world.entity.Entity> mobs) {
         this.starredMobs = mobs == null ? List.of() : List.copyOf(mobs);
+        this.starredIds = StarredMobIds.of(this.starredMobs, net.minecraft.world.entity.Entity::getId);
     }
 
     public void clearStarredMobs() {
         this.starredMobs = List.of();
+        this.starredIds = it.unimi.dsi.fastutil.ints.IntSets.EMPTY_SET;
+    }
+
+    /** Re-reads the starred-mob style and colour when the config revision moved; client tick. */
+    public void refreshStarredStyle() {
+        var configs = ConfigManager.getInstance();
+        int revision = configs.revision();
+        if (revision == starredRevision) {
+            return;
+        }
+        starredRevision = revision;
+        var dungeons = configs.get().dungeons;
+        var style = dungeons.starredMobStyle == null
+                ? sbs.modid.client.dungeons.run.model.StarredMobStyle.HITBOX : dungeons.starredMobStyle;
+        starredColor = dungeons.starredMobArgb();
+        starredBox = style.box();
+        starredOutline = style.outline();
+        outlineColor = starredOutline ? starredColor : 0;
+    }
+
+    /**
+     * The outline colour for an entity being extracted for rendering, or 0 for "leave vanilla's".
+     * Render thread, once per entity per frame: a volatile read and an int-set probe, no allocation.
+     */
+    public int starredOutlineColor(int entityId) {
+        int color = outlineColor;
+        return color != 0 && starredIds.contains(entityId) ? color : 0;
     }
 
     // ---- rendering ---------------------------------------------------------------------------------
@@ -164,7 +205,7 @@ public final class DungeonHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
 
         boolean tracers = ConfigManager.getInstance().get().dungeons.showTracers;
@@ -206,15 +247,20 @@ public final class DungeonHighlight {
             }
         }
 
-        // Feature: yellow hitbox around every visible starred (✯) mob (list is tick-cached).
+        // Feature: hitbox around every visible starred (✯) mob (list is tick-cached). The outline
+        // style is drawn by vanilla's outline pass instead - see StarredMobOutlineMixin.
+        int starColor = starredColor;
+        boolean starBox = starredBox;
         for (net.minecraft.world.entity.Entity mob : starredMobs) {
             if (mob.isAlive()) {
                 net.minecraft.world.phys.AABB box = mob.getBoundingBox();
-                drawBoxEdges(g, viewProjection, camPos,
-                        box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, COLOR_STARRED);
+                if (starBox) {
+                    drawBoxEdges(g, viewProjection, camPos,
+                            box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, starColor);
+                }
                 if (tracers) {
                     sbs.modid.client.core.render.WorldRender.tracerToBox(g, viewProjection, camPos,
-                            box, COLOR_STARRED, 2);
+                            box, starColor, 2);
                 }
             }
         }
@@ -244,7 +290,7 @@ public final class DungeonHighlight {
      * ({@value #BOX_HEIGHT} above), plus one vertical post per unique segment endpoint – a single
      * connected border that visibly encloses the whole room, instead of per-cell boxes.
      */
-    private void drawOutline(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos) {
+    private void drawOutline(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos) {
         List<OutlineSegment> outline = debugOutline;
         if (outline.isEmpty()) {
             return;
@@ -269,12 +315,12 @@ public final class DungeonHighlight {
         return ((long) x << 32) | (z & 0xFFFFFFFFL);
     }
 
-    private static void line3D(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos, Vec3 a, Vec3 b) {
+    private static void line3D(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos, Vec3 a, Vec3 b) {
         sbs.modid.client.core.render.WorldRender.line3d(g, vp, camPos, a, b, COLOR_COMPLEX, LINE_THICKNESS);
     }
 
     /** Draws a 3D line box around the room complex (its 32x32-cell footprint, {@value #BOX_HEIGHT} high). */
-    private static void drawComplexBox(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos, BlockPos min, BlockPos max) {
+    private static void drawComplexBox(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos, BlockPos min, BlockPos max) {
         drawBoxEdges(g, vp, camPos, min.getX(), min.getY(), min.getZ(),
                 max.getX() + 1, min.getY() + BOX_HEIGHT, max.getZ() + 1, COLOR_COMPLEX);
     }
@@ -289,7 +335,7 @@ public final class DungeonHighlight {
      * snapped back as you turned inside the room - the very place you are standing when you need it.
      * The 2px line it drew is exactly {@code WorldRender.line} at {@link #LINE_THICKNESS}.
      */
-    private static void drawBoxEdges(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos,
+    private static void drawBoxEdges(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos,
                                      double x0, double y0, double z0, double x1, double y1, double z1, int color) {
         sbs.modid.client.core.render.WorldRender.boxEdges(g, vp, camPos, x0, y0, z0, x1, y1, z1,
                 color, LINE_THICKNESS);
@@ -300,7 +346,7 @@ public final class DungeonHighlight {
     }
 
     /** Projects {@code world} to the screen and draws a box marker (and an optional label + distance). */
-    private static void marker(GuiGraphicsExtractor g, Font font, Matrix4f viewProjection, Vec3 camPos,
+    private static void marker(GuiGraphicsExtractor g, Font font, Matrix4fc viewProjection, Vec3 camPos,
                                Vec3 world, int color, String label, boolean big) {
         Vec3 relative = world.subtract(camPos);
         Vector4f clip = viewProjection.transform(

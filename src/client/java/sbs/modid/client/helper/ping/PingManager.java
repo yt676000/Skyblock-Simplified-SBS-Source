@@ -8,6 +8,7 @@
 
 package sbs.modid.client.helper.ping;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -355,7 +356,7 @@ public final class PingManager {
         if (!cfg.sound || cfg.soundVolume <= 0) {
             return;
         }
-        player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(),
+        SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(),
                 Math.min(100, cfg.soundVolume) / 100.0f, 1.9f);
     }
 }

@@ -185,6 +185,9 @@ public final class LayoutRecorder {
         String title = screen.getTitle() == null ? "" : screen.getTitle().getString();
         Set<String> names = players();
         List<LayoutCanon.Slot> slots = new ArrayList<>();
+        // The drawn model when the server overrides it (Hypixel draws a log on a paper item this
+        // way). Example only: it is kept out of the canon slot, so layout signatures are unchanged.
+        java.util.Map<Integer, String> models = new java.util.HashMap<>();
         for (Slot slot : screen.getMenu().slots) {
             if (slot.container instanceof Inventory) {
                 continue;   // the player's own inventory is not the menu's layout
@@ -196,6 +199,11 @@ public final class LayoutRecorder {
             String id = SkyblockItem.id(stack);
             if (id == null || id.isEmpty()) {
                 id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+            }
+            var model = stack.get(net.minecraft.core.component.DataComponents.ITEM_MODEL);
+            if (model != null && !model.equals(stack.getItem().components()
+                    .get(net.minecraft.core.component.DataComponents.ITEM_MODEL))) {
+                models.put(slot.index, model.toString());
             }
             slots.add(new LayoutCanon.Slot(slot.index, id, stack.getHoverName().getString(),
                     ItemPriceKey.lore(stack), stack.getCount(), stack.hasFoil()));
@@ -213,6 +221,9 @@ public final class LayoutRecorder {
             s.add("lore", lore);
             s.addProperty("count", slot.count());
             s.addProperty("glint", slot.glint());
+            if (models.containsKey(slot.index())) {
+                s.addProperty("model", models.get(slot.index()));
+            }
             example.add(s);
         }
         JsonObject raw = new JsonObject();

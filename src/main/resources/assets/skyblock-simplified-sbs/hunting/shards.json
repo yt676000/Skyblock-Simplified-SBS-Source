@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
- "dataVersion": 1,
- "generatedAt": "2026-08-20T20:45:43Z",
+ "dataVersion": 2,
+ "generatedAt": "2026-10-06T00:00:00Z",
  "source": "api.hypixel.net/v2/skyblock/bazaar (keyless) SHARD_* products",
  "levelling": {},
  "unconsumable": [],
@@ -240,6 +240,11 @@
    "name": "CHILL",
    "displayName": "Chill",
    "canonicalId": "ATTRIBUTE_SHARD_CHILL;1"
+  },
+  {
+   "name": "CHOCOBUN",
+   "displayName": "Chocobun",
+   "canonicalId": "ATTRIBUTE_SHARD_CHOCOBUN;1"
   },
   {
    "name": "CHUCKWALLA",

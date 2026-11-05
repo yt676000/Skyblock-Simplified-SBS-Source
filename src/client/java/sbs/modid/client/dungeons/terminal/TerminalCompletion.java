@@ -16,6 +16,7 @@ import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.dungeons.floorseven.logic.TerminalTracker;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * What happens the moment <b>you</b> finish a terminal: how long it took, whether that beat your
@@ -45,6 +46,9 @@ public final class TerminalCompletion {
 
     /** Hypixel disconnects a client whose chat packet runs long; the party line is capped well under. */
     private static final int MAX_MESSAGE = 200;
+    private static final Pattern EMPTY_PARENS = Pattern.compile("\\(\\s*\\)");
+    private static final Pattern EMPTY_BRACKETS = Pattern.compile("\\[\\s*\\]");
+    private static final Pattern MULTI_SPACE = Pattern.compile("\\s{2,}");
 
     private Object openScreen;
     private TerminalType openType = TerminalType.NONE;
@@ -153,9 +157,9 @@ public final class TerminalCompletion {
      * to the sentence, so they go with it.
      */
     private static String tidy(String text) {
-        return text.replaceAll("\\(\\s*\\)", "")
-                .replaceAll("\\[\\s*\\]", "")
-                .replaceAll("\\s{2,}", " ")
+        String tidied = EMPTY_PARENS.matcher(text).replaceAll("");
+        tidied = EMPTY_BRACKETS.matcher(tidied).replaceAll("");
+        return MULTI_SPACE.matcher(tidied).replaceAll(" ")
                 .trim();
     }
 

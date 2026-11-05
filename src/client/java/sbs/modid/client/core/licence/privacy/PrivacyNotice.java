@@ -26,6 +26,10 @@ import sbs.modid.client.social.chat.logic.SBSChat;
  * <p>Shown in chat rather than as a toast: it must survive long enough to be read and scrolled back
  * to, and a toast that expires in five seconds while the player is mid-fight is a notice in name
  * only. Once per account, recorded in the same file as the answers themselves.
+ *
+ * <p>The same tick also announces a policy update: when the user's answers were given against a
+ * {@link PrivacyPolicy#VERSION} other than this build's, one notice per new version, recorded in
+ * the consent file ({@link ConsentRegistry#policyNoticeDue}).
  */
 public final class PrivacyNotice {
 
@@ -57,15 +61,25 @@ public final class PrivacyNotice {
         doneThisSession = true;
 
         ConsentRegistry registry = ConsentManager.getInstance().registry();
-        if (registry.noticeShown()) {
+        if (!registry.noticeShown()) {
+            // The first notice already points at the screen, so it covers this policy version too.
+            registry.markNoticeShown();
+            registry.markPolicyNoticeShown();
+            announce("sbs.privacy.migration.title", "sbs.privacy.migration.body");
             return;
         }
-        registry.markNoticeShown();
-        announce();
+        if (registry.policyNoticeDue()) {
+            registry.markPolicyNoticeShown();
+            announce("sbs.privacy.policy_update.title", "sbs.privacy.policy_update.body");
+        }
     }
 
-    private static void announce() {
-        SBSChat.send(Component.literal(I18n.get("sbs.privacy.migration.title")).withColor(0xFFD64D));
-        SBSChat.send(Component.literal(I18n.get("sbs.privacy.migration.body")).withColor(0xFFFFFF));
+    /**
+     * Two plain chat lines. No click event: the policy button lives on the settings screen, behind
+     * the confirm prompt that names the host.
+     */
+    private static void announce(String titleKey, String bodyKey) {
+        SBSChat.send(Component.literal(I18n.get(titleKey)).withColor(0xFFD64D));
+        SBSChat.send(Component.literal(I18n.get(bodyKey)).withColor(0xFFFFFF));
     }
 }

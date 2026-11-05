@@ -246,6 +246,7 @@ public final class EnchantmentRecipeProvider implements RecipeProvider {
         }
         maxLevels = Map.copyOf(max);
         levelRanges = Map.copyOf(ranges);
+        sbs.modid.client.economy.prices.PriceVersion.bump();
         recipes = List.copyOf(built);
         RecipeRegistry.getInstance().markDirty();
         SkyblockSimplifiedSBS.LOGGER.info("[SBS][Enchants] {} enchant levels searchable, {} combine recipes.",

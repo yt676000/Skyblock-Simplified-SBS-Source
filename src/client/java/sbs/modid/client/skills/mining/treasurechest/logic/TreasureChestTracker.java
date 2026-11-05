@@ -124,17 +124,26 @@ public final class TreasureChestTracker {
         if (now - armedAt < ARM_CACHE_MS) {
             return armed;
         }
-        armedAt = now;
         MiningHelpersSettings cfg = cfg();
         boolean on = cfg.enabled
                 && (cfg.treasureChestBox || cfg.lockpickMarker || cfg.treasureChestCounter)
                 && SkyBlockLocation.onIsland(HollowsTracker.ISLAND);
-        String server = ServerWorldTime.serverName();
-        if (!on || !server.equals(lobby)) {
+        return arm(now, on, ServerWorldTime.serverName());
+    }
+
+    /**
+     * {@link #armed()} past its cache, with the inputs passed in so the tests reach it. A {@code null}
+     * server is a lobby not known yet (joining, before the tab list or the location API names it):
+     * the old lobby's chests are dropped once and the tracker stays disarmed until a name arrives.
+     */
+    boolean arm(long now, boolean on, String server) {
+        armedAt = now;
+        String known = server == null ? "" : server;
+        if (!on || !known.equals(lobby)) {
             clearChests();
-            lobby = server;
+            lobby = known;
         }
-        armed = on;
+        armed = on && server != null;
         return armed;
     }
 
@@ -240,6 +249,22 @@ public final class TreasureChestTracker {
             logShape(packet, spot, chest);
             return;
         }
+    }
+
+    /**
+     * Whether {@code packet} lands inside a claimed chest's grown block - the gate
+     * {@link #onParticlePacket} applies, without touching a marker. Asked by the particle limiter.
+     */
+    public boolean claimsPacket(ClientboundLevelParticlesPacket packet) {
+        if (packet == null || chests.isEmpty() || !armed() || !cfg().lockpickMarker) {
+            return false;
+        }
+        for (Chest chest : chests) {
+            if (LockpickSpot.inside(chest.x, chest.y, chest.z, packet.getX(), packet.getY(), packet.getZ())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** From {@code BlockInteractMixin}: the player right-clicked {@code pos}. Only clears a marker. */

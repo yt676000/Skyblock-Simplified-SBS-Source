@@ -17,7 +17,8 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.render.WorldRender;
@@ -76,7 +77,7 @@ public final class TrapEsp {
         TrapIndex index = TrapIndex.getInstance();
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         double limit = (double) cfg.renderDistance * cfg.renderDistance;
 
         if (cfg.dispensers) {
@@ -166,7 +167,7 @@ public final class TrapEsp {
     }
 
     /** A short spike out of the dispenser's face - the direction its arrows travel. */
-    private static void drawFacing(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawFacing(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                    BlockPos pos, Direction facing, int color) {
         Vec3 centre = new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
         Vec3 tip = centre.add(facing.getStepX() * SPIKE, facing.getStepY() * SPIKE,

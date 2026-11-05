@@ -50,6 +50,7 @@ public final class VisitorTimer {
     private static final Pattern ROW = Pattern.compile("(?i)^\\s*next visitor\\s*:\\s*(.*)$");
     private static final Pattern DURATION_PART = Pattern.compile("(?i)(\\d+)\\s*([hms])");
     private static final Pattern CLOCK = Pattern.compile("(\\d+):([0-5]\\d)");
+    private static final Pattern DIGIT = Pattern.compile("\\d");
 
     /** What the row says. */
     public enum Kind { FULL, COUNTING, UNREADABLE }
@@ -242,7 +243,7 @@ public final class VisitorTimer {
 
     /** One log line per distinct shape, digits blanked, so the countdown format gets pinned down. */
     private void logShape(Row read) {
-        String shape = read == null ? "<absent>" : read.raw().replaceAll("\\d", "#");
+        String shape = read == null ? "<absent>" : DIGIT.matcher(read.raw()).replaceAll("#");
         if (!shape.equals(loggedShape)) {
             loggedShape = shape;
             SkyblockSimplifiedSBS.LOGGER.info("[SBS][Visitors] next-visitor row '{}' -> {}",

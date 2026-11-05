@@ -11,7 +11,6 @@ package sbs.modid.client.skills.mining.events.render;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.network.chat.Component;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig.MiningEventSettings;
 import sbs.modid.client.core.location.SkyBlockLocation;
@@ -40,7 +39,8 @@ public final class MiningEventsHud {
     private static final int PAD = 5;
     private static final long REBUILD_MS = 250L;
 
-    private static List<String> lines = List.of();
+    /** The card as last built, with its rows measured. Render thread only. */
+    private static HudCard.Snapshot card;
     private static long builtAt;
 
     private MiningEventsHud() {
@@ -56,30 +56,39 @@ public final class MiningEventsHud {
             return;
         }
         long now = System.currentTimeMillis();
-        if (now - builtAt >= REBUILD_MS) {
-            builtAt = now;
-            lines = build(cfg, island, now);
-        }
         Font font = Minecraft.getInstance().font;
         int lineH = font.lineHeight + 2;
-        int width = 0;
-        for (String line : lines) {
-            width = Math.max(width, font.width(line));
+        if (card == null || now - builtAt >= REBUILD_MS) {
+            builtAt = now;
+            card = measure(font, lineH, build(cfg, island, now));
         }
-        width += PAD * 2;
-        int height = PAD * 2 + lineH * lines.size() - 2;
+        HudCard.Snapshot current = card;
         HudElement.Bounds b = HudElement.MINING_EVENTS.defaultBounds(g.guiWidth(), g.guiHeight());
         int x = Math.round(b.x());
         int y = Math.round(b.y());
-        HudLayout.measure(HudElement.MINING_EVENTS, x, y, width, height);
+        HudLayout.measure(HudElement.MINING_EVENTS, x, y, current.width(), current.height());
         HudLayout.begin(g, HudElement.MINING_EVENTS);
-        HudCard.draw(g, x, y, width, height);
+        HudCard.draw(g, x, y, current.width(), current.height());
         int iy = y + PAD;
-        for (String line : lines) {
-            g.text(font, Component.literal(line), x + PAD, iy, SBSTheme.ACCENT_BRIGHT);
+        for (HudCard.Line line : current.rows()) {
+            HudCard.drawLine(g, font, line, x + PAD, x + current.width() - PAD, iy);
             iy += lineH;
         }
         HudLayout.end(g);
+    }
+
+    /** The lines as drawable rows, measured once per rebuild rather than every frame. */
+    private static HudCard.Snapshot measure(Font font, int lineH, List<String> lines) {
+        List<HudCard.Line> rows = new ArrayList<>(lines.size());
+        int width = 0;
+        for (String line : lines) {
+            HudCard.Line row = HudCard.Line.of(font, line, SBSTheme.ACCENT_BRIGHT);
+            rows.add(row);
+            width = Math.max(width, row.leftWidth());
+        }
+        width += PAD * 2;
+        int height = PAD * 2 + lineH * rows.size() - 2;
+        return new HudCard.Snapshot(List.copyOf(rows), width, height, null);
     }
 
     /** The card's lines. Never empty: with nothing known it still says so. */

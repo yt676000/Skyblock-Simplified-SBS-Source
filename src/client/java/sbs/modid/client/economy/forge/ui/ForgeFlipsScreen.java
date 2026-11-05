@@ -485,7 +485,8 @@ public final class ForgeFlipsScreen extends Screen {
             return "§7The recipe database is still downloading - forge flips need it.";
         }
         if (state.failure() != null && state.mode() == ForgeFlipFeed.Mode.NONE) {
-            return "§c" + state.failure().sentence() + " §7No local data either.";
+            return sbs.modid.client.ui.render.FailureStyle.code(state.failure())
+                    + state.failure().sentence() + " §7No local data either.";
         }
         return "§7Nothing worth forging on this snapshot.";
     }

@@ -8,6 +8,7 @@
 
 package sbs.modid.client.combat.damage.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -19,14 +20,17 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig.DamageAttributionSettings;
+import sbs.modid.client.core.entity.EntityIndex;
+import sbs.modid.client.core.entity.EntityKind;
+import sbs.modid.client.core.entity.Tracked;
 import sbs.modid.client.core.item.SkyblockItem;
+import sbs.modid.client.core.util.NumberParse;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -70,6 +74,8 @@ public final class DamageAttribution {
     private static final Pattern SPLASH_NAME = Pattern.compile("^[✧✯]{0,2}([\\d.,]+[kKmMbB]?)[✧✯]{0,2}$");
     /** The "current/max❤" (or "max❤") tail of a mob nametag. */
     private static final Pattern NAMETAG_MAX_HP = Pattern.compile("(?:([\\d.,]+[kKmMbB]?)/)?([\\d.,]+[kKmMbB]?)\\s*❤");
+    private static final Pattern BRACKET_TAG = Pattern.compile("\\[[^]]*]");
+    private static final Pattern HEALTH_TEXT = Pattern.compile("[\\d.,]+[kKmMbB]?(/[\\d.,]+[kKmMbB]?)?\\s*❤");
 
     /** Search radius from a splash to the mob nametag it belongs to. */
     private static final double MOB_RADIUS = 8.0;
@@ -130,8 +136,8 @@ public final class DamageAttribution {
     }
 
     private final List<AttackWindow> windows = new ArrayList<>();
-    private final Set<Integer> knownStands = new HashSet<>();
-    private final Set<Integer> hiddenIds = new HashSet<>();
+    private final it.unimi.dsi.fastutil.ints.IntOpenHashSet knownStands = new it.unimi.dsi.fastutil.ints.IntOpenHashSet();
+    private final it.unimi.dsi.fastutil.ints.IntOpenHashSet hiddenIds = new it.unimi.dsi.fastutil.ints.IntOpenHashSet();
     private final Map<String, Calibration> calibrations = new HashMap<>();
     private final Map<Integer, LootShare> lootshare = new HashMap<>();
     private boolean wasEnabled;
@@ -141,6 +147,18 @@ public final class DamageAttribution {
 
     public static DamageAttribution getInstance() {
         return INSTANCE;
+    }
+
+    /**
+     * World leave: every set here is keyed by an entity id of the world that just ended, and the
+     * hidden nametags went with it, so there is nothing to re-show. The per-weapon calibrations
+     * describe the player's gear, not the world, and survive.
+     */
+    public void onWorldChange() {
+        hiddenIds.clear();
+        knownStands.clear();
+        windows.clear();
+        lootshare.clear();
     }
 
     private static DamageAttributionSettings cfg() {
@@ -210,20 +228,24 @@ public final class DamageAttribution {
         windows.removeIf(w -> now - w.t0 > cfg.windowMs + 250L);
         pruneLootshare(level, now);
 
-        // Re-assert hidden names each tick: a server metadata update would otherwise re-show them.
-        for (Iterator<Integer> it = hiddenIds.iterator(); it.hasNext(); ) {
-            Entity entity = level.getEntity(it.next());
+        // Re-hide only what a server metadata update re-showed: setting it every tick re-wrote the
+        // entity data of every hidden splash twenty times a second for nothing.
+        for (it.unimi.dsi.fastutil.ints.IntIterator it = hiddenIds.iterator(); it.hasNext(); ) {
+            Entity entity = level.getEntity(it.nextInt());
             if (entity == null) {
                 it.remove();
-            } else {
+            } else if (entity.isCustomNameVisible()) {
                 entity.setCustomNameVisible(false);
             }
         }
-        knownStands.removeIf(id -> level.getEntity(id) == null);
+        knownStands.removeIf(id -> EntityIndex.get(id) == null);
 
-        for (Entity entity : level.entitiesForRendering()) {
-            if (!(entity instanceof ArmorStand stand) || !stand.hasCustomName()
-                    || !knownStands.add(stand.getId())) {
+        // New named stands only: the stand bucket, not every entity in the level.
+        List<Tracked> stands = EntityIndex.bucket(EntityKind.ARMOR_STAND);
+        for (int i = 0, n = stands.size(); i < n; i++) {
+            Tracked tracked = stands.get(i);
+            ArmorStand stand = (ArmorStand) tracked.entity;
+            if (!stand.hasCustomName() || !knownStands.add(stand.getId())) {
                 continue;
             }
             classify(level, player, stand, now, cfg);
@@ -239,7 +261,7 @@ public final class DamageAttribution {
         if (!splash.matches()) {
             return;   // a mob nametag, a shop hologram, ... - not a damage splash
         }
-        long value = parseValue(splash.group(1));
+        long value = parseValue(clean, splash.start(1), splash.end(1));
         if (value <= 0) {
             return;
         }
@@ -422,9 +444,8 @@ public final class DamageAttribution {
             return true;
         }
         if (cfg.extraMobs != null && !cfg.extraMobs.isBlank()) {
-            for (String extra : cfg.extraMobs.split(",")) {
-                String trimmed = extra.trim().toLowerCase(Locale.ROOT);
-                if (!trimmed.isEmpty() && lower.contains(trimmed)) {
+            for (String trimmed : extraMobs(cfg.extraMobs)) {
+                if (lower.contains(trimmed)) {
                     return true;
                 }
             }
@@ -459,7 +480,7 @@ public final class DamageAttribution {
     private static String mobName(ArmorStand mobTag) {
         String name = strip(mobTag.getCustomName() != null ? mobTag.getCustomName().getString() : "");
         // "[Lv750] Minos Inquisitor 40M/40M❤" -> "Minos Inquisitor"
-        return name.replaceAll("\\[[^]]*]", "").replaceAll("[\\d.,]+[kKmMbB]?(/[\\d.,]+[kKmMbB]?)?\\s*❤", "")
+        return HEALTH_TEXT.matcher(BRACKET_TAG.matcher(name).replaceAll("")).replaceAll("")
                 .replace("❤", "").trim();
     }
 
@@ -488,7 +509,7 @@ public final class DamageAttribution {
         acc.damage += value;
         Matcher hp = NAMETAG_MAX_HP.matcher(nametag);
         if (hp.find()) {
-            acc.maxHp = Math.max(acc.maxHp, parseValue(hp.group(2)));
+            acc.maxHp = Math.max(acc.maxHp, parseValue(nametag, hp.start(2), hp.end(2)));
         }
         int pct = acc.slayer ? cfg.lootsharePctSlayer : cfg.lootsharePctMobs;
         if (!acc.notified && acc.maxHp > 0 && acc.damage >= acc.maxHp * (long) pct / 100L) {
@@ -496,7 +517,7 @@ public final class DamageAttribution {
             player.sendSystemMessage(Component.literal("§8[§bSBS§8]§r §6[LootShare]§r threshold reached on §e"
                     + acc.name + "§r (" + format(acc.damage) + "/" + format(acc.maxHp) + ", " + pct + "%)"));
             if (cfg.lootshareSound) {
-                player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.4f);
+                SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.4f);
             }
         }
     }
@@ -507,6 +528,25 @@ public final class DamageAttribution {
             return mob == null || !mob.isAlive() || now - entry.getValue().lastHitAt > LOOTSHARE_STALE_MS;
         });
     }
+
+    /** The "extra mobs" setting split, trimmed and lower-cased - once per edit of the string. */
+    private static String[] extraMobs(String setting) {
+        if (setting != extraSource) {
+            java.util.List<String> parts = new java.util.ArrayList<>();
+            for (String extra : setting.split(",")) {
+                String trimmed = extra.trim().toLowerCase(Locale.ROOT);
+                if (!trimmed.isEmpty()) {
+                    parts.add(trimmed);
+                }
+            }
+            extraParsed = parts.toArray(new String[0]);
+            extraSource = setting;
+        }
+        return extraParsed;
+    }
+
+    private static String extraSource;
+    private static String[] extraParsed = new String[0];
 
     // ------------------------------------------------------------------ housekeeping
 
@@ -537,25 +577,19 @@ public final class DamageAttribution {
 
     /** "1,234,567" / "1.2M" / "425k" → the long value (0 when unparseable). */
     static long parseValue(String text) {
-        if (text == null || text.isEmpty()) {
+        return text == null ? 0 : parseValue(text, 0, text.length());
+    }
+
+    /** {@link #parseValue(String)} over {@code [start, end)} - a matcher group without the copy. */
+    static long parseValue(CharSequence text, int start, int end) {
+        if (start >= end) {
             return 0;
         }
-        char last = text.charAt(text.length() - 1);
-        double scale = switch (Character.toLowerCase(last)) {
-            case 'k' -> 1_000.0;
-            case 'm' -> 1_000_000.0;
-            case 'b' -> 1_000_000_000.0;
-            default -> 1.0;
+        return switch (text.charAt(end - 1)) {
+            case 'k', 'K', 'm', 'M', 'b', 'B' -> (long) NumberParse.parseDouble(text, start, end, 0);
+            // Unsuffixed: every non-digit is dropped, "1.5" included - what the old regex did.
+            default -> NumberParse.parseDigits(text, start, end, 0);
         };
-        String number = scale > 1.0 ? text.substring(0, text.length() - 1) : text;
-        try {
-            if (scale > 1.0) {
-                return (long) (Double.parseDouble(number.replace(",", "")) * scale);
-            }
-            return Long.parseLong(number.replaceAll("[^0-9]", ""));
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 
     private static String format(long value) {

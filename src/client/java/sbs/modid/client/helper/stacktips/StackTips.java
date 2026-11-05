@@ -12,19 +12,28 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemLore;
+import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.item.SkyblockItem;
+import sbs.modid.client.core.perf.CacheCounter;
+import sbs.modid.client.core.perf.Perf;
 import sbs.modid.client.core.util.PlainText;
+import sbs.modid.client.helper.enchants.counter.CounterEnchantTooltip;
 import sbs.modid.client.ui.theme.SBSTheme;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Item Stack Tips: a small number top-left on an item's icon where it says more than the icon -
- * pet level, minion tier, Catacombs pass floor, and (unverified, off by default) skill level and
+ * pet level, minion tier, Catacombs pass floor, a dungeon drop's quality %, and (unverified, off by default) skill level and
  * collection tier.
  *
  * <p><b>Top-left, full size, vanilla's shadow.</b> The vanilla stack count sits bottom-right at the
@@ -44,6 +53,12 @@ public final class StackTips {
 
     private static final Map<ItemStack, StackTipParser.Tip> ITEM_TIPS = new ConcurrentHashMap<>();
     private static final Map<ItemStack, StackTipParser.Tip> MENU_TIPS = new ConcurrentHashMap<>();
+    /** Render thread, like every caller of {@link #itemTip}. */
+    private static final CacheCounter ITEM_TIPS_COUNTER = Perf.counter("stackTips.item");
+    /** The custom_data key a cake's year is expected under - unverified, hence the lore fallback. */
+    private static final String CAKE_YEAR_KEY = "new_years_cake";
+    /** Whether the first cake's year source was logged this session (settles the key question). */
+    private static boolean cakeSourceLogged;
 
     private StackTips() {
     }
@@ -59,8 +74,9 @@ public final class StackTips {
 
     /** Whether any kind is switched on - the one check both draw paths start with. */
     static boolean anyEnabled(SBSConfig.ItemOverlaySettings cfg) {
-        return cfg.stackTipPets || cfg.stackTipMinions || cfg.stackTipDungeonPasses
-                || cfg.stackTipSkills || cfg.stackTipCollections;
+        return cfg.stackTipPets || cfg.stackTipMinions || cfg.stackTipDungeonPasses || cfg.stackTipDungeonQuality
+                || cfg.stackTipSkills || cfg.stackTipCollections || cfg.stackTipCounterEnchant
+                || cfg.stackTipCakeYears;
     }
 
     static boolean anyMenuKindEnabled(SBSConfig.ItemOverlaySettings cfg) {
@@ -72,8 +88,11 @@ public final class StackTips {
             case PET -> cfg.stackTipPets;
             case MINION -> cfg.stackTipMinions;
             case DUNGEON_PASS -> cfg.stackTipDungeonPasses;
+            case DUNGEON_QUALITY -> cfg.stackTipDungeonQuality;
             case SKILL -> cfg.stackTipSkills;
             case COLLECTION -> cfg.stackTipCollections;
+            case COUNTER_ENCHANT -> cfg.stackTipCounterEnchant;
+            case CAKE_YEAR -> cfg.stackTipCakeYears;
         };
     }
 
@@ -81,12 +100,46 @@ public final class StackTips {
     static StackTipParser.Tip itemTip(ItemStack stack) {
         StackTipParser.Tip tip = ITEM_TIPS.get(stack);
         if (tip == null) {
+            ITEM_TIPS_COUNTER.miss();
+            if (ITEM_TIPS.size() >= CACHE_CAP) {
+                ITEM_TIPS_COUNTER.invalidate(CacheCounter.Reason.CAPACITY);
+            }
             trim(ITEM_TIPS);
-            tip = StackTipParser.itemTip(PlainText.strip(stack.getHoverName().getString()),
-                    SkyblockItem.id(stack));
+            String id = SkyblockItem.id(stack);
+            String name = PlainText.strip(stack.getHoverName().getString());
+            tip = StackTipParser.CAKE_ID.equals(id)
+                    ? cakeTip(stack, name, id)
+                    : StackTipParser.itemTip(name, id, DungeonQualityReader.of(stack));
+            if (tip == null) {
+                // Pets, minions and passes never carry a counter enchant; a dungeon drop that has
+                // both a quality and Champion shows the quality, the counter XP stays in the tooltip.
+                String counter = CounterEnchantTooltip.stackTip(stack);
+                tip = counter == null ? null : new StackTipParser.Tip(StackTipKind.COUNTER_ENCHANT, counter);
+            }
             ITEM_TIPS.put(stack, tip == null ? NONE : tip);
+        } else {
+            ITEM_TIPS_COUNTER.hit();
         }
         return tip == NONE ? null : tip;
+    }
+
+    /** Cakes only, so no other stack pays for the custom_data and lore reads. */
+    private static StackTipParser.Tip cakeTip(ItemStack stack, String name, String id) {
+        Integer fromData = SkyblockItem.extraAttributes(stack).getInt(CAKE_YEAR_KEY).orElse(null);
+        List<String> lore = new ArrayList<>();
+        ItemLore itemLore = stack.get(DataComponents.LORE);
+        if (itemLore != null) {
+            for (Component line : itemLore.lines()) {
+                lore.add(line.getString());
+            }
+        }
+        StackTipParser.Tip tip = StackTipParser.itemTip(name, id, fromData, lore);
+        if (tip != null && !cakeSourceLogged) {
+            cakeSourceLogged = true;
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][StackTips] cake year {} from {}",
+                    tip.text(), fromData != null ? "custom_data" : "lore");
+        }
+        return tip;
     }
 
     /** The menu-bound tip for a stack shown in a menu titled {@code title}; {@code null} for none. */
@@ -114,7 +167,8 @@ public final class StackTips {
         }
         Font font = Minecraft.getInstance().font;
         // SBSTheme colours are retinted live by the theme engine - read at draw time, never cached.
-        g.text(font, tip.text(), x, y, SBSTheme.ACCENT, true);
+        g.text(font, tip.text(), x, y,
+                tip.color() == StackTipParser.Tip.THEME ? SBSTheme.ACCENT : tip.color(), true);
     }
 
     /** The HUD hotbar pass, called at the tail of {@code extractItemHotbar}. */

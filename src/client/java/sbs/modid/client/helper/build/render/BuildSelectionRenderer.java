@@ -15,7 +15,8 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.build.logic.Hologram;
 import sbs.modid.client.core.build.logic.HologramManager;
 import sbs.modid.client.core.build.logic.SelectionManager;
@@ -38,6 +39,8 @@ import java.util.Locale;
  * blocks, so without it a large hologram shows as a patch around you and nothing says where it ends.
  */
 public final class BuildSelectionRenderer {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     private BuildSelectionRenderer() {
     }
@@ -53,7 +56,7 @@ public final class BuildSelectionRenderer {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         int thickness = Math.max(1, Math.min(4, cfg.lineWidth));
         if (sbs.modid.client.helper.build.logic.SelectionActions.visible()) {
             drawSelection(g, viewProjection, camPos, cfg, thickness, minecraft.font);
@@ -62,7 +65,7 @@ public final class BuildSelectionRenderer {
         sbs.modid.client.helper.build.logic.BuildGuide.renderHighlight(g, viewProjection, camPos);
     }
 
-    private static void drawSelection(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos,
+    private static void drawSelection(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos,
                                       SBSConfig.BuildToolsSettings cfg, int thickness, Font font) {
         SBSConfig.GardenBlueprintSettings garden = ConfigManager.getInstance().get().gardenBlueprint;
         SelectionManager selection = SelectionManager.getInstance();
@@ -120,7 +123,7 @@ public final class BuildSelectionRenderer {
     }
 
     /** The targeted block: an outline, and its name and position (plus the step depth) above it. */
-    private static void drawTarget(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos, Font font, BlockPos pos, int rgb) {
+    private static void drawTarget(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos, Font font, BlockPos pos, int rgb) {
         WorldRender.boxEdges(g, vp, camPos, pos.getX() - 0.01, pos.getY() - 0.01, pos.getZ() - 0.01,
                 pos.getX() + 1.01, pos.getY() + 1.01, pos.getZ() + 1.01, 0xFF000000 | rgb, 2);
         var level = Minecraft.getInstance().level;
@@ -130,9 +133,9 @@ public final class BuildSelectionRenderer {
         int depth = sbs.modid.client.helper.build.logic.BuildTargeting.depth();
         String text = level.getBlockState(pos).getBlock().getName().getString() + "  •  " + pos.getX() + ", "
                 + pos.getY() + ", " + pos.getZ() + (depth > 0 ? "  •  +" + depth + " deep" : "");
-        int[] screen = WorldRender.projectToScreen(vp, camPos, new Vec3(pos.getX() + 0.5, pos.getY() + 1.25,
-                pos.getZ() + 0.5), g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                pos.getX() + 0.5, pos.getY() + 1.25, pos.getZ() + 0.5, g.guiWidth(), g.guiHeight(), screen)) {
             int w = font.width(text);
             g.fill(screen[0] - w / 2 - 3, screen[1] - 2, screen[0] + w / 2 + 3, screen[1] + font.lineHeight + 1, 0xB0000000);
             g.text(font, Component.literal(text), screen[0] - w / 2, screen[1], 0xFFFFFFFF);
@@ -144,7 +147,7 @@ public final class BuildSelectionRenderer {
      * lightly tinted (low alpha, so the blocks behind stay readable, in dark mode too), a solid outline
      * that carries the shape, and the size floating over it on a dark plate.
      */
-    static void drawVolume(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos, Font font,
+    static void drawVolume(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos, Font font,
                            int x0, int y0, int z0, int x1, int y1, int z1,
                            int rgb, int fillAlpha, int thickness, boolean label, boolean onlyCorner1) {
         if (fillAlpha > 0) {
@@ -155,9 +158,9 @@ public final class BuildSelectionRenderer {
             return;
         }
         String text = sbs.modid.client.helper.build.model.SelectionUx.label(x1 - x0, y1 - y0, z1 - z0, onlyCorner1);
-        Vec3 top = new Vec3((x0 + x1) / 2.0, y1 + 0.4, (z0 + z1) / 2.0);
-        int[] screen = WorldRender.projectToScreen(vp, camPos, top, g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                (x0 + x1) / 2.0, y1 + 0.4, (z0 + z1) / 2.0, g.guiWidth(), g.guiHeight(), screen)) {
             int w = font.width(text);
             g.fill(screen[0] - w / 2 - 3, screen[1] - 2, screen[0] + w / 2 + 3, screen[1] + font.lineHeight + 1,
                     0xB0000000);
@@ -165,7 +168,7 @@ public final class BuildSelectionRenderer {
         }
     }
 
-    private static void drawFootprint(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos,
+    private static void drawFootprint(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos,
                                       SBSConfig.BuildToolsSettings cfg, Minecraft minecraft) {
         Hologram hologram = HologramManager.getInstance().active();
         if (hologram == null || hologram.owner() != BuildToolsOwner.INSTANCE) {

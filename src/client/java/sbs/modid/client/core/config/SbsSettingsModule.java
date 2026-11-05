@@ -132,13 +132,35 @@ public final class SbsSettingsModule implements SbsModule {
                 SettingRow.label(sbs.modid.client.core.memory.MemoryGuard.statusLine()),
                 SettingRow.label("§8Read the log for [SBS][Memory] lines after a long session"),
 
+                SettingRow.label("— Developer —"),
+                SettingRow.toggle("Local API Server",
+                        () -> ConfigManager.getInstance().get().localApi.enabled,
+                        () -> {
+                            SBSConfig.LocalApiSettings localApi = ConfigManager.getInstance().get().localApi;
+                            localApi.enabled = !localApi.enabled;
+                            ConfigManager.getInstance().save();
+                            sbs.modid.client.core.api.ApiServer.getInstance().setEnabled(localApi.enabled);
+                        })
+                        .anchor("local_api_server")
+                        .describe("Runs a small web server on 127.0.0.1:8765 so tools you run on "
+                                + "this computer can read the open menu and highlight slots. It "
+                                + "only listens on this machine and sends nothing anywhere. Only "
+                                + "useful if you build such tools. Default: off."),
+
                 SettingRow.label("— Alerts —"),
+                SettingRow.toggle("SBS Sounds",
+                        sbs.modid.client.core.audio.SbsSounds::enabled,
+                        sbs.modid.client.core.audio.SbsSounds::toggle)
+                        .anchor("sbs_sounds")
+                        .describe("Sounds SBS plays itself (alerts, pings, protection denies…). "
+                                + "Game and Hypixel sounds are not affected. Off by default."),
                 SettingRow.rangeSlider("Alert Volume", 1, 100,
                         () -> ConfigManager.getInstance().get().alerts.soundVolume,
                         value -> {
                             ConfigManager.getInstance().get().alerts.soundVolume = value;
                             ConfigManager.getInstance().save();
                         }, "%")
+                        .needsSbsSounds()
                         .describe("How loud the mod's own alert pings are. This is a separate audio "
                                 + "output from the game's, so these stay audible with every "
                                 + "Minecraft volume slider at zero - which is the point of it."),

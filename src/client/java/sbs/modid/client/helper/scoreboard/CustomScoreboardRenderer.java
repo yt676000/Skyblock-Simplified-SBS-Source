@@ -16,6 +16,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.TextColor;
 import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.core.render.CachedModel;
+import sbs.modid.client.core.scoreboard.ScoreboardSnapshots;
 import sbs.modid.client.helper.buffs.BuffColors;
 import sbs.modid.client.helper.buffs.BuffDuration;
 import sbs.modid.client.helper.buffs.BuffTracker;
@@ -39,14 +41,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Draws the Custom Scoreboard: a fully styleable replacement for Hypixel's plain sidebar.
  *
- * <p>Everything is read straight from {@link SBSConfig.CustomScoreboardSettings} every frame, so any
- * change – a hidden line, a new colour, more opacity, a different alignment – shows on the very next
- * frame with no restart and no cached state. The lines and title come live from
- * {@link ScoreboardReader}; hide and reorder are applied here from the persisted signatures.
+ * <p><b>Built on change, drawn every frame.</b> The panel - rows, title, colours, widths, size - is
+ * built into one immutable {@link ScoreboardRender} on the client tick, and only when its
+ * {@link Key} moves: the sidebar snapshot, the tab, the settings, the text rules, Streamer Mode, or
+ * one of the SBS rows' own inputs (the clock's minute, a buff timer, FPS, ping, the vote). A frame
+ * then only places and paints that model. Any change still shows within a tick with no restart; a
+ * sidebar change shows the same frame. The lines and title come from {@link ScoreboardReader}; hide
+ * and reorder are applied here from the persisted signatures.
  *
  * <p>Position and scale are the shared GUI editor's job via {@link HudElement#CUSTOM_SCOREBOARD}, so
  * this class never touches placement beyond the element's default anchor – it only measures the panel
@@ -100,6 +107,9 @@ public final class CustomScoreboardRenderer {
     private static final DateTimeFormatter CLOCK_24H = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT);
     private static final DateTimeFormatter CLOCK_12H = DateTimeFormatter.ofPattern("h:mm a", Locale.ROOT);
 
+    /** The first run of digits in the tab's SB Level row - see {@link #sbLevelNumber}. */
+    private static final Pattern DIGITS = Pattern.compile("\\d+");
+
     private CustomScoreboardRenderer() {
     }
 
@@ -111,12 +121,132 @@ public final class CustomScoreboardRenderer {
      * carries no colour of its own – tracing the server's own coloured component would paint the
      * outline in the server's colours instead of black.
      */
-    private record Row(Component text, Component outline, int color, boolean rule) {
+    private record Row(Component text, Component outline, int color, boolean rule, int width) {
 
-        static Row of(Component text, Component outline, int color) {
-            return new Row(text, outline, color, false);
+        static Row of(Font font, Component text, Component outline, int color) {
+            return new Row(text, outline, color, false, font.width(text));
         }
     }
+
+    /**
+     * The panel's resolved colours and shape - everything {@link #drawBackground} and the title need
+     * that would otherwise mean parsing a hex string every frame.
+     */
+    private record Look(int background, int border, int borderThickness, int radius, int titleColor) {
+    }
+
+    /**
+     * The whole panel, built once and drawn as many frames as it stays current: the rows with the
+     * number format, the Text Editor rules and Streamer Mode's redaction already applied, each with
+     * its measured width, and the panel size those widths add up to.
+     *
+     * @param snapshotRevision the {@link sbs.modid.client.core.scoreboard.ScoreboardSnapshot}
+     *                         revision the rows were read from - see {@link #currentRender}
+     */
+    private record ScoreboardRender(List<Row> rows, Component title, int titleWidth, int width, int height,
+                                    Metrics metrics, Look look, int snapshotRevision) {
+
+        boolean isEmpty() {
+            return rows.isEmpty() && title == null;
+        }
+    }
+
+    /**
+     * Every custom-scoreboard setting the built panel depends on, read field by field.
+     *
+     * <p>Not {@link ConfigManager#revision()} alone: the settings page writes a field as a slider
+     * moves and saves when it is let go, and the panel has always followed the slider. The theme
+     * colours ride along because a colour left at its stock value is resolved against them.
+     */
+    private record Settings(boolean showTitle, String customTitle, boolean titleBold, boolean useOriginalColors,
+                            boolean solidLineColors, String lineColorHex, String titleColorHex,
+                            String backgroundColorHex, int backgroundOpacity, boolean showBorder,
+                            String borderColorHex, int borderOpacity, int borderWidth, int cornerRadius,
+                            NumberTextFormat numberFormat, int lineSpacing, int titleSpacing, int paddingX,
+                            int paddingY, boolean hideEmptyLines, int maxEmptyLines, boolean hideWebsite,
+                            List<String> elementOrder, List<String> hiddenElements, boolean showRealTime,
+                            boolean realTime12Hour, boolean showGodPotion, boolean showCookieBuff,
+                            boolean buffTimersLongForm, boolean showBank, boolean showGems, boolean showInterest,
+                            boolean showProfile, boolean showSbLevel, boolean showFps, boolean showPing,
+                            boolean showMayorVote, int themeText, int themeAccent, int themeCardBg,
+                            int themeCorner, UiStyle style) {
+
+        static Settings of(SBSConfig.CustomScoreboardSettings cfg) {
+            return new Settings(cfg.showTitle, cfg.customTitle, cfg.titleBold, cfg.useOriginalColors,
+                    cfg.solidLineColors, cfg.lineColorHex, cfg.titleColorHex, cfg.backgroundColorHex,
+                    cfg.backgroundOpacity, cfg.showBorder, cfg.borderColorHex, cfg.borderOpacity,
+                    cfg.borderWidth, cfg.cornerRadius, cfg.numberFormat, cfg.lineSpacing, cfg.titleSpacing,
+                    cfg.paddingX, cfg.paddingY, cfg.hideEmptyLines, cfg.maxEmptyLines, cfg.hideWebsite,
+                    copy(cfg.elementOrder), copy(cfg.hiddenElements), cfg.showRealTime, cfg.realTime12Hour,
+                    cfg.showGodPotion, cfg.showCookieBuff, cfg.buffTimersLongForm, cfg.showBank,
+                    cfg.showGems, cfg.showInterest, cfg.showProfile, cfg.showSbLevel, cfg.showFps,
+                    cfg.showPing, cfg.showMayorVote, SBSTheme.TEXT, SBSTheme.ACCENT, SBSTheme.HUD_CARD_BG,
+                    SBSTheme.HUD_CORNER, SBSTheme.style());
+        }
+
+        /** The live lists are mutated in place by the line editor, so the key holds a copy. */
+        private static List<String> copy(List<String> list) {
+            return list == null ? null : List.copyOf(list);
+        }
+    }
+
+    /**
+     * Everything the built panel is derived from. Two equal keys build the same panel, so the panel
+     * is rebuilt exactly when one of these moves.
+     *
+     * <p>Beyond the sidebar, the tab, the settings and the text rules, the SBS rows bring their own
+     * inputs: the clock's minute, the buff timers as they are written, the frame rate, the ping and
+     * the vote. Each is only read while its row is switched on, and left at a constant otherwise, so
+     * a hidden row never causes a rebuild.
+     */
+    private record Key(int snapshot, int tab, int config, int rules, int streamer, Settings settings,
+                       Component serverTitle, int minute, String godPotion, String cookie, int fps,
+                       int ping, boolean electionOpen, boolean voted, String votedFor, String voteTimeLeft) {
+
+        static Key of(SBSConfig.CustomScoreboardSettings cfg) {
+            Minecraft mc = Minecraft.getInstance();
+            int minute = -1;
+            if (cfg.showRealTime) {
+                LocalTime now = LocalTime.now();
+                minute = now.getHour() * 60 + now.getMinute();
+            }
+            BuffTracker buffs = BuffTracker.getInstance();
+            String godPotion = cfg.showGodPotion
+                    ? BuffDuration.format(buffs.godPotion(), cfg.buffTimersLongForm) : null;
+            String cookie = cfg.showCookieBuff
+                    ? BuffDuration.format(buffs.cookieBuff(), cfg.buffTimersLongForm) : null;
+            boolean electionOpen = false;
+            boolean voted = false;
+            String votedFor = null;
+            String timeLeft = null;
+            if (cfg.showMayorVote && ConfigManager.getInstance().get().mayorVote.enabled) {
+                MayorVoteTracker vote = MayorVoteTracker.getInstance();
+                electionOpen = vote.electionOpen();
+                if (electionOpen) {
+                    voted = vote.hasVoted();
+                    votedFor = voted ? vote.votedFor() : null;
+                    timeLeft = voted ? null : vote.timeLeft();
+                }
+            }
+            return new Key(ScoreboardSnapshots.current().revision(),
+                    TabInfoTracker.getInstance().revision(),
+                    ConfigManager.getInstance().revision(),
+                    TextReplacer.getInstance().revision(),
+                    StreamerNames.getInstance().revision(),
+                    Settings.of(cfg),
+                    cfg.customTitle == null || cfg.customTitle.isBlank() ? ScoreboardReader.title() : null,
+                    minute, godPotion, cookie,
+                    cfg.showFps ? Math.max(0, mc.getFps()) : 0,
+                    cfg.showPing ? ServerStatsTracker.getInstance().ping(mc) : 0,
+                    electionOpen, voted, votedFor, timeLeft);
+        }
+    }
+
+    private static final CachedModel<Key, ScoreboardRender> MODEL =
+            new CachedModel<>(CustomScoreboardRenderer::build);
+
+    /** The panel {@link #render} draws; {@code null} until built, and again while the feature is off. */
+    private static volatile ScoreboardRender current;
 
     /** The measured size of a drawn panel, for a caller that has to lay something out beside it. */
     public record PanelSize(int width, int height) {
@@ -137,7 +267,109 @@ public final class CustomScoreboardRenderer {
 
     /** Whether the custom scoreboard should take over the vanilla sidebar right now. */
     public static boolean active() {
-        return cfg().enabled && ScoreboardReader.hasSidebar();
+        return cfg().enabled && ScoreboardSnapshots.current().hasSidebar();
+    }
+
+    /**
+     * Rebuilds the panel when anything it is built from has changed. Called from the client tick,
+     * after the sidebar snapshot, the tab and the buff tracker have had theirs.
+     */
+    public static void onClientTick() {
+        SBSConfig.CustomScoreboardSettings cfg = cfg();
+        if (!cfg.enabled) {
+            // Dropped, not kept: settings changed while it was off must not flash for a frame on
+            // the way back on.
+            current = null;
+            MODEL.invalidate();
+            return;
+        }
+        refresh(cfg);
+    }
+
+    private static ScoreboardRender refresh(SBSConfig.CustomScoreboardSettings cfg) {
+        ScoreboardRender model = MODEL.get(Key.of(cfg));
+        current = model;
+        return model;
+    }
+
+    /**
+     * The panel to draw this frame. Normally the one the tick built; rebuilt here only when there is
+     * none yet or the sidebar moved since. Packets are applied between frames, not on tick
+     * boundaries, and the vanilla sidebar shows a new purse the frame it arrives - waiting for the
+     * tick would leave this one up to 50 ms behind it. The check is an int compare, so a frame on
+     * which nothing changed still allocates nothing.
+     */
+    private static ScoreboardRender currentRender() {
+        ScoreboardRender model = current;
+        if (model == null || model.snapshotRevision() != ScoreboardSnapshots.current().revision()) {
+            model = refresh(cfg());
+        }
+        return model;
+    }
+
+    /**
+     * Builds the panel from scratch: every transform, the rules, the redaction and the measuring.
+     * Only ever reached through {@link #MODEL}, so it runs once per change of the {@link Key}.
+     *
+     * <p>Text Editor rules are applied here rather than being left to the central draw hook: the
+     * panel sizes itself to its text, so a rule that changes a line's length has to change it before
+     * the width is measured, or the background no longer fits what is written on it. The number
+     * format runs before the SBS rows are added, since those are already written our way. Streamer
+     * Mode's redaction is last for the same measuring reason and for its own: taking the instance id
+     * off the date line shortens that line, and this sidebar is the one place the id is written at
+     * all. Both being done here is why {@link #render} draws with every displayed-text edit off.
+     */
+    private static ScoreboardRender build(Key key) {
+        SBSConfig.CustomScoreboardSettings cfg = cfg();
+        List<ScoreboardLine> lines =
+                redacted(replaced(cappedBlanks(cfg, numbered(cfg, visibleLines(cfg, allRows(cfg))))));
+        Component title = title(cfg);
+        if (title != null) {
+            title = StreamerNames.getInstance().apply(title);
+        }
+        return model(cfg, lines, Set.of(), title, key.snapshot());
+    }
+
+    /** Resolves and measures a panel; shared by the HUD build and the editor's preview. */
+    private static ScoreboardRender model(SBSConfig.CustomScoreboardSettings cfg, List<ScoreboardLine> lines,
+                                          Set<ScoreboardLine> faded, Component title, int snapshotRevision) {
+        Font font = Minecraft.getInstance().font;
+        Metrics metrics = Metrics.of(cfg);
+        List<Row> rows = rows(cfg, font, lines, faded);
+
+        int titleWidth = title != null ? font.width(title) : 0;
+        int contentWidth = titleWidth;
+        for (Row row : rows) {
+            contentWidth = Math.max(contentWidth, row.width());
+        }
+        int width = contentWidth + metrics.padX() * 2;
+        int height = metrics.padY() * 2
+                + (title != null ? font.lineHeight + metrics.titleGap() : 0)
+                + rows.size() * (font.lineHeight + metrics.lineSpacing())
+                - (rows.isEmpty() ? 0 : metrics.lineSpacing()); // no trailing gap under the last line
+        return new ScoreboardRender(List.copyOf(rows), title, titleWidth, width, height, metrics,
+                look(cfg), snapshotRevision);
+    }
+
+    private static Look look(SBSConfig.CustomScoreboardSettings cfg) {
+        // The shape follows the style, because a style IS the shape opinion; the player's own radius
+        // wins under CLASSIC, where there is no style opinion to follow.
+        int radius = SBSTheme.style() == UiStyle.CLASSIC
+                ? Math.max(0, cfg.cornerRadius) : SBSTheme.HUD_CORNER;
+        int background = withOpacity(resolveRgb(cfg.backgroundColorHex,
+                SBSConfig.CustomScoreboardSettings.STOCK_BACKGROUND_COLOR, SBSTheme.HUD_CARD_BG),
+                cfg.backgroundOpacity);
+        int border = 0;
+        int thickness = 0;
+        if (cfg.showBorder) {
+            thickness = clamp(cfg.borderWidth, 1, 3);
+            border = withOpacity(resolveRgb(cfg.borderColorHex,
+                    SBSConfig.CustomScoreboardSettings.STOCK_BORDER_COLOR, SBSTheme.ACCENT),
+                    cfg.borderOpacity);
+        }
+        int titleColor = 0xFF000000 | resolveRgb(cfg.titleColorHex,
+                SBSConfig.CustomScoreboardSettings.STOCK_TITLE_COLOR, SBSTheme.ACCENT);
+        return new Look(background, border, thickness, radius, titleColor);
     }
 
     /**
@@ -149,45 +381,27 @@ public final class CustomScoreboardRenderer {
         if (HudLayout.isHidden(HudElement.CUSTOM_SCOREBOARD)) {
             return;
         }
-        SBSConfig.CustomScoreboardSettings cfg = cfg();
-        // Text Editor rules are applied HERE rather than being left to the central draw hook: the
-        // panel sizes itself to its text, so a rule that changes a line's length has to change it
-        // before the width is measured, or the background no longer fits what is written on it. The
-        // number format runs before the SBS rows are added, since those are already written our way.
-        // Streamer Mode's redaction is last for the same measuring reason and for its own: taking
-        // the instance id off the date line shortens that line, and this sidebar is the one place
-        // the id is written at all.
-        List<ScoreboardLine> lines =
-                redacted(replaced(cappedBlanks(cfg, numbered(cfg, visibleLines(cfg, allRows(cfg))))));
-        Component title = title(cfg);
-        List<Row> rows = rows(cfg, lines, Set.of());
-        if (rows.isEmpty() && title == null) {
+        // Everything expensive happened in build(); a frame only places and paints the cached panel.
+        ScoreboardRender model = currentRender();
+        if (model.isEmpty()) {
             return;
         }
 
-        Font font = Minecraft.getInstance().font;
-        Metrics metrics = Metrics.of(cfg);
-        int lineStride = font.lineHeight + metrics.lineSpacing();
-
-        int contentWidth = title != null ? font.width(title) : 0;
-        for (Row row : rows) {
-            contentWidth = Math.max(contentWidth, font.width(row.text()));
-        }
-
-        int width = contentWidth + metrics.padX() * 2;
-        int height = metrics.padY() * 2
-                + (title != null ? font.lineHeight + metrics.titleGap() : 0)
-                + rows.size() * lineStride
-                - (rows.isEmpty() ? 0 : metrics.lineSpacing()); // no trailing gap under the last line
-
         HudElement.Bounds bounds = HudElement.CUSTOM_SCOREBOARD.defaultBounds(g.guiWidth(), g.guiHeight());
-        int x = anchoredX(g, bounds, width);
+        int x = anchoredX(g, bounds, model.width());
         int y = Math.round(bounds.y());
-        HudLayout.measure(HudElement.CUSTOM_SCOREBOARD, x, y, width, height);
+        HudLayout.measure(HudElement.CUSTOM_SCOREBOARD, x, y, model.width(), model.height());
 
         HudLayout.begin(g, HudElement.CUSTOM_SCOREBOARD);
-        DisplayedText.runTextRulesApplied(() ->
-                drawPanel(g, cfg, metrics, rows, title, x, y, width, height));
+        // Raw: the rules and the redaction are already in the rows, and running them again per frame
+        // is the cost this cache exists to remove. Enter/exit rather than runRaw, which would need a
+        // capturing lambda every frame.
+        boolean previous = DisplayedText.enterRaw();
+        try {
+            drawPanel(g, cfg(), model, x, y);
+        } finally {
+            DisplayedText.exitRaw(previous);
+        }
         HudLayout.end(g);
     }
 
@@ -336,55 +550,62 @@ public final class CustomScoreboardRenderer {
      * three colour modes is in force: the player's single colour, one colour per row taken from the
      * server's value, or the server's own component untouched.
      */
-    private static List<Row> rows(SBSConfig.CustomScoreboardSettings cfg, List<ScoreboardLine> lines,
+    private static List<Row> rows(SBSConfig.CustomScoreboardSettings cfg, Font font, List<ScoreboardLine> lines,
                                   Set<ScoreboardLine> faded) {
         int lineColor = 0xFF000000 | resolveRgb(cfg.lineColorHex,
                 SBSConfig.CustomScoreboardSettings.STOCK_LINE_COLOR, SBSTheme.TEXT);
         List<Row> rows = new ArrayList<>(lines.size());
         for (ScoreboardLine line : lines) {
             if (ScoreboardLayout.isSeparator(line)) {
-                rows.add(new Row(Component.empty(), Component.empty(), lineColor, true));
+                rows.add(new Row(Component.empty(), Component.empty(), lineColor, true, 0));
             } else if (faded.contains(line)) {
                 // Preview only: a row the layout places but the game is not showing right now. Drawn
                 // in one muted colour whatever the colour mode is, because the point of it is to read
                 // as "this is where it will go", not as a real row.
                 Component plain = Component.literal(line.stripped());
-                rows.add(Row.of(plain, plain, FADED_PREVIEW_COLOR));
+                rows.add(Row.of(font, plain, plain, FADED_PREVIEW_COLOR));
             } else if (!cfg.useOriginalColors) {
                 Component plain = Component.literal(line.stripped());
-                rows.add(Row.of(plain, plain, lineColor));
+                rows.add(Row.of(font, plain, plain, lineColor));
             } else if (cfg.solidLineColors) {
                 Component plain = Component.literal(line.stripped());
                 int solid = valueColorOf(line.display());
-                rows.add(Row.of(plain, plain, solid != 0 ? solid : 0xFFFFFFFF));
+                rows.add(Row.of(font, plain, plain, solid != 0 ? solid : 0xFFFFFFFF));
             } else {
-                rows.add(Row.of(line.display(), Component.literal(line.stripped()), 0xFFFFFFFF));
+                rows.add(Row.of(font, line.display(), Component.literal(line.stripped()), 0xFFFFFFFF));
             }
         }
         return rows;
     }
 
-    /** The panel itself, drawn from rows the rules and the number format have already been applied to. */
+    /**
+     * The panel itself, drawn from a built model: rules, number format and measuring are already
+     * done, so this only places and paints. Allocates nothing of its own - the settings it still
+     * reads here (alignment, shadow, outline, rainbow) are plain fields.
+     */
     private static void drawPanel(GuiGraphicsExtractor g, SBSConfig.CustomScoreboardSettings cfg,
-                                  Metrics metrics, List<Row> rows, Component title,
-                                  int x, int y, int width, int height) {
+                                  ScoreboardRender model, int x, int y) {
         Font font = Minecraft.getInstance().font;
-        drawBackground(g, cfg, x, y, width, height);
+        Metrics metrics = model.metrics();
+        int width = model.width();
+        drawBackground(g, model.look(), x, y, width, model.height());
 
         int textY = y + metrics.padY();
+        Component title = model.title();
         if (title != null) {
-            int titleColor = cfg.rainbowTitle ? rainbow() : 0xFF000000 | resolveRgb(cfg.titleColorHex,
-                    SBSConfig.CustomScoreboardSettings.STOCK_TITLE_COLOR, SBSTheme.ACCENT);
+            int titleColor = cfg.rainbowTitle ? rainbow() : model.look().titleColor();
             ScoreboardAlignment align = ScoreboardAlignment.orDefault(
                     cfg.titleAlignment, ScoreboardAlignment.CENTER);
             drawRow(g, cfg, font, title, title, titleColor,
-                    align.startX(x, width, metrics.padX(), font.width(title)), textY);
+                    align.startX(x, width, metrics.padX(), model.titleWidth()), textY);
             textY += font.lineHeight + metrics.titleGap();
         }
 
         ScoreboardAlignment align = ScoreboardAlignment.orDefault(cfg.alignment, ScoreboardAlignment.LEFT);
         int lineStride = font.lineHeight + metrics.lineSpacing();
-        for (Row row : rows) {
+        List<Row> rows = model.rows();
+        for (int i = 0; i < rows.size(); i++) {
+            Row row = rows.get(i);
             if (row.rule()) {
                 // A rule spans the panel rather than its own text, so it is drawn rather than
                 // written - centred in the row's height so the gaps above and below it match.
@@ -393,7 +614,7 @@ public final class CustomScoreboardRenderer {
                         withOpacity(row.color(), RULE_OPACITY_PERCENT));
             } else {
                 drawRow(g, cfg, font, row.text(), row.outline(), row.color(),
-                        align.startX(x, width, metrics.padX(), font.width(row.text())), textY);
+                        align.startX(x, width, metrics.padX(), row.width()), textY);
             }
             textY += lineStride;
         }
@@ -490,24 +711,13 @@ public final class CustomScoreboardRenderer {
     }
 
     /** The panel background + optional border, each at its own opacity and the border at its width. */
-    private static void drawBackground(GuiGraphicsExtractor g, SBSConfig.CustomScoreboardSettings cfg,
-                                       int x, int y, int width, int height) {
-        // The shape follows the style, because a style IS the shape opinion; the player's own radius
-        // wins under CLASSIC, where there is no style opinion to follow.
-        int radius = SBSTheme.style() == UiStyle.CLASSIC
-                ? Math.max(0, cfg.cornerRadius) : SBSTheme.HUD_CORNER;
-        int bg = withOpacity(resolveRgb(cfg.backgroundColorHex,
-                SBSConfig.CustomScoreboardSettings.STOCK_BACKGROUND_COLOR, SBSTheme.HUD_CARD_BG),
-                cfg.backgroundOpacity);
-        if (cfg.showBorder) {
-            int thickness = clamp(cfg.borderWidth, 1, 3);
-            int border = withOpacity(resolveRgb(cfg.borderColorHex,
-                    SBSConfig.CustomScoreboardSettings.STOCK_BORDER_COLOR, SBSTheme.ACCENT),
-                    cfg.borderOpacity);
+    private static void drawBackground(GuiGraphicsExtractor g, Look look, int x, int y, int width, int height) {
+        int thickness = look.borderThickness();
+        if (thickness > 0) {
             SciFiRender.roundedRect(g, x - thickness, y - thickness,
-                    width + thickness * 2, height + thickness * 2, radius + thickness, border);
+                    width + thickness * 2, height + thickness * 2, look.radius() + thickness, look.border());
         }
-        SciFiRender.roundedRect(g, x, y, width, height, radius, bg);
+        SciFiRender.roundedRect(g, x, y, width, height, look.radius(), look.background());
     }
 
     /**
@@ -863,7 +1073,8 @@ public final class CustomScoreboardRenderer {
         if (value == null) {
             return 0;
         }
-        java.util.regex.Matcher digits = java.util.regex.Pattern.compile("\\d+").matcher(value);
+        // BOOKMARK(merge 2026-10-05): duplicate DIGITS pattern removed; uses the field at the top of the class.
+        Matcher digits = DIGITS.matcher(value);
         if (!digits.find()) {
             return 0;
         }
@@ -969,23 +1180,11 @@ public final class CustomScoreboardRenderer {
     public static PanelSize drawPreview(GuiGraphicsExtractor g, SBSConfig.CustomScoreboardSettings cfg,
                                         List<ScoreboardLine> lines, Set<ScoreboardLine> faded,
                                         int x, int y) {
-        Font font = Minecraft.getInstance().font;
-        Metrics metrics = Metrics.of(cfg);
-        Component title = title(cfg);
-        List<Row> rows = rows(cfg, lines, faded == null ? Set.of() : faded);
-
-        int contentWidth = title != null ? font.width(title) : 0;
-        for (Row row : rows) {
-            contentWidth = Math.max(contentWidth, font.width(row.text()));
-        }
-        int width = contentWidth + metrics.padX() * 2;
-        int height = metrics.padY() * 2
-                + (title != null ? font.lineHeight + metrics.titleGap() : 0)
-                + rows.size() * (font.lineHeight + metrics.lineSpacing())
-                - (rows.isEmpty() ? 0 : metrics.lineSpacing());
-
-        drawPanel(g, cfg, metrics, rows, title, x, y, width, height);
-        return new PanelSize(width, height);
+        // Built per frame on purpose: the editor's rows change under the player's hands, and this
+        // screen is open for seconds at a time, not drawn over gameplay.
+        ScoreboardRender model = model(cfg, lines, faded == null ? Set.of() : faded, title(cfg), -1);
+        drawPanel(g, cfg, model, x, y);
+        return new PanelSize(model.width(), model.height());
     }
 
     /** The title to draw: the user's override when set, otherwise the server's title. */

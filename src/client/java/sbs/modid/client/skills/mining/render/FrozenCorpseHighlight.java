@@ -21,7 +21,8 @@ import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
@@ -56,6 +57,14 @@ public final class FrozenCorpseHighlight {
     private FrozenCorpseHighlight() {
     }
 
+    /**
+     * World leave: corpses are positions in one Mineshaft instance. A Mineshaft-to-Mineshaft hop
+     * never leaves the area gate, so without this the next shaft would show the last one's boxes.
+     */
+    public static void onWorldChange() {
+        corpses.clear();
+    }
+
     /** Called from the HUD world-render pass once per frame. */
     public static void render(GuiGraphicsExtractor g) {
         SBSConfig.FrozenCorpseSettings cfg = ConfigManager.getInstance().get().frozenCorpse;
@@ -84,7 +93,7 @@ public final class FrozenCorpseHighlight {
 
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         int color = cfg.color.argb();
         for (Vec3 pos : corpses.values()) {
             WorldRender.boxEdges(g, viewProjection, camPos,

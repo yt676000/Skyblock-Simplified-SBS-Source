@@ -8,6 +8,7 @@
 
 package sbs.modid.client.dungeons.run.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -92,7 +93,7 @@ public final class MimicDetector {
             player.connection.sendCommand(
                     "pc " + sbs.modid.client.core.util.ChatTag.tag(message));
         }
-        player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 0.8f);
+        SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 0.8f);
         player.sendSystemMessage(Component.literal("§7[SBS] Mimic announced to party §8(" + source + ")"));
     }
 

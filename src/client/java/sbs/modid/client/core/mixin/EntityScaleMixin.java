@@ -71,7 +71,7 @@ public abstract class EntityScaleMixin {
      * scale, so no guard is worth the complexity.
      */
     private static boolean sbs$isRealPlayer(LivingEntity entity) {
-        return sbs.modid.client.core.player.RealPlayers.isRealPlayer(entity);
+        return sbs.modid.client.core.player.RealPlayers.hasPlayerListEntry(entity);
     }
 
     @Inject(method = "submit(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",

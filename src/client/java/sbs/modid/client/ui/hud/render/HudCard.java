@@ -8,12 +8,17 @@
 
 package sbs.modid.client.ui.hud.render;
 
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.network.chat.Component;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.ui.hud.edit.logic.HudOpacity;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
+
+import java.util.List;
+import java.util.Objects;
 
 /**
  * The frame every SBS HUD card is drawn in - background, glow and border, in one place.
@@ -41,6 +46,55 @@ public final class HudCard {
     private static final int GLOW_SPREAD = 2;
 
     private HudCard() {
+    }
+
+    /**
+     * One text row of a cached card: a left text and an optional right-aligned one, both built and
+     * measured once when the card's model changes, so a frame only draws.
+     *
+     * @param right {@code null} when the row has no right-hand text
+     */
+    public record Line(Component left, int leftWidth, int leftColor,
+                       Component right, int rightWidth, int rightColor) {
+
+        public static Line of(Font font, String left, int leftColor) {
+            return new Line(Component.literal(left), font.width(left), leftColor, null, 0, 0);
+        }
+
+        public static Line of(Font font, String left, int leftColor, String right, int rightColor) {
+            if (right == null || right.isEmpty()) {
+                return new Line(Component.literal(left), font.width(left), leftColor, null, 0, rightColor);
+            }
+            return new Line(Component.literal(left), font.width(left), leftColor,
+                    Component.literal(right), font.width(right), rightColor);
+        }
+
+        /** Width of the two texts side by side with {@code gap} between them. */
+        public int width(int gap) {
+            return leftWidth + gap + rightWidth;
+        }
+    }
+
+    /**
+     * A card's immutable draw model: its rows and measured size, plus the version they were built
+     * for. A card rebuilds one only when its version stops matching - a tracker change, a setting,
+     * or for time-based figures a one-second clock - and otherwise draws the one it has.
+     *
+     * <p>Published through a {@code volatile} field, so a snapshot built anywhere reads whole.
+     */
+    public record Snapshot(List<Line> rows, int width, int height, Object version) {
+
+        public boolean isFor(Object currentVersion) {
+            return Objects.equals(version, currentVersion);
+        }
+    }
+
+    /** Draws one cached row: left text at {@code left}, right text flush against {@code right}. */
+    public static void drawLine(GuiGraphicsExtractor g, Font font, Line line, int left, int right, int y) {
+        g.text(font, line.left(), left, y, line.leftColor());
+        if (line.right() != null) {
+            g.text(font, line.right(), right - line.rightWidth(), y, line.rightColor());
+        }
     }
 
     private static SBSConfig.ThemeSettings cfg() {

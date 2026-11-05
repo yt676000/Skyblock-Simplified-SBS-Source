@@ -14,15 +14,22 @@ import com.google.gson.JsonObject;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.resources.sounds.SoundInstance;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
 import net.minecraft.network.protocol.game.ClientboundOpenScreenPacket;
+import net.minecraft.network.protocol.game.ClientboundTakeItemEntityPacket;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.api.GuiStateManager;
 import sbs.modid.client.core.config.ConfigManager;
@@ -36,6 +43,7 @@ import sbs.modid.client.core.dev.MenuReads;
 import sbs.modid.client.core.location.SkyBlockLocation;
 import sbs.modid.client.core.perf.Perf;
 import sbs.modid.client.core.perf.TierScheduler;
+import sbs.modid.client.core.sound.SoundListeners;
 import sbs.modid.client.core.tab.TabWidgets;
 import sbs.modid.client.helper.scoreboard.ScoreboardLine;
 import sbs.modid.client.helper.scoreboard.ScoreboardReader;
@@ -48,41 +56,37 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
  * Server Scanner (developer tool): a passive recorder of what the server sends - every menu with a
- * slot-level time series, optionally chat, action bar, scoreboard and tab list - plus the player's
- * own clicks in those menus, written as JSONL per session. See {@code docs/features/server-scanner.md}.
+ * slot-level time series, and on request chat, action bar, scoreboard, tab list, nearby entities,
+ * damage, sounds, titles and boss bars, the inventory, particles, blocks and world changes - written
+ * as JSONL per session. See {@code docs/features/server-scanner.md}.
  *
- * <p><b>Off costs one check.</b> Every hook starts with {@link DevMode#ACTIVE}, then whether a
- * session runs; nothing is read or allocated before both pass.
+ * <p><b>Off costs one check.</b> Every hook starts with one static boolean - {@link DevMode#ACTIVE}
+ * plus {@code running} for the menu and text hooks, one per-hook flag for the world hooks, which is
+ * only ever true while a session that wants that hook runs. Nothing is read or allocated before it.
  *
- * <p><b>Strictly passive.</b> The hooks observe at {@code TAIL} / {@code RETURN} (the player close at
- * {@code HEAD}, before the menu it names is gone); nothing is cancelled, no packet is changed, nothing
+ * <p><b>Strictly passive.</b> The hooks observe; nothing is cancelled, no packet is changed, nothing
  * is sent, nothing is clicked.
  *
- * <p><b>Threads.</b> Every entry point runs on the client thread: the {@code ClientPacketListener}
- * handlers re-dispatch themselves before {@code TAIL} is reached. Items are read into
- * {@link ScanSlot}s right there; file writes go out batched through {@link ScanWriter}.
+ * <p><b>Threads.</b> Every entry point runs on the client thread (packet handlers past vanilla's
+ * thread redirect; a sound from another thread is skipped). Hooks take cheap snapshots into small
+ * JSON trees; {@link ScanWriter} serializes and writes them on the IO thread.
+ *
+ * <p><b>One pipeline.</b> Every non-menu event goes through {@code Session.emit}: the channel's
+ * budget ({@link ScanBudget}), the location stamp, then {@link ScanQueue}, which folds repeats and
+ * releases in order to {@code <channel>.jsonl} and the merged {@code timeline.jsonl}.
  */
 public final class ServerScanner {
 
-    /** The optional channels; menus are always recorded. */
-    public enum Channel {
-        CHAT("chat"), ACTIONBAR("actionbar"), SCOREBOARD("scoreboard"), TABLIST("tablist");
-
-        final String key;
-
-        Channel(String key) {
-            this.key = key;
-        }
-    }
-
-    private static final int MANIFEST_VERSION = 1;
+    private static final int MANIFEST_VERSION = 2;
 
     /** How often the scoreboard and tab list are compared with what was last written. */
     private static final long POLL_MS = 250L;
@@ -92,8 +96,20 @@ public final class ServerScanner {
     private static final DateTimeFormatter WALL =
             DateTimeFormatter.ofPattern("HH:mm:ss.SSS", Locale.ROOT);
 
-    /** Read first by every hook after {@link DevMode#ACTIVE}. */
+    /** Read first by every menu and text hook after {@link DevMode#ACTIVE}. */
     private static volatile boolean running;
+
+    // One flag per world hook, true only while a running session records that hook's channel. Each
+    // hook reads its flag and nothing else before returning, so an idle scanner costs one field read.
+    public static volatile boolean ATTACKS;
+    public static volatile boolean BLOCKS;
+    public static volatile boolean PARTICLES;
+    public static volatile boolean TITLES;
+    public static volatile boolean PICKUPS;
+    public static volatile boolean RESPAWNS;
+    public static volatile boolean MOUSE;
+
+    private static final SoundListeners.Listener SOUNDS = ServerScanner::onSound;
 
     private static Session session;
 
@@ -104,7 +120,7 @@ public final class ServerScanner {
         return running;
     }
 
-    // ------------------------------------------------------------------ hooks (client thread)
+    // ------------------------------------------------------------------ menu and text hooks
 
     /** {@code ClientPacketListener.handleOpenScreen}, TAIL. */
     public static void onOpenScreen(ClientboundOpenScreenPacket packet) {
@@ -177,27 +193,150 @@ public final class ServerScanner {
         session.actionBar(message);
     }
 
-    /** Client tick (GuiTrackingMixin). */
+    // ------------------------------------------------------------------ world hooks
+
+    /** {@code MultiPlayerGameMode.attack}, HEAD. */
+    public static void onAttack(Entity target) {
+        if (!ATTACKS) {
+            return;
+        }
+        try (Perf.Section perf = Perf.tick("dev.scan.damage")) {
+            ScanCapture capture = capture();
+            if (capture != null && target != null) {
+                capture.onAttack(target);
+            }
+        }
+    }
+
+    /** {@code ClientLevel.setServerVerifiedBlockState}, HEAD. */
+    public static void onBlock(BlockPos pos, BlockState old, BlockState now) {
+        if (!BLOCKS) {
+            return;
+        }
+        try (Perf.Section perf = Perf.tick("dev.scan.blocks")) {
+            ScanCapture capture = capture();
+            if (capture != null) {
+                capture.onBlock(pos, old, now);
+            }
+        }
+    }
+
+    /** {@code ClientPacketListener.handleParticleEvent}, past the thread redirect. */
+    public static void onParticles(ClientboundLevelParticlesPacket packet) {
+        if (!PARTICLES) {
+            return;
+        }
+        try (Perf.Section perf = Perf.tick("dev.scan.particles")) {
+            ScanCapture capture = capture();
+            if (capture != null) {
+                capture.onParticles(packet);
+            }
+        }
+    }
+
+    /** {@code ClientPacketListener.setTitleText} / {@code setSubtitleText}, past the thread redirect. */
+    public static void onTitle(Component text, boolean subtitle) {
+        if (!TITLES) {
+            return;
+        }
+        try (Perf.Section perf = Perf.tick("dev.scan.title")) {
+            ScanCapture capture = capture();
+            if (capture != null) {
+                capture.onTitle(text, subtitle);
+            }
+        }
+    }
+
+    /** {@code ClientPacketListener.handleTakeItemEntity}, past the thread redirect. */
+    public static void onTakeItem(ClientboundTakeItemEntityPacket packet) {
+        if (!PICKUPS) {
+            return;
+        }
+        try (Perf.Section perf = Perf.tick("dev.scan.inventory")) {
+            ScanCapture capture = capture();
+            if (capture != null) {
+                capture.onTakeItem(packet);
+            }
+        }
+    }
+
+    /** Keep Mouse Position events from {@code MouseKeeper.debug} (client thread). */
+    public static void onMouse(String what, double x, double y, double keptX, double keptY, String detail) {
+        if (!MOUSE) {
+            return;
+        }
+        ScanCapture capture = capture();
+        if (capture != null) {
+            capture.onMouse(what, x, y, keptX, keptY, detail);
+        }
+    }
+
+    /** {@code ClientPacketListener.handleRespawn}, past the thread redirect. */
+    public static void onRespawn() {
+        if (!RESPAWNS) {
+            return;
+        }
+        try (Perf.Section perf = Perf.tick("dev.scan.world")) {
+            ScanCapture capture = capture();
+            if (capture != null) {
+                capture.onRespawn();
+            }
+        }
+    }
+
+    /** Subscribed to {@link SoundListeners} only while a session records sounds. */
+    private static void onSound(SoundInstance instance) {
+        if (!Minecraft.getInstance().isSameThread()) {
+            return;   // the capture's state belongs to the client thread
+        }
+        try (Perf.Section perf = Perf.tick("dev.scan.sound")) {
+            ScanCapture capture = capture();
+            if (capture != null) {
+                capture.onSound(instance);
+            }
+        }
+    }
+
+    private static ScanCapture capture() {
+        Session current = session;
+        return running && current != null ? current.capture : null;
+    }
+
+    /** Client tick (TickTasks). The core and every world channel are separate Perf sections. */
     public static void tick(Minecraft minecraft) {
         if (!running) {
             return;
         }
+        if (!DevMode.ACTIVE) {
+            stop("developer mode was switched off");
+            return;
+        }
         try (Perf.Section perf = Perf.tick("dev.serverScanner")) {
-            if (!DevMode.ACTIVE) {
-                stop("developer mode was switched off");
-                return;
-            }
             session.tick(minecraft);
+        }
+        if (running && session.capture != null) {
+            session.capture.tick(minecraft, System.currentTimeMillis());
         }
     }
 
     // ------------------------------------------------------------------ commands
 
-    /** {@code /sbs scan [start|stop|status] [chat] [actionbar] [scoreboard] [tablist] [all]}. */
+    /**
+     * {@code /sbs scan [start <channels>|full [preset] [channels]|mark <text>|stop|status]}; either
+     * start form also takes {@code radius=<blocks>}.
+     */
     public static void handleCommand(String argument) {
-        String[] words = (argument == null ? "" : argument.trim().toLowerCase(Locale.ROOT)).split("\\s+");
+        String text = argument == null ? "" : argument.trim();
+        String[] words = text.toLowerCase(Locale.ROOT).split("\\s+");
+        String[] rest = Arrays.copyOfRange(words, 1, words.length);
         switch (words[0]) {
-            case "start", "on" -> start(Arrays.copyOfRange(words, 1, words.length));
+            case "start", "on" -> start(null, rest);
+            case "full" -> {
+                ScanPreset preset = rest.length > 0 ? ScanPreset.of(rest[0]) : null;
+                start(preset == null ? ScanPreset.FULL : preset,
+                        preset == null ? rest : Arrays.copyOfRange(rest, 1, rest.length));
+            }
+            case "mark" -> mark(text.length() > 4 ? text.substring(4).trim() : "");
             case "stop", "off" -> {
                 if (running) {
                     stop("/sbs scan stop");
@@ -214,7 +353,7 @@ public final class ServerScanner {
         if (running) {
             stop("Developer module toggle");
         } else {
-            start(new String[0]);
+            start(null, new String[0]);
         }
     }
 
@@ -232,7 +371,8 @@ public final class ServerScanner {
             return;
         }
         // No session: a one-off file with the same open + snapshot lines a session would hold.
-        Session once = new Session(SBSFiles.scannerDir(), EnumSet.noneOf(Channel.class), Integer.MAX_VALUE);
+        Session once = new Session(SBSFiles.scannerDir(), EnumSet.noneOf(ScanChannel.class), Integer.MAX_VALUE,
+                null, 0);
         Path file = SBSFiles.scannerDir().resolve("logmenu_" + LocalDateTime.now().format(FOLDER) + "_"
                 + ScanNames.slug(title) + ".jsonl");
         once.snapshotTo(file, menu, title, "/sbs logmenu");
@@ -241,52 +381,67 @@ public final class ServerScanner {
         SkyblockSimplifiedSBS.LOGGER.info("[SBS][Scanner] /sbs logmenu -> {}", file);
     }
 
-    private static void start(String[] channelWords) {
+    /** @param preset {@code null} for {@code start}: only the channels named (or the module toggles) */
+    private static void start(ScanPreset preset, String[] words) {
         if (running) {
             say("§7Server Scanner is already running §8-> §f" + session.dir);
             return;
         }
         SBSConfig.DevSettings cfg = ConfigManager.getInstance().get().dev;
-        Set<Channel> channels = EnumSet.noneOf(Channel.class);
-        if (channelWords.length == 0) {
-            if (cfg.scannerChat) {
-                channels.add(Channel.CHAT);
-            }
-            if (cfg.scannerActionBar) {
-                channels.add(Channel.ACTIONBAR);
-            }
-            if (cfg.scannerScoreboard) {
-                channels.add(Channel.SCOREBOARD);
-            }
-            if (cfg.scannerTablist) {
-                channels.add(Channel.TABLIST);
-            }
-        }
-        for (String word : channelWords) {
-            if (word.equals("all")) {
-                channels.addAll(EnumSet.allOf(Channel.class));
+        Set<ScanChannel> channels = preset == null ? EnumSet.noneOf(ScanChannel.class) : preset.channels();
+        int radius = preset == null ? ScanPreset.FULL.radius : preset.radius;
+        boolean named = false;
+        for (String word : words) {
+            if (word.isEmpty() || word.equals("menus")) {
                 continue;
             }
-            boolean known = false;
-            for (Channel channel : Channel.values()) {
-                if (channel.key.equals(word)) {
-                    channels.add(channel);
-                    known = true;
+            if (word.startsWith("radius=") || word.startsWith("r=")) {
+                try {
+                    radius = Math.max(4, Math.min(256, Integer.parseInt(word.substring(word.indexOf('=') + 1))));
+                } catch (NumberFormatException e) {
+                    say("§cradius=§f" + word.substring(word.indexOf('=') + 1) + "§c is not a number.");
+                    return;
                 }
+                continue;
             }
-            if (!known && !word.equals("menus")) {
-                say("§cUnknown channel §f" + word + "§c - use chat, actionbar, scoreboard, tablist or all.");
+            if (word.equals("all")) {
+                channels.addAll(ScanPreset.FULL.channels());
+                named = true;
+                continue;
+            }
+            ScanChannel channel = ScanChannel.of(word);
+            if (channel == null || channel.always()) {
+                say("§cUnknown channel §f" + word + "§c - use " + ScanChannel.choosable() + " or all.");
                 return;
+            }
+            channels.add(channel);
+            named = true;
+        }
+        if (preset == null && !named) {
+            if (cfg.scannerChat) {
+                channels.add(ScanChannel.CHAT);
+            }
+            if (cfg.scannerActionBar) {
+                channels.add(ScanChannel.ACTIONBAR);
+            }
+            if (cfg.scannerScoreboard) {
+                channels.add(ScanChannel.SCOREBOARD);
+            }
+            if (cfg.scannerTablist) {
+                channels.add(ScanChannel.TABLIST);
             }
         }
         Path dir = SBSFiles.scannerDir().resolve(LocalDateTime.now().format(FOLDER));
-        session = new Session(dir, channels, Math.max(1, cfg.scannerMaxMb));
+        session = new Session(dir, channels, Math.max(1, cfg.scannerMaxMb), preset, radius);
         running = true;
+        armHooks(channels);
         session.writeManifest();
-        say("§aServer Scanner started §8-> §f" + dir);
-        say("§7Channels: §fmenus" + session.channelList(", ") + "§7. §f/sbs scan stop§7 when done.");
-        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Scanner] Session started -> {} (channels: menus{})",
-                dir, session.channelList(", "));
+        say("§aServer Scanner started" + (preset == null ? "" : " §7(" + preset.key() + ", radius " + radius + ")")
+                + " §8-> §f" + dir);
+        say("§7Channels: §fmenus" + session.channelList(", ")
+                + "§7. §f/sbs scan mark <text>§7 to flag a moment, §f/sbs scan stop§7 when done.");
+        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Scanner] Session started -> {} (preset: {}, radius {}, channels: menus{})",
+                dir, preset == null ? "none" : preset.key(), radius, session.channelList(", "));
         // A menu that is already open is picked up now, so starting inside it does not need a reopen.
         if (GuiStateManager.getInstance().getCurrentScreen() instanceof AbstractContainerScreen<?> screen
                 && screen.getMenu().containerId != 0) {
@@ -294,29 +449,72 @@ public final class ServerScanner {
         }
     }
 
+    private static void armHooks(Set<ScanChannel> channels) {
+        // Attacks feed kill detection on the entity channel too, not only the damage channel.
+        ATTACKS = channels.contains(ScanChannel.DAMAGE) || channels.contains(ScanChannel.ENTITY);
+        BLOCKS = channels.contains(ScanChannel.BLOCKS);
+        PARTICLES = channels.contains(ScanChannel.PARTICLES);
+        TITLES = channels.contains(ScanChannel.TITLE);
+        PICKUPS = channels.contains(ScanChannel.INVENTORY);
+        RESPAWNS = channels.contains(ScanChannel.WORLD);
+        MOUSE = channels.contains(ScanChannel.MOUSE);
+        if (channels.contains(ScanChannel.SOUND)) {
+            SoundListeners.add(SOUNDS);
+        }
+    }
+
+    private static void disarmHooks() {
+        ATTACKS = false;
+        BLOCKS = false;
+        PARTICLES = false;
+        TITLES = false;
+        PICKUPS = false;
+        RESPAWNS = false;
+        MOUSE = false;
+        SoundListeners.remove(SOUNDS);
+    }
+
+    private static void mark(String text) {
+        if (!running) {
+            say("§7Server Scanner is not running - start it with §f/sbs scan full§7.");
+            return;
+        }
+        if (text.isEmpty()) {
+            say("§7Usage: §f/sbs scan mark <text>§7, e.g. §f/sbs scan mark killed the boss now");
+            return;
+        }
+        long t = session.t();
+        session.mark(text);
+        say("§aMarked §7at §f" + wall() + "§7: §f" + text + " §8(t=" + t + " ms)");
+    }
+
     private static void stop(String reason) {
         if (!running) {
             return;
         }
         running = false;
+        disarmHooks();
         Session ended = session;
         session = null;
-        ended.finish(reason);
-        say("§7Server Scanner stopped (" + reason + ") after §f" + ended.events + "§7 event(s), §f"
-                + mb(ended.budget.usedBytes()) + "§7 MB §8-> §f" + ended.dir);
-        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Scanner] Session stopped ({}) after {} event(s), {} bytes -> {}",
-                reason, ended.events, ended.budget.usedBytes(), ended.dir);
+        ended.finish(reason, (bytes, line) -> Minecraft.getInstance().execute(() -> {
+            say("§7Server Scanner stopped (" + reason + ") after §f" + ended.summary.total() + "§7 event(s), §f"
+                    + mb(bytes) + "§7 MB §8-> §f" + ended.dir);
+            say("§7Per channel: §f" + line);
+        }));
+        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Scanner] Session stopped ({}) after {} event(s) -> {} ({})",
+                reason, ended.summary.total(), ended.dir, ended.summary.countsLine());
     }
 
     private static void status() {
         if (!running) {
-            say("§7Server Scanner is off. §f/sbs scan start [chat] [actionbar] [scoreboard] [tablist] [all]");
-            say("§8Sessions: " + SBSFiles.scannerDir());
+            say("§7Server Scanner is off. §f/sbs scan full §7[" + ScanPreset.names() + "] §7or §f/sbs scan start §7["
+                    + ScanChannel.choosable() + "|all]§7; §fradius=<n>§7 with either.");
+            say("§7While running: §f/sbs scan mark <text>§7, §f/sbs scan stop§7. §8Sessions: " + SBSFiles.scannerDir());
             return;
         }
-        say("§aServer Scanner is running §7(" + session.events + " event(s), " + mb(session.budget.usedBytes())
+        say("§aServer Scanner is running §7(" + session.summary.total() + " event(s), " + mb(session.budget.usedBytes())
                 + " of " + mb(session.budget.limitBytes()) + " MB) §8-> §f" + session.dir);
-        say("§7Channels: §fmenus" + session.channelList(", ") + "§7. Menu: §f"
+        say("§7Channels: §fmenus" + session.channelList(", ") + "§7. Radius: §f" + session.radius + "§7. Menu: §f"
                 + (session.menu == null ? "none" : session.menu.title));
     }
 
@@ -378,37 +576,89 @@ public final class ServerScanner {
         }
     }
 
-    private static final class Session {
+    /** Told, once the files are written, the final size and the per-channel counts line. */
+    private interface Stopped {
+        void report(long bytes, String countsLine);
+    }
+
+    private static final class Session implements ScanCapture.Out {
         final Path dir;
-        final Set<Channel> channels;
+        final Set<ScanChannel> channels;
+        final ScanPreset preset;
+        final int radius;
         final ScanBudget budget;
-        final ScanWriter writer = new ScanWriter();
+        final ScanWriter writer;
+        final ScanQueue queue = new ScanQueue();
+        final ScanSummary summary = new ScanSummary();
+        final ScanCapture capture;
+        final Map<ScanChannel, Path> files = new EnumMap<>(ScanChannel.class);
+        final Path timeline;
         final Instant started = Instant.now();
         final long startedNanos = System.nanoTime();
         final JsonObject manifest = new JsonObject();
         final JsonArray menus = new JsonArray();
-        long events;
+        long ticks;
         MenuTrack menu;
         String lastActionBar;
         List<String> lastScoreboard = List.of();
+        List<String> lastScoreboardPlain = List.of();
         List<String> lastTab = List.of();
+        List<String> lastTabPlain = List.of();
         String lastFooter;
         long lastPollAt;
+        // The location stamp, read once per tick rather than once per event.
+        String island = "";
+        String zone = "";
 
-        Session(Path dir, Set<Channel> channels, int limitMb) {
+        Session(Path dir, Set<ScanChannel> channels, int limitMb, ScanPreset preset, int radius) {
             this.dir = dir;
             this.channels = channels;
+            this.preset = preset;
+            this.radius = radius;
             this.budget = new ScanBudget(limitMb);
+            this.writer = ScanWriter.onIo(budget::add);
+            this.timeline = dir.resolve("timeline.jsonl");
+            for (ScanChannel channel : ScanChannel.values()) {
+                files.put(channel, dir.resolve(channel.key + ".jsonl"));
+            }
+            boolean world = false;
+            for (ScanChannel channel : channels) {
+                world |= channel.ordinal() >= ScanChannel.ENTITY.ordinal();
+            }
+            this.capture = world ? new ScanCapture(this, channels, radius,
+                    preset != null && preset.keepPlayers) : null;
+            island = SkyBlockLocation.island();
+            zone = SkyBlockLocation.zone();
+
             manifest.addProperty("version", MANIFEST_VERSION);
             manifest.addProperty("started", started.toString());
             manifest.addProperty("mod", version("skyblock-simplified-sbs"));
             manifest.addProperty("mc", version("minecraft"));
-            manifest.addProperty("island", SkyBlockLocation.island());
-            manifest.addProperty("zone", SkyBlockLocation.zone());
+            manifest.addProperty("island", island);
+            manifest.addProperty("zone", zone);
+            manifest.addProperty("preset", preset == null ? null : preset.key());
+            manifest.addProperty("radius", radius);
             JsonArray list = new JsonArray();
             list.add("menus");
             channels.forEach(c -> list.add(c.key));
             manifest.add("channels", list);
+            JsonObject filters = new JsonObject();
+            filters.addProperty("radius", radius);
+            filters.addProperty("keepOtherPlayers", preset != null && preset.keepPlayers);
+            filters.addProperty("dedupWindowMs", ScanQueue.HOLD_MS);
+            filters.addProperty("killWindowMs", ScanCapture.KILL_WINDOW_MS);
+            JsonArray noise = new JsonArray();
+            ScanNames.NOISE_RULES.forEach(noise::add);
+            filters.add("noiseRules", noise);
+            JsonObject limits = new JsonObject();
+            for (ScanChannel channel : channels) {
+                JsonObject limit = new JsonObject();
+                limit.addProperty("perSecond", channel.perSecond);
+                limit.addProperty("maxMb", channel.maxMb);
+                limits.add(channel.key, limit);
+            }
+            filters.add("limits", limits);
+            manifest.add("filters", filters);
             SBSConfig.ExperimentationSettings exp = ConfigManager.getInstance().get().experimentation;
             manifest.addProperty("experimentationHelpers",
                     exp.enabled && (exp.chronomatron || exp.ultrasequencer || exp.superpairs));
@@ -432,6 +682,88 @@ public final class ServerScanner {
             return menu == null ? "(no menu)" : menu.fileName;
         }
 
+        long t() {
+            return (System.nanoTime() - startedNanos) / 1_000_000L;
+        }
+
+        // -------------------------------------------------------------- the pipeline (ScanCapture.Out)
+
+        @Override
+        public JsonObject event(ScanChannel channel, String type) {
+            JsonObject event = new JsonObject();
+            event.addProperty("t", t());
+            event.addProperty("tick", ticks);
+            event.addProperty("wall", wall());
+            event.addProperty("ch", channel.key);
+            event.addProperty("type", type);
+            return event;
+        }
+
+        @Override
+        public void emit(ScanChannel channel, JsonObject event, String key) {
+            long now = System.currentTimeMillis();
+            ScanBudget.Verdict verdict = budget.admit(channel, now);
+            if (verdict == ScanBudget.Verdict.DROP) {
+                return;
+            }
+            if (verdict == ScanBudget.Verdict.THROTTLED) {
+                boolean size = budget.sizeCapped(channel);
+                JsonObject notice = event(channel, "throttled");
+                notice.addProperty("reason", size ? "size" : "rate");
+                notice.addProperty("limit", size ? channel.maxMb + " MB" : channel.perSecond + "/s");
+                notice.addProperty("dropped", event.get("type").getAsString());
+                stamp(notice);
+                queue.offer(channel, null, notice, now, 0);
+                return;
+            }
+            stamp(event);
+            queue.offer(channel, key, event, now, event.get("t").getAsLong());
+        }
+
+        @Override
+        public ScanSummary summary() {
+            return summary;
+        }
+
+        @Override
+        public String wall() {
+            return ServerScanner.wall();
+        }
+
+        /** Island, zone and the player's position, rounded to 0.1. */
+        private void stamp(JsonObject event) {
+            event.addProperty("island", island);
+            event.addProperty("zone", zone);
+            LocalPlayer player = Minecraft.getInstance().player;
+            if (player != null) {
+                event.add("pos", ScanCapture.pos(player.getX(), player.getY(), player.getZ()));
+            }
+        }
+
+        /** Out of the queue: to the channel's own file (menus have theirs already) and the timeline. */
+        private void release(ScanChannel channel, JsonObject event) {
+            summary.count(channel);
+            if (channel != ScanChannel.MENUS) {
+                writer.append(files.get(channel), event, channel);
+            }
+            writer.append(timeline, event, channel);
+        }
+
+        void mark(String text) {
+            JsonObject event = event(ScanChannel.MARK, "mark");
+            event.addProperty("text", text);
+            summary.marker(wall(), event.get("t").getAsLong(), text);
+            emit(ScanChannel.MARK, event, null);
+        }
+
+        /** A compact line on the timeline for a menu event; the menu's own file has the detail. */
+        private void mirror(String type, JsonObject fields) {
+            JsonObject event = event(ScanChannel.MENUS, type);
+            event.addProperty("menu", menu == null ? null : menu.title);
+            fields.entrySet().forEach(e -> event.add(e.getKey(), e.getValue()));
+            emit(ScanChannel.MENUS, event, null);
+        }
+
         // -------------------------------------------------------------- menus
 
         void open(int containerId, String title, String menuType, AbstractContainerMenu live) {
@@ -442,7 +774,7 @@ public final class ServerScanner {
             String fileName = ScanNames.menuFile(title, now, containerId);
             menu = new MenuTrack(containerId, title, fileName, dir.resolve(fileName));
             String catalog = ScanNames.catalog(title);
-            JsonObject event = event("open");
+            JsonObject event = menuEvent("open");
             event.addProperty("containerId", containerId);
             event.addProperty("menuType", menuType);
             event.addProperty("title", title);
@@ -451,6 +783,11 @@ public final class ServerScanner {
             event.addProperty("catalog", catalog);
             event.addProperty("opened", Instant.now().toString());
             write(menu.file, event);
+
+            JsonObject mirrored = new JsonObject();
+            mirrored.addProperty("file", fileName);
+            mirrored.addProperty("containerId", containerId);
+            mirror("open", mirrored);
 
             JsonObject entry = new JsonObject();
             entry.addProperty("file", fileName);
@@ -465,13 +802,17 @@ public final class ServerScanner {
         }
 
         void content(int containerId, int stateId, List<ItemStack> items) {
+            if (containerId == 0) {
+                return;   // the player inventory: the inventory channel polls it
+            }
             if (menu == null || containerId != menu.containerId) {
-                return;   // the player inventory (id 0) or a stale container
+                return;   // a stale container
             }
             ScanSlot[] next = ScanReads.readAll(items);
-            JsonObject event = event("content");
+            JsonObject event = menuEvent("content");
             event.addProperty("stateId", stateId);
             event.addProperty("size", next.length);
+            int changed = 0;
             if (!menu.hadContent) {
                 JsonArray full = new JsonArray();
                 for (int i = 0; i < next.length; i++) {
@@ -483,6 +824,7 @@ public final class ServerScanner {
                     }
                 }
                 event.add("items", full);
+                changed = full.size();
                 menu.hadContent = true;
             } else {
                 JsonArray changes = new JsonArray();
@@ -502,9 +844,15 @@ public final class ServerScanner {
                 }
                 event.add("changes", changes);
                 event.addProperty("unchanged", unchanged);
+                changed = changes.size();
             }
             menu.slots = next;
             write(menu.file, event);
+            if (changed > 0) {
+                JsonObject mirrored = new JsonObject();
+                mirrored.addProperty("slots", changed);
+                mirror("content", mirrored);
+            }
         }
 
         void slot(int containerId, int stateId, int index, ItemStack stack) {
@@ -513,20 +861,24 @@ public final class ServerScanner {
             }
             ScanSlot after = ScanReads.read(stack);
             ScanSlot before = menu.get(index);
-            JsonObject event = event("slot");
+            JsonObject event = menuEvent("slot");
             event.addProperty("stateId", stateId);
             event.addProperty("slot", index);
             event.add("old", ScanSlot.oldFields(before, after));
             event.add("new", ScanSlot.json(after));
             menu.set(index, after);
             write(menu.file, event);
+            JsonObject mirrored = new JsonObject();
+            mirrored.addProperty("slot", index);
+            mirrored.addProperty("item", after == null ? null : after.name());
+            mirror("slot", mirrored);
         }
 
         void click(int containerId, int slot, int button, ContainerInput input) {
             if (menu == null || containerId != menu.containerId) {
                 return;
             }
-            JsonObject event = event("click");
+            JsonObject event = menuEvent("click");
             event.addProperty("containerId", containerId);
             event.addProperty("slot", slot);
             event.addProperty("button", button);
@@ -534,6 +886,12 @@ public final class ServerScanner {
             ScanSlot clicked = menu.get(slot);
             event.addProperty("itemId", clicked == null ? null : clicked.id());
             write(menu.file, event);
+            JsonObject mirrored = new JsonObject();
+            mirrored.addProperty("slot", slot);
+            mirrored.addProperty("button", button);
+            mirrored.addProperty("clickType", input == null ? null : input.name());
+            mirrored.addProperty("item", clicked == null ? null : clicked.name());
+            mirror("click", mirrored);
         }
 
         void close(int containerId, String by) {
@@ -543,9 +901,12 @@ public final class ServerScanner {
         }
 
         private void closeTracked(String by) {
-            JsonObject event = event("close");
+            JsonObject event = menuEvent("close");
             event.addProperty("by", by);
             write(menu.file, event);
+            JsonObject mirrored = new JsonObject();
+            mirrored.addProperty("by", by);
+            mirror("close", mirrored);
             menu = null;
         }
 
@@ -571,7 +932,7 @@ public final class ServerScanner {
         void snapshotTo(Path file, AbstractContainerMenu live, String title, String reason) {
             JsonObject open = new JsonObject();
             open.addProperty("t", 0);
-            open.addProperty("wall", wall());
+            open.addProperty("wall", ServerScanner.wall());
             open.addProperty("type", "open");
             open.addProperty("containerId", live.containerId);
             open.addProperty("menuType", MenuReads.menuType(live));
@@ -586,7 +947,7 @@ public final class ServerScanner {
         private JsonObject snapshotEvent(ScanSlot[] slots, AbstractContainerMenu live, String reason, long t) {
             JsonObject event = new JsonObject();
             event.addProperty("t", t);
-            event.addProperty("wall", wall());
+            event.addProperty("wall", ServerScanner.wall());
             event.addProperty("type", "snapshot");
             event.addProperty("reason", reason);
             event.addProperty("stateId", live.getStateId());
@@ -616,17 +977,19 @@ public final class ServerScanner {
         // -------------------------------------------------------------- text channels
 
         void chat(String text, Component message) {
-            if (!channels.contains(Channel.CHAT)) {
+            if (!channels.contains(ScanChannel.CHAT)) {
                 return;
             }
             Set<String> players = LayoutRecorder.knownPlayers();
-            write(dir.resolve("chat.jsonl"), textEvent(
-                    LayoutSignature.redactPlayersKeepCodes(DevLogText.legacy(message), players),
-                    LayoutSignature.redactPlayers(text == null ? "" : text, players)));
+            String raw = LayoutSignature.redactPlayersKeepCodes(DevLogText.legacy(message), players);
+            JsonObject event = event(ScanChannel.CHAT, "chat");
+            event.addProperty("raw", raw);
+            event.addProperty("plain", LayoutSignature.redactPlayers(text == null ? "" : text, players));
+            emit(ScanChannel.CHAT, event, "chat|" + raw);
         }
 
         void actionBar(Component message) {
-            if (!channels.contains(Channel.ACTIONBAR)) {
+            if (!channels.contains(ScanChannel.ACTIONBAR)) {
                 return;
             }
             String raw = DevLogText.legacy(message);
@@ -635,11 +998,16 @@ public final class ServerScanner {
             }
             lastActionBar = raw;
             Set<String> players = LayoutRecorder.knownPlayers();
-            write(dir.resolve("actionbar.jsonl"), textEvent(
-                    LayoutSignature.redactPlayersKeepCodes(raw, players),
-                    LayoutSignature.redactPlayers(message.getString(), players)));
+            JsonObject event = event(ScanChannel.ACTIONBAR, "actionbar");
+            event.addProperty("raw", LayoutSignature.redactPlayersKeepCodes(raw, players));
+            event.addProperty("plain", LayoutSignature.redactPlayers(message.getString(), players));
+            emit(ScanChannel.ACTIONBAR, event, null);
         }
 
+        /**
+         * The sidebar: the first state in full, after that only the lines that changed ({@link ScanDiff},
+         * on the plain text - a colour-only change is not written).
+         */
         private void pollScoreboard() {
             List<String> raw = new ArrayList<>();
             for (ScoreboardLine line : ScoreboardReader.lines()) {
@@ -648,15 +1016,27 @@ public final class ServerScanner {
             if (raw.equals(lastScoreboard)) {
                 return;
             }
-            lastScoreboard = raw;
             Set<String> players = LayoutRecorder.knownPlayers();
-            JsonObject event = sessionEvent();
+            List<String> plain = redactedPlain(raw, players);
+            boolean first = lastScoreboard.isEmpty() && lastScoreboardPlain.isEmpty();
+            JsonArray changes = first ? null : ScanDiff.lines(lastScoreboardPlain, plain);
+            lastScoreboard = raw;
+            lastScoreboardPlain = plain;
+            if (changes != null && changes.isEmpty()) {
+                return;
+            }
+            JsonObject event = event(ScanChannel.SCOREBOARD, first ? "scoreboard" : "scoreboard_diff");
             event.addProperty("title", MenuReads.plain(ScoreboardReader.title()));
-            event.add("raw", redactedRaw(raw, players));
-            event.add("plain", redactedPlain(raw, players));
-            write(dir.resolve("scoreboard.jsonl"), event);
+            if (first) {
+                event.add("raw", redactedRaw(raw, players));
+                event.add("plain", toJson(plain));
+            } else {
+                event.add("changes", changes);
+            }
+            emit(ScanChannel.SCOREBOARD, event, null);
         }
 
+        /** The tab list, the same way, plus the footer when it changes. */
         private void pollTab() {
             List<String> raw = new ArrayList<>();
             for (Component line : TabWidgets.components()) {
@@ -666,15 +1046,29 @@ public final class ServerScanner {
             if (raw.equals(lastTab) && footer.equals(lastFooter)) {
                 return;
             }
-            lastTab = raw;
-            lastFooter = footer;
             Set<String> players = LayoutRecorder.knownPlayers();
-            JsonObject event = sessionEvent();
-            event.add("raw", redactedRaw(raw, players));
-            event.add("plain", redactedPlain(raw, players));
-            event.addProperty("footerRaw", LayoutSignature.redactPlayersKeepCodes(footer, players));
-            event.addProperty("footer", LayoutSignature.redactPlayers(footer, players));
-            write(dir.resolve("tablist.jsonl"), event);
+            List<String> plain = redactedPlain(raw, players);
+            boolean first = lastFooter == null;
+            JsonArray changes = first ? null : ScanDiff.lines(lastTabPlain, plain);
+            boolean footerChanged = !footer.equals(lastFooter);
+            lastTab = raw;
+            lastTabPlain = plain;
+            lastFooter = footer;
+            if (changes != null && changes.isEmpty() && !footerChanged) {
+                return;
+            }
+            JsonObject event = event(ScanChannel.TABLIST, first ? "tablist" : "tablist_diff");
+            if (first) {
+                event.add("raw", redactedRaw(raw, players));
+                event.add("plain", toJson(plain));
+            } else if (!changes.isEmpty()) {
+                event.add("changes", changes);
+            }
+            if (footerChanged) {
+                event.addProperty("footerRaw", LayoutSignature.redactPlayersKeepCodes(footer, players));
+                event.addProperty("footer", LayoutSignature.redactPlayers(footer, players));
+            }
+            emit(ScanChannel.TABLIST, event, null);
         }
 
         private static JsonArray redactedRaw(List<String> lines, Set<String> players) {
@@ -683,22 +1077,22 @@ public final class ServerScanner {
             return out;
         }
 
-        private static JsonArray redactedPlain(List<String> lines, Set<String> players) {
-            JsonArray out = new JsonArray();
+        private static List<String> redactedPlain(List<String> lines, Set<String> players) {
+            List<String> out = new ArrayList<>(lines.size());
             lines.forEach(line -> out.add(LayoutSignature.redactPlayers(line, players)));
             return out;
         }
 
-        private JsonObject textEvent(String raw, String plain) {
-            JsonObject event = sessionEvent();
-            event.addProperty("raw", raw);
-            event.addProperty("plain", plain);
-            return event;
+        private static JsonArray toJson(List<String> lines) {
+            JsonArray out = new JsonArray();
+            lines.forEach(out::add);
+            return out;
         }
 
         // -------------------------------------------------------------- tick, writing, end
 
         void tick(Minecraft minecraft) {
+            ticks++;
             String failure = writer.failure();
             if (failure != null) {
                 stop("write failed: " + failure);
@@ -716,33 +1110,76 @@ public final class ServerScanner {
                     || minecraft.player.containerMenu.containerId != menu.containerId)) {
                 closeTracked("client");
             }
+            if (minecraft.player != null) {
+                island = SkyBlockLocation.island();
+                zone = SkyBlockLocation.zone();
+            }
             long now = System.currentTimeMillis();
             if (minecraft.player != null && now - lastPollAt >= POLL_MS
-                    && (channels.contains(Channel.SCOREBOARD) || channels.contains(Channel.TABLIST))
+                    && (channels.contains(ScanChannel.SCOREBOARD) || channels.contains(ScanChannel.TABLIST))
                     && Perf.allowTick("dev.serverScanner.poll", TierScheduler.Tier.BACKGROUND)) {
                 lastPollAt = now;
-                if (channels.contains(Channel.SCOREBOARD)) {
+                if (channels.contains(ScanChannel.SCOREBOARD)) {
                     pollScoreboard();
                 }
-                if (channels.contains(Channel.TABLIST)) {
+                if (channels.contains(ScanChannel.TABLIST)) {
                     pollTab();
                 }
             }
+            queue.release(now, this::release);
             if (writer.due(now)) {
                 writer.flush(now);
             }
         }
 
-        void finish(String reason) {
+        void finish(String reason, Stopped stopped) {
             if (menu != null) {
                 closeTracked("session_end");
             }
+            long now = System.currentTimeMillis();
+            if (capture != null) {
+                capture.finish(now);
+            }
+            queue.drain(this::release);
+            writer.flush(now);
+            long durationMs = (System.nanoTime() - startedNanos) / 1_000_000L;
+            List<String> throttled = throttledLines();
+            String countsLine = summary.countsLine();
             manifest.addProperty("stopped", Instant.now().toString());
             manifest.addProperty("stopReason", reason);
-            manifest.addProperty("events", events);
-            manifest.addProperty("bytes", budget.usedBytes());
-            writer.flush(System.currentTimeMillis());
-            writeManifest();
+            manifest.addProperty("events", summary.total());
+            manifest.add("counts", summary.countsJson());
+            manifest.add("suppressed", summary.suppressedJson());
+            JsonArray throttledJson = new JsonArray();
+            throttled.forEach(throttledJson::add);
+            manifest.add("throttled", throttledJson);
+            String header = "Server Scanner session " + dir.getFileName() + "  (" + reason + ")\n"
+                    + "Preset: " + (preset == null ? "none" : preset.key()) + "   Radius: " + radius
+                    + "   Channels: menus" + channelList(", ") + "\n"
+                    + "Island at start: " + manifest.get("island").getAsString();
+            // The size is only final once the IO thread has written everything queued above.
+            writer.afterWrites(() -> {
+                long bytes = budget.usedBytes();
+                manifest.addProperty("bytes", bytes);
+                writer.replace(dir.resolve("summary.txt"), summary.render(header, durationMs, bytes, throttled));
+                writeManifest();
+                stopped.report(bytes, countsLine);
+            });
+        }
+
+        /** One line per channel the budget refused events of. */
+        private List<String> throttledLines() {
+            List<String> out = new ArrayList<>();
+            for (ScanChannel channel : channels) {
+                if (budget.episodes(channel) == 0) {
+                    continue;
+                }
+                out.add(channel.key + ": " + budget.dropped(channel) + " event(s) dropped in "
+                        + budget.episodes(channel) + " episode(s) - "
+                        + (budget.sizeCapped(channel) ? "size cap " + channel.maxMb + " MB reached"
+                        : "over " + channel.perSecond + "/s"));
+            }
+            return out;
         }
 
         void writeManifest() {
@@ -750,29 +1187,17 @@ public final class ServerScanner {
                     new GsonBuilder().setPrettyPrinting().serializeNulls().create().toJson(manifest) + "\n");
         }
 
-        /** A menu event: {@code t} since the menu opened. */
-        private JsonObject event(String type) {
+        /** A menu-file event: {@code t} since the menu opened. */
+        private JsonObject menuEvent(String type) {
             JsonObject event = new JsonObject();
             event.addProperty("t", menu == null ? 0 : menu.t());
-            event.addProperty("wall", wall());
+            event.addProperty("wall", ServerScanner.wall());
             event.addProperty("type", type);
             return event;
         }
 
-        /** A text-channel event: {@code t} since the session started. */
-        private JsonObject sessionEvent() {
-            JsonObject event = new JsonObject();
-            event.addProperty("wall", wall());
-            event.addProperty("t", (System.nanoTime() - startedNanos) / 1_000_000L);
-            return event;
-        }
-
         private void write(Path file, JsonObject event) {
-            events++;
-            long bytes = writer.append(file, event.toString());
-            // Counted here, acted on in the next tick: stopping inside a hook would end the session
-            // between the two writes of one event (an open and its manifest entry).
-            budget.add(bytes);
+            writer.append(file, event, ScanChannel.MENUS);
         }
 
         private static String version(String modId) {

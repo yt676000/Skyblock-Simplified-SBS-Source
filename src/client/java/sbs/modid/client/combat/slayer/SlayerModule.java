@@ -97,7 +97,7 @@ public final class SlayerModule implements SbsModule {
                         () -> SlayerTracker.getInstance().resetSession())
                         .describe("Sets the session numbers (bosses, kill times, drops, profit) back "
                                 + "to zero for a fresh grinding session."),
-                SettingRow.toggle("Alert Sound", () -> cfg().alertSound,
+                SettingRow.soundToggle("Alert Sound", () -> cfg().alertSound,
                         () -> { cfg().alertSound = !cfg().alertSound; save(); })
                         .describe("Plays a short ping along with every slayer alert (beacon, "
                                 + "miniboss, pillar...). Off, the alerts are silent text only."),
@@ -161,6 +161,20 @@ public final class SlayerModule implements SbsModule {
                         value -> { cfg().phaseHitsColor = value; save(); }, v -> v.displayName())
                         .describe("Boss color during the 'hits' phase, when only melee hits count. "
                                 + "Click to cycle."),
+                SettingRow.toggle("Shield Hit Counter", () -> cfg().voidgloomShieldHud,
+                        () -> { cfg().voidgloomShieldHud = !cfg().voidgloomShieldHud; save(); })
+                        .describe("Shows 'Shield: 34 hits' under your crosshair while your own "
+                                + "boss's hit shield is up - the hits it still takes before it "
+                                + "breaks. Red while most of it stands, green near the end."),
+                SettingRow.toggle("Laser Phase Timer", () -> cfg().voidgloomLaserTimer,
+                        () -> { cfg().voidgloomLaserTimer = !cfg().voidgloomLaserTimer; save(); })
+                        .describe("Counts down your own boss's laser phase, from when it rises "
+                                + "into the air. A '~' means the length is still an estimate; after "
+                                + "one phase it uses the length it actually measured."),
+                SettingRow.button("Move / Resize Shield & Laser", () -> open(new HudEditorScreen(
+                        new HudElement[] {HudElement.VOIDGLOOM_PHASE}, "Edit Voidgloom Shield / Laser")))
+                        .describe("Opens the editor where you drag the shield and laser text "
+                                + "anywhere on the screen and scale it."),
 
                 SettingRow.label("— Zombie Slayer (Revenant) —"),
                 SettingRow.toggle("Enrage Alert", () -> cfg().revEnrageAlert,
@@ -318,6 +332,31 @@ public final class SlayerModule implements SbsModule {
                                 + "fight needs right now, so you never grab the wrong one of the "
                                 + "two."),
                 SettingRow.label("Yellow box on the hotbar slot to switch to"),
+                SettingRow.toggle("Highlight Demons (Experimental)", () -> cfg().demonHighlight,
+                        () -> { cfg().demonHighlight = !cfg().demonHighlight; save(); })
+                        .describe("Draws a box around Quazii and Typhoeus while your boss is split "
+                                + "into them. The boss cannot be hurt during that stretch, so the "
+                                + "demons are the only thing worth hitting. Only your own demons, "
+                                + "and only the ones you can see."),
+                SettingRow.toggle("Demon Box In Attunement Color", () -> cfg().demonAttunementColor,
+                        () -> { cfg().demonAttunementColor = !cfg().demonAttunementColor; save(); })
+                        .describe("Colors each demon's box in the attunement it is wearing, so the "
+                                + "box also says which dagger mode that demon needs. Off, or when a "
+                                + "demon shows no attunement, the colors below are used."),
+                SettingRow.enumOptions("Quazii Color", () -> cfg().quaziiColor,
+                        value -> { cfg().quaziiColor = value; save(); }, v -> v.displayName())
+                        .describe("The color of Quazii's box. Click to cycle."),
+                SettingRow.enumOptions("Typhoeus Color", () -> cfg().typhoeusColor,
+                        value -> { cfg().typhoeusColor = value; save(); }, v -> v.displayName())
+                        .describe("The color of Typhoeus's box. Click to cycle."),
+                SettingRow.toggle("Phase Timer (Experimental)", () -> cfg().infernoPhaseTimer,
+                        () -> { cfg().infernoPhaseTimer = !cfg().infernoPhaseTimer; save(); })
+                        .describe("A line under the crosshair saying whether your boss is whole or "
+                                + "split into its demons, and how long it has been that way."),
+                SettingRow.button("Move / Resize Phase Timer", () -> open(new HudEditorScreen(
+                        new HudElement[] {HudElement.INFERNO_PHASE}, "Edit Inferno Phase")))
+                        .describe("Opens the editor where you drag the phase timer anywhere on the "
+                                + "screen and scale it."),
 
                 SettingRow.label("— Vampire —"),
                 SettingRow.toggle("Twinclaws Alert", () -> cfg().twinclawsAlert,

@@ -122,7 +122,7 @@ public final class KuudraModule implements SbsModule {
                         () -> { cfg().secondSupplyAlert = !cfg().secondSupplyAlert; save(); })
                         .describe("Also call your second spot when it comes up empty, once your "
                                 + "first one is dealt with."),
-                SettingRow.toggle("No-Pre Sound", () -> cfg().noPreSound,
+                SettingRow.soundToggle("No-Pre Sound", () -> cfg().noPreSound,
                         () -> { cfg().noPreSound = !cfg().noPreSound; save(); })
                         .describe("Ping with the no-pre call-out."),
                 SettingRow.label("§8Someone else's \"no tri\" in party chat lights that pile up too"),
@@ -134,7 +134,7 @@ public final class KuudraModule implements SbsModule {
                         () -> { cfg().supplyDropAlert = !cfg().supplyDropAlert; save(); })
                         .describe("Flash when somebody drops a crate back into the lava - that crate "
                                 + "has to be fished out again and nobody reads that line in time."),
-                SettingRow.toggle("Supply Sound", () -> cfg().supplySound,
+                SettingRow.soundToggle("Supply Sound", () -> cfg().supplySound,
                         () -> { cfg().supplySound = !cfg().supplySound; save(); })
                         .describe("Ping with the supply alerts."),
 
@@ -159,7 +159,7 @@ public final class KuudraModule implements SbsModule {
                         .describe("Send \"FRESH! (43%)\" to party chat when you go fresh, so the "
                                 + "others start a different pile. Off by default - it types on your "
                                 + "behalf."),
-                SettingRow.toggle("Fresh Sound", () -> cfg().freshSound,
+                SettingRow.soundToggle("Fresh Sound", () -> cfg().freshSound,
                         () -> { cfg().freshSound = !cfg().freshSound; save(); })
                         .describe("Ping with the fresh call-out."),
 
@@ -190,7 +190,7 @@ public final class KuudraModule implements SbsModule {
                                 + "and flashes DANGER as it winds up, JUMP on the beat. The floor is "
                                 + "the only warning the slam gives and it is the one place nobody is "
                                 + "looking."),
-                SettingRow.toggle("Danger Sound", () -> cfg().dangerSound,
+                SettingRow.soundToggle("Danger Sound", () -> cfg().dangerSound,
                         () -> { cfg().dangerSound = !cfg().dangerSound; save(); })
                         .describe("Ping with the danger call-out."),
 
@@ -234,7 +234,7 @@ public final class KuudraModule implements SbsModule {
                 SettingRow.toggle("Phase Call-out", () -> cfg().phaseAlert,
                         () -> { cfg().phaseAlert = !cfg().phaseAlert; save(); })
                         .describe("Flash the name of each phase as the run enters it."),
-                SettingRow.toggle("Phase Sound", () -> cfg().phaseAlertSound,
+                SettingRow.soundToggle("Phase Sound", () -> cfg().phaseAlertSound,
                         () -> { cfg().phaseAlertSound = !cfg().phaseAlertSound; save(); })
                         .describe("Ping with the phase call-out."),
                 SettingRow.toggle("Show Splits", () -> cfg().showSplits,

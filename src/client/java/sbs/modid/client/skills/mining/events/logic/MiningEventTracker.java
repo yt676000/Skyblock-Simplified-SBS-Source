@@ -106,6 +106,14 @@ public final class MiningEventTracker {
 
     // ------------------------------------------------------------------ hooks
 
+    /**
+     * Whether {@link #onChat} must see the next line however it reads: a header is waiting for its
+     * subtitle, and any line either completes or clears it (off-island it is reset).
+     */
+    public boolean hasPendingLine() {
+        return chat.hasPending();
+    }
+
     /** Every chat line; the component is only read for its hover text when capturing. */
     public void onChat(String text, Component message) {
         MiningEventSettings cfg = cfg();

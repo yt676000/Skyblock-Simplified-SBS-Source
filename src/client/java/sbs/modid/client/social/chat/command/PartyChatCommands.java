@@ -13,6 +13,8 @@ import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.command.SBSCommands;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.dungeons.requeue.logic.AutoRequeue;
+import sbs.modid.client.dungeons.requeue.model.InstanceIds;
 import sbs.modid.client.ui.hud.logic.ServerStatsTracker;
 import sbs.modid.client.social.party.logic.PartyTracker;
 
@@ -56,16 +58,11 @@ public final class PartyChatCommands {
     /** Legacy formatting codes ({@code §} + any char, which also covers Hypixel's {@code §x} hex runs). */
     private static final Pattern FORMATTING = Pattern.compile("(?i)§.");
 
+    /** Whitespace runs between the words of a !command. */
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+
     /** "!f3", "!m7", "!t5" – the dungeon / Kuudra queue shortcuts. */
     private static final Pattern QUEUE = Pattern.compile("^([fmt])([0-7])$");
-
-    private static final String[] FLOOR_NAMES = {
-            "ENTRANCE", "FLOOR_ONE", "FLOOR_TWO", "FLOOR_THREE",
-            "FLOOR_FOUR", "FLOOR_FIVE", "FLOOR_SIX", "FLOOR_SEVEN"};
-
-    /** Kuudra tiers 1-5 as Hypixel names them; index 0 is unused. */
-    private static final String[] KUUDRA_TIERS = {
-            "", "NORMAL", "HOT", "BURNING", "FIERY", "INFERNAL"};
 
     private static final String[] EIGHT_BALL = {
             "It is certain", "Without a doubt", "You may rely on it", "Yes, definitely",
@@ -106,8 +103,15 @@ public final class PartyChatCommands {
     private String delayedCommand;
     private long delayedAt;
 
-    /** {@code !downtime} notes, keyed by lower-case IGN, announced when the run ends. */
-    private final Map<String, String> downtime = new LinkedHashMap<>();
+    /** One {@code !downtime}: who asked, and their (sanitised) note. */
+    private record Downtime(String name, String note) {
+    }
+
+    /**
+     * {@code !downtime} notes, keyed by lower-case IGN, announced when the run ends. With Auto Requeue
+     * on they also block the next requeue, until {@code !undt}, a requeue cancel or a disband.
+     */
+    private final Map<String, Downtime> downtime = new LinkedHashMap<>();
 
     private PartyChatCommands() {
     }
@@ -145,7 +149,7 @@ public final class PartyChatCommands {
         if (!cfg.reactToOwn && sender.equalsIgnoreCase(selfName())) {
             return;
         }
-        String[] words = message.split("\\s+");
+        String[] words = WHITESPACE.split(message);
         String name = words[0].substring(1).toLowerCase(Locale.ROOT);
         String argument = words.length > 1 ? words[1] : null;
         String rest = message.substring(words[0].length()).trim();
@@ -222,6 +226,9 @@ public final class PartyChatCommands {
             case "boop" -> cfg.boop && runOn("/boop ", target(argument, sender));
             case "downtime", "dt" -> cfg.downtime && addDowntime(sender, rest);
             case "undowntime", "undt" -> cfg.downtime && removeDowntime(sender);
+            case "up", "next" -> cfg.requeue && step(1);
+            case "down" -> cfg.requeue && step(-1);
+            case "same" -> cfg.requeue && step(0);
             case "help", "h" -> cfg.help && reply(helpLine(cfg));
             default -> false;
         };
@@ -280,12 +287,21 @@ public final class PartyChatCommands {
     /** {@code !f3} / {@code !m7} / {@code !t5} → {@code /joininstance <ID>}. */
     private static boolean joinInstance(String kind, int number) {
         String instance = switch (kind) {
-            case "f" -> "CATACOMBS_" + FLOOR_NAMES[number];
-            case "m" -> number == 0 ? null : "MASTER_CATACOMBS_" + FLOOR_NAMES[number];
-            case "t" -> number == 0 || number > 5 ? null : "KUUDRA_" + KUUDRA_TIERS[number];
+            case "f" -> InstanceIds.dungeon(false, number);
+            case "m" -> InstanceIds.dungeon(true, number);
+            case "t" -> InstanceIds.kuudra(number);
             default -> null;
         };
         return instance != null && run("/joininstance " + instance);
+    }
+
+    /**
+     * {@code !up} / {@code !down} / {@code !same}: steps the next Auto Requeue. Only the client that
+     * would send it answers (the leader, with Auto Requeue on), so a party of SBS users replies once.
+     */
+    private static boolean step(int delta) {
+        String answer = AutoRequeue.getInstance().step(delta);
+        return answer != null && reply(answer);
     }
 
     /**
@@ -337,8 +353,28 @@ public final class PartyChatCommands {
         if (note.isEmpty()) {
             note = "downtime";
         }
-        downtime.put(sender.toLowerCase(Locale.ROOT), note);
+        downtime.put(sender.toLowerCase(Locale.ROOT), new Downtime(sender, note));
         return reply(sender + " needs a break after this run (" + note + ")");
+    }
+
+    /** Pending downtime as "Name (note), Name (note)"; {@code null} when there is none. */
+    public String downtimeSummary() {
+        if (downtime.isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Downtime entry : downtime.values()) {
+            if (!sb.isEmpty()) {
+                sb.append(", ");
+            }
+            sb.append(entry.name()).append(" (").append(entry.note()).append(')');
+        }
+        return sb.toString();
+    }
+
+    /** Drops every pending downtime: a requeue cancel, or the party ending. */
+    public void clearDowntime() {
+        downtime.clear();
     }
 
     private boolean removeDowntime(String sender) {
@@ -350,14 +386,28 @@ public final class PartyChatCommands {
      * Reminds the party of every pending {@code !downtime} once the run is over – that is the moment
      * the note was left for. Hypixel prints the stat block for dungeons and the defeat line for
      * Kuudra, so either one ends a run.
+     *
+     * <p>With Auto Requeue on for that kind of run the entries stay: they are what stops the next
+     * requeue, and they go with {@code !undt}, a requeue cancel or the party ending.
      */
     private void announceDowntimeOnRunEnd(String text) {
-        if (downtime.isEmpty()
-                || !(text.contains("> EXTRA STATS <") || text.contains("KUUDRA DOWN!"))) {
+        if (downtime.isEmpty()) {
             return;
         }
-        String pending = String.join(", ", downtime.values());
-        downtime.clear();
+        boolean kuudra = text.contains("KUUDRA DOWN!");
+        if (!kuudra && !text.contains("> EXTRA STATS <")) {
+            return;
+        }
+        StringBuilder pending = new StringBuilder();
+        for (Downtime entry : downtime.values()) {
+            if (!pending.isEmpty()) {
+                pending.append(", ");
+            }
+            pending.append(entry.note());
+        }
+        if (!AutoRequeue.getInstance().keepsDowntime(kuudra)) {
+            downtime.clear();
+        }
         reply("Downtime: " + pending);
     }
 
@@ -432,6 +482,9 @@ public final class PartyChatCommands {
         }
         if (cfg.downtime) {
             builder.append(" !dt !undt");
+        }
+        if (cfg.requeue) {
+            builder.append(" !up !down !same");
         }
         if (cfg.boop) {
             builder.append(" !boop");

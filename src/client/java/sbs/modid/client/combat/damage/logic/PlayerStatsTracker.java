@@ -74,6 +74,7 @@ public final class PlayerStatsTracker {
     private static final Pattern FEROCITY = totalPattern("Ferocity");
     /** "Combat 42" anywhere in a menu item (skills item, profile lore). Values above 60 are noise. */
     private static final Pattern COMBAT_LEVEL = Pattern.compile("\\bCombat\\s+(\\d{1,2})\\b");
+    private static final Pattern LEADING_NON_LETTERS = Pattern.compile("^[^A-Za-z]+");
 
     private static final EquipmentSlot[] ARMOR = {
             EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
@@ -243,7 +244,7 @@ public final class PlayerStatsTracker {
         for (String rawLine : text.split("\n")) {
             // "🗡 Strength 945.1" -> "Strength 945.1": whatever icon glyph Hypixel uses this
             // year, it is not a letter - strip everything up to the first one.
-            String line = rawLine.replaceFirst("^[^A-Za-z]+", "").trim();
+            String line = LEADING_NON_LETTERS.matcher(rawLine).replaceFirst("").trim();
             if (line.isEmpty()) {
                 continue;
             }

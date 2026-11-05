@@ -86,7 +86,7 @@ public final class ReminderModule implements SbsModule {
         addChoreRows(rows);
         addHollowsLobbyRows(rows);
 
-        rows.add(SettingRow.toggle("Sound", () -> cfg().sound,
+        rows.add(SettingRow.soundToggle("Sound", () -> cfg().sound,
                 () -> { cfg().sound = !cfg().sound; save(); })
                 .describe("A ding with each reminder, so it lands even when chat is busy."));
         rows.add(SettingRow.label("— Extra ways to be told, on top of the chat line —"));

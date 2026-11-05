@@ -46,6 +46,11 @@ public final class PriceBrowser {
     private static final int KEY_ESCAPE = 256;
 
     // ----- Shared MCEF engine state (initialized once, used by all instances) -----
+    // Lazy by design: MCEF Modern starts CEF only on MCEFApi.initialize()/getInstanceFuture(),
+    // which only open() and drawProgress() call - nothing runs before a browser feature is used.
+    // Once started, the engine deliberately lives until the game closes (MCEF disposes it on
+    // CLIENT_STOPPING): CEF cannot be re-initialised in the same process, so shutting it down
+    // when idle would break every later open. Closing a browser instance frees that page.
     private static volatile MCEFApi sharedApi;
     private static volatile boolean sharedFailed;
     private static boolean sharedInitStarted;

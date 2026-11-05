@@ -77,6 +77,8 @@ public final class DungeonRoomMatcher {
 
     private static final int MIN_MATCHED = 5;
     private static final double MIN_RATIO = 0.6;
+    private static final java.util.regex.Pattern SIZE_RECT = java.util.regex.Pattern.compile("([0-9]+)x([0-9]+)");
+    private static final java.util.regex.Pattern SIZE_CELLS = java.util.regex.Pattern.compile("([0-9]+)");
 
     private DungeonRoomMatcher() {
     }
@@ -167,6 +169,9 @@ public final class DungeonRoomMatcher {
             if (colorFilter != null && !colorCompatible(colorFilter, room.map_color)) {
                 continue;
             }
+            if (!usableSignature(room)) {
+                continue;
+            }
             for (Placement placement : placements(borders, enumerateFrom, room)) {
                 CellScore score = score(lookup, placement.pivot(), placement.facing(), room, player);
                 if (score == null || !better(score, bestScore)) {
@@ -244,12 +249,12 @@ public final class DungeonRoomMatcher {
         int w = 0;
         int h = 0;
         String size = room.room_size == null ? "" : room.room_size.trim();
-        var rect = java.util.regex.Pattern.compile("([0-9]+)x([0-9]+)").matcher(size);
+        var rect = SIZE_RECT.matcher(size);
         if (rect.find()) {
             w = Integer.parseInt(rect.group(1));
             h = Integer.parseInt(rect.group(2));
         } else if (size.startsWith("L")) {
-            var cells = java.util.regex.Pattern.compile("([0-9]+)").matcher(size);
+            var cells = SIZE_CELLS.matcher(size);
             int count = cells.find() ? Integer.parseInt(cells.group(1)) : 4;
             w = 2;
             h = count <= 3 ? 2 : 3;
@@ -299,7 +304,7 @@ public final class DungeonRoomMatcher {
         if (text.startsWith("L")) {
             return "L";
         }
-        var m = java.util.regex.Pattern.compile("([0-9]+)x([0-9]+)").matcher(text);
+        var m = SIZE_RECT.matcher(text);
         if (m.find()) {
             int a = Integer.parseInt(m.group(1));
             int b = Integer.parseInt(m.group(2));
@@ -451,6 +456,18 @@ public final class DungeonRoomMatcher {
         return !IGNORED_BLOCKS.contains(block.id)
                 && (cell == null
                 || cell == DungeonRoomLocator.relativeCellKey(block.relative_x, block.relative_z));
+    }
+
+    /**
+     * Whether a room's scan can identify it at all. A purple (puzzle) room whose scan is one block
+     * cannot: puzzle rooms share the emerald door marker, and "Creeper" stored only that block, so
+     * every unsolved Teleport Maze - whose second block is the reward chest, absent until solved -
+     * matched as Creeper in a rotated placement (maintainer's log, 2026-10-15). Such a room stays
+     * unidentified here; {@code UnidentifiedPuzzleRoom} names it from what stands inside instead.
+     * Brown rooms are left alone: their scans feed the secret waypoints and are not in question.
+     */
+    static boolean usableSignature(DungeonRoom room) {
+        return !"purple".equalsIgnoreCase(room.map_color) || comparableTotal(room) >= 2;
     }
 
     private static int comparableTotal(DungeonRoom room) {

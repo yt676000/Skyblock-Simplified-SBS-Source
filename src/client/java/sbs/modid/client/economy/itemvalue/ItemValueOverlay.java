@@ -8,6 +8,8 @@
 
 package sbs.modid.client.economy.itemvalue;
 
+import sbs.modid.client.core.net.UrlGuard;
+
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -366,7 +368,8 @@ public final class ItemValueOverlay {
                 ? "" : "?token=" + URLEncoder.encode(token.trim(), StandardCharsets.UTF_8);
         String url = PriceBrowser.site() + query + "#/item/" + itemId;
         if (!PriceBrowserManager.getInstance().openNewUrl(url, "Item: " + ItemModifiers.prettify(itemId))) {
-            ConfirmLinkScreen.confirmLinkNow(screen, url);
+            // The external browser gets the page without the token query.
+            UrlGuard.openAfterClick(screen, PriceBrowser.site() + "#/item/" + itemId);
         }
     }
 

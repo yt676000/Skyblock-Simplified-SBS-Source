@@ -28,6 +28,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Tells you what an ability actually did to your stats: <i>"Ragnarock Axe: +247 Strength
@@ -75,6 +76,7 @@ public final class StatBuffTracker {
 
     /** The label used when a change had no ability behind it. */
     private static final String UNATTRIBUTED = "Stats";
+    private static final Pattern LEADING_SYMBOLS = Pattern.compile("^[^A-Za-z0-9\\[]+");
 
     private final Map<Stat, Double> baseline = new EnumMap<>(Stat.class);
     private boolean hasBaseline;
@@ -132,8 +134,8 @@ public final class StatBuffTracker {
 
     /** The item's name as the player sees it, colour codes and leading star glyphs removed. */
     private static String label(ItemStack stack) {
-        String name = FarmingText.strip(stack.getHoverName().getString())
-                .replaceFirst("^[^A-Za-z0-9\\[]+", "").trim();
+        String name = LEADING_SYMBOLS.matcher(FarmingText.strip(stack.getHoverName().getString()))
+                .replaceFirst("").trim();
         return name.length() > 40 ? name.substring(0, 40) : name;
     }
 

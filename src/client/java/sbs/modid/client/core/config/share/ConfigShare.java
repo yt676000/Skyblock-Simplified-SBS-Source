@@ -287,6 +287,8 @@ public final class ConfigShare {
      * entries nobody chose. A backup is the quieter thing.
      */
     public static Path backup() {
+        // Config saves are deferred; the backup must hold the settings as they are right now.
+        ConfigManager.getInstance().flush();
         try {
             Path dir = SBSFiles.root().resolve("backups");
             Files.createDirectories(dir);

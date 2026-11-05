@@ -46,6 +46,7 @@ public record GearStats(double damage, double strength, double critChance, doubl
                     + ":\\s*([+-]?[\\d,.]+)");
     /** A parenthesised reforge / gem addition on the same line: "(+30)". */
     private static final Pattern EXTRA = Pattern.compile("\\(\\s*\\+([\\d,.]+)");
+    private static final Pattern LEADING_NON_LETTERS = Pattern.compile("^[^A-Za-z]+");
 
     private static final char SECTION_SIGN = (char) 0x00A7;
 
@@ -67,7 +68,7 @@ public record GearStats(double damage, double strength, double critChance, doubl
         double health = 0;
         for (Component component : lore.lines()) {
             // Strip formatting, then any leading icon glyph - the stat name must start the line.
-            String line = strip(component.getString()).replaceFirst("^[^A-Za-z]+", "").trim();
+            String line = LEADING_NON_LETTERS.matcher(strip(component.getString())).replaceFirst("").trim();
             Matcher matcher = STAT_LINE.matcher(line);
             if (!matcher.find()) {
                 continue;

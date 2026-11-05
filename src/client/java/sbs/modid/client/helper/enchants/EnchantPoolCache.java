@@ -8,6 +8,9 @@
 
 package sbs.modid.client.helper.enchants;
 
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import sbs.modid.SkyblockSimplifiedSBS;
@@ -91,11 +94,17 @@ public final class EnchantPoolCache {
             }
             cache.put(itemId, new Entry(System.currentTimeMillis(), pool));
         } catch (Exception e) {
-            SkyblockSimplifiedSBS.LOGGER.debug("[SBS][Enchants] pool fetch failed: {}", e.toString());
+            sbs.modid.client.core.api.ApiFailure.logBackground("[SBS][Enchants]", "pool fetch", e);
             cache.put(itemId, new Entry(System.currentTimeMillis(), null));
         } finally {
             inFlight.remove(itemId);
+            sbs.modid.client.economy.prices.PriceVersion.bump();
         }
+    }
+
+    /** The item id as a path segment, or an empty segment for anything outside the id charset. */
+    private static String safeItemId(String itemId) {
+        return itemId != null && itemId.matches("[A-Za-z0-9_:;.+-]{1,96}") ? itemId : "_";
     }
 
     private Map<String, Integer> request(String base, String itemId) {
@@ -116,22 +125,19 @@ public final class EnchantPoolCache {
 //   ConsentScope.LICENCE_VALIDATION in Licence Token > Privacy & data; every switch there starts
 //   off. See PRIVACY.md.
 // ============================================================================
-                            URI.create(base + "/api/enchants/" + itemId))
+                            URI.create(base + "/api/enchants/" + safeItemId(itemId)))
                     .timeout(TIMEOUT).GET();
             String token = sbs.modid.client.core.config.LicenceToken.getInstance().get();
             if (token != null && !token.isBlank()) {
                 builder.header("Authorization", "Bearer " + token.trim());
             }
             HttpResponse<String> response = sbs.modid.client.core.api.SbsApi.send(
-                    ConsentScope.LICENCE_VALIDATION, http, builder.build(),
+                    ConsentScope.LICENCE_VALIDATION, MessageTypes.ENCHANTS, builder.build(),
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() != 200) {
                 return null;
             }
-            JsonObject body = gson.fromJson(response.body(), JsonObject.class);
-            if (body == null || !body.has("enchants")) {
-                return null;
-            }
+            JsonObject body = MessageSchemas.parse(MessageTypes.ENCHANTS, response.body()).getAsJsonObject();
             Map<String, Integer> pool = new TreeMap<>();
             for (var e : body.getAsJsonObject("enchants").entrySet()) {
                 try {
@@ -142,6 +148,7 @@ public final class EnchantPoolCache {
             }
             return pool;
         } catch (Exception e) {
+            sbs.modid.client.core.api.ApiFailure.logBackground("[SBS][Enchants]", "pool request", e);
             return null;
         }
     }

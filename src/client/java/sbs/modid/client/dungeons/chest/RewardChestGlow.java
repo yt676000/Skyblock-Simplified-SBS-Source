@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * The reward chests in the room, outlined by what they are worth: green the best, yellow another that
@@ -66,6 +67,7 @@ public final class RewardChestGlow {
     private static final Set<String> TIERS = Set.of("wood", "gold", "diamond", "emerald", "obsidian", "bedrock");
     /** The preview's buy button; its lore is the chest tooltip {@link DungeonChestValue} reads. */
     private static final String OPEN_ITEM = "Open Reward Chest";
+    private static final Pattern FORMATTING = Pattern.compile("§.");
     /** A preview may be attributed to a click this recent; matches {@code BlockInteractTracker}. */
     private static final long CLICK_FRESH_MS = 2_000L;
     private static final long SCAN_MS = 1_000L;
@@ -146,7 +148,7 @@ public final class RewardChestGlow {
             openMenu = null;
             return;
         }
-        String title = screen.getTitle() == null ? "" : screen.getTitle().getString().replaceAll("§.", "").trim();
+        String title = screen.getTitle() == null ? "" : FORMATTING.matcher(screen.getTitle().getString()).replaceAll("").trim();
         if (!TIERS.contains(title.toLowerCase(Locale.ROOT))) {
             openMenu = null;
             return;
@@ -159,7 +161,7 @@ public final class RewardChestGlow {
         int upper = Math.max(0, menu.slots.size() - 36);
         for (int i = 0; i < upper && chest == null; i++) {
             ItemStack stack = menu.getSlot(i).getItem();
-            if (!stack.isEmpty() && OPEN_ITEM.equals(stack.getHoverName().getString().replaceAll("§.", "").trim())) {
+            if (!stack.isEmpty() && OPEN_ITEM.equals(FORMATTING.matcher(stack.getHoverName().getString()).replaceAll("").trim())) {
                 chest = DungeonChestValue.of(stack);
             }
         }

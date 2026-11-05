@@ -13,6 +13,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.core.render.DigitWidths;
 import sbs.modid.client.ui.hud.render.HudCard;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
@@ -86,7 +87,7 @@ public final class BestiaryHud {
             fraction = mob.maxKills() > 0 ? Math.min(1.0, mob.kills() / (double) mob.maxKills()) : 0;
         }
 
-        int contentW = Math.max(font.width(title), Math.max(font.width(headline), font.width(detail)));
+        int contentW = Math.max(font.width(title), Math.max(font.width(headline), DigitWidths.width(font, detail)));
         int width = Math.max(MIN_W, PAD * 2 + contentW);
         int lineH = font.lineHeight + LINE_GAP;
         int height = PAD * 2 + lineH * 2 + BAR_H + LINE_GAP + font.lineHeight;

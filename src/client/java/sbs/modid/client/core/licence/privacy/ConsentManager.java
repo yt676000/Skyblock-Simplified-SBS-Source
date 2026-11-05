@@ -11,6 +11,7 @@ package sbs.modid.client.core.licence.privacy;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.User;
 import sbs.modid.SkyblockSimplifiedSBS;
+import sbs.modid.client.core.async.SbsExecutors;
 import sbs.modid.client.core.config.SBSFiles;
 
 import java.util.UUID;
@@ -69,7 +70,8 @@ public final class ConsentManager {
     public synchronized ConsentRegistry registry() {
         String account = currentAccount();
         if (registry == null || !account.equals(boundAccount)) {
-            registry = new ConsentRegistry(new ConsentStore(SBSFiles.consentFile(account)), account);
+            registry = new ConsentRegistry(new ConsentStore(SBSFiles.consentFile(account)), account,
+                    SbsExecutors.io());
             boundAccount = account;
             SkyblockSimplifiedSBS.LOGGER.info("[SBS][Privacy] Consent loaded for account {}.", account);
         }

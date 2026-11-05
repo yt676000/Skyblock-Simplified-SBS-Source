@@ -13,6 +13,7 @@ import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Fits text into the space a row actually has.
@@ -29,6 +30,7 @@ import java.util.List;
 public final class RowText {
 
     private static final String ELLIPSIS = "...";
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
     private RowText() {
     }
@@ -85,7 +87,7 @@ public final class RowText {
         }
         String prefix = colour == null ? "" : colour;
         StringBuilder line = new StringBuilder();
-        for (String word : text.split("\\s+")) {
+        for (String word : WHITESPACE.split(text)) {
             String candidate = line.length() == 0 ? word : line + " " + word;
             if (font.width(prefix + candidate) > maxWidth && line.length() > 0) {
                 out.add(prefix + line);

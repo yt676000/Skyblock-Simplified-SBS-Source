@@ -55,6 +55,12 @@ public final class ChainTracker {
     /** Expiry timestamps, oldest first. */
     private final Deque<Long> expiries = new ArrayDeque<>();
 
+    /**
+     * Bumped when a chain starts, advances or ends. Expiry is not counted - it is a clock, and the
+     * card already rebuilds once a second for the countdown.
+     */
+    private int version;
+
     private ChainTracker() {
     }
 
@@ -68,9 +74,15 @@ public final class ChainTracker {
         return expiries.size();
     }
 
+    /** Moves whenever a chain starts, advances or ends. */
+    public int version() {
+        return version;
+    }
+
     /** The first burrow of a chain was dug. */
     public void started() {
         prune();
+        version++;
         if (expiries.size() >= MAX_CHAINS) {
             // At the cap the count is already saying "as many as can run"; adding another would make
             // the readout say something the game cannot do.
@@ -83,6 +95,7 @@ public final class ChainTracker {
     /** A middle burrow of some chain was dug: whichever chain it was, it is not stale. */
     public void advanced() {
         prune();
+        version++;
         if (expiries.isEmpty()) {
             // A progress line for a chain we never saw start - joined mid-event, or a message was
             // missed. Adopting it is better than ignoring it: the chain demonstrably exists.
@@ -96,6 +109,7 @@ public final class ChainTracker {
     /** A chain ended - finished, or failed by dying. */
     public void ended() {
         prune();
+        version++;
         if (!expiries.isEmpty()) {
             expiries.removeFirst();
         }
@@ -105,6 +119,7 @@ public final class ChainTracker {
     /** World change, server hop, island change, or the player asking. */
     public void reset() {
         expiries.clear();
+        version++;
     }
 
     private void prune() {

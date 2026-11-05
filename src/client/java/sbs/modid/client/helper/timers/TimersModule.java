@@ -13,6 +13,7 @@ import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.module.ModuleGroup;
 import sbs.modid.client.core.module.ModuleSubgroup;
 import sbs.modid.client.core.module.SbsModule;
+import sbs.modid.client.helper.timers.weather.WeatherData;
 import sbs.modid.client.ui.settings.SettingRow;
 
 import java.util.List;
@@ -154,6 +155,54 @@ public final class TimersModule implements SbsModule {
                             .toUpperCase(java.util.Locale.ROOT) + event.mayor.substring(1) + " is in office.")
                             + " Default: shown."));
         }
+        rows.add(SettingRow.label("— Island weather —"));
+        rows.add(SettingRow.toggle("Weather", () -> cfg().showWeather,
+                        () -> { cfg().showWeather = !cfg().showWeather; save(); })
+                .describe("Countdown to the next weather on the island you are on (one every real hour, "
+                        + "XX:35 to XX:55 UTC) and to the next extreme one (every third). While it runs "
+                        + "the row says which weather and how long is left. Which hours are extreme is "
+                        + "learned the first time the scoreboard shows an extreme weather. Default: on."));
+        rows.add(SettingRow.toggle("Weather Stats", () -> cfg().weatherShowStats,
+                        () -> { cfg().weatherShowStats = !cfg().weatherShowStats; save(); })
+                .describe("Adds what the running weather gives - its stats and the extreme bonus. "
+                        + "Default: on."));
+        List<String> favourites = new java.util.ArrayList<>();
+        favourites.add("None");
+        for (WeatherData.Island island : WeatherData.islands()) {
+            favourites.add(island.area());
+        }
+        rows.add(SettingRow.options("Favourite Island", () -> favourites,
+                        () -> cfg().weatherFavouriteIsland.isEmpty() ? "None" : cfg().weatherFavouriteIsland,
+                        picked -> {
+                            cfg().weatherFavouriteIsland = "None".equals(picked) ? "" : picked;
+                            save();
+                        })
+                .describe("Where you are has no weather: show this island's instead. None hides the "
+                        + "row there. Default: None."));
+        rows.add(SettingRow.toggle("Weather Alert", () -> cfg().weatherAlert,
+                        () -> { cfg().weatherAlert = !cfg().weatherAlert; save(); })
+                .describe("Tells you one minute before a weather starts on the shown island. "
+                        + "Default: off."));
+        for (WeatherData.Island island : WeatherData.islands()) {
+            String area = island.area();
+            rows.add(SettingRow.toggle("Alert: " + area, () -> !cfg().weatherAlertHidden.contains(area),
+                            () -> {
+                                if (!cfg().weatherAlertHidden.remove(area)) {
+                                    cfg().weatherAlertHidden.add(area);
+                                }
+                                save();
+                            })
+                    .anchor("weather_alert_" + area.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z]+", "_"))
+                    .describe("Weather alert for " + area + " (" + island.mild() + " / "
+                            + island.extreme() + "). Default: on."));
+        }
+        rows.add(SettingRow.button("Forget Weather Phase",
+                        () -> { cfg().weatherExtremePhase = -1; save(); })
+                .describe("Throws away which hours were learned to be extreme, so it re-learns from "
+                        + "the next extreme weather."));
+        rows.addAll(sbs.modid.client.core.alert.AlertChannelRows.forAlert("weather_start",
+                "an island weather is about to start", () -> cfg().weatherAlertChannels,
+                value -> { cfg().weatherAlertChannels = value; save(); }));
         rows.addAll(sbs.modid.client.core.alert.AlertChannelRows.forAlert("calendar_start",
                 "a calendar event is about to start", () -> cfg().calendarAlertChannels,
                 value -> { cfg().calendarAlertChannels = value; save(); }));

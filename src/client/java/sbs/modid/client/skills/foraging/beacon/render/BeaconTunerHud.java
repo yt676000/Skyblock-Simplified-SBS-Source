@@ -21,6 +21,7 @@ import sbs.modid.client.ui.theme.SBSTheme;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * The Beacon Tuner card: what the beat is doing, in the terms a player can act on.
@@ -37,6 +38,8 @@ import java.util.List;
  * one.
  */
 public final class BeaconTunerHud {
+
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
 
     private static final int PAD = 5;
 
@@ -108,6 +111,6 @@ public final class BeaconTunerHud {
 
     /** Width has to be measured on the visible text, not on the colour codes in front of it. */
     private static String strip(String text) {
-        return text.replaceAll("§.", "");
+        return COLOUR_CODE.matcher(text).replaceAll("");
     }
 }

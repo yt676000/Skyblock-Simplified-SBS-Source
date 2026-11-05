@@ -1,0 +1,13 @@
+{
+  "_note": "M7 Corrupted Relic points: per colour, where the relic spawns and where it is placed. Positions come ONLY from our own [SBS][Relics] log captures (RelicProbe); none has been captured yet, so every entry is empty and no marker is drawn. Each point carries x/y/z, certainty (CONFIRMED / ESTIMATED / UNKNOWN) and the capture date. Bump dataVersion with every change.",
+  "schemaVersion": 1,
+  "dataVersion": 1,
+  "generatedAt": "2026-10-07",
+  "relics": [
+    { "colour": "RED" },
+    { "colour": "ORANGE" },
+    { "colour": "GREEN" },
+    { "colour": "BLUE" },
+    { "colour": "PURPLE" }
+  ]
+}

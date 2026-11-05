@@ -11,6 +11,7 @@ package sbs.modid.client.economy.itemvalue;
 import net.minecraft.world.item.ItemStack;
 import sbs.modid.client.core.item.SkyblockItem;
 import sbs.modid.client.core.util.NumberDisplay;
+import sbs.modid.client.economy.prices.BackupPriceMarker;
 
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -27,10 +28,22 @@ import java.util.function.Predicate;
  */
 public final class ValueSum {
 
-    /** A total, and how many items in it were not (fully) priced. */
-    public record Total(long value, int unpriced) {
+    /**
+     * A total, how many items in it were not (fully) priced, and how many were priced (partly) from
+     * backup prices rather than live ones.
+     */
+    public record Total(long value, int unpriced, int backup) {
 
-        public static final Total ZERO = new Total(0, 0);
+        public static final Total ZERO = new Total(0, 0, 0);
+
+        public Total(long value, int unpriced) {
+            this(value, unpriced, 0);
+        }
+
+        /** Whether part of {@link #value} is a last known price rather than a live one. */
+        public boolean usesBackup() {
+            return backup > 0;
+        }
 
         /** Whether {@link #value} is a lower bound rather than a figure. */
         public boolean floor() {
@@ -43,12 +56,16 @@ public final class ValueSum {
         }
 
         public Total plus(Total other) {
-            return new Total(value + other.value, unpriced + other.unpriced);
+            return new Total(value + other.value, unpriced + other.unpriced, backup + other.backup);
         }
 
-        /** "1.2M", "1.2M+" for a floor; follows the mod-wide Shorten Numbers setting. */
+        /**
+         * "1.2M", "1.2M+" for a floor, "≈1.2M" when part of it is a backup price (and marking is on);
+         * follows the mod-wide Shorten Numbers setting.
+         */
         public String label() {
-            return NumberDisplay.format(value) + (floor() ? "+" : "");
+            return (usesBackup() && BackupPriceMarker.enabled() ? BackupPriceMarker.PREFIX : "")
+                    + NumberDisplay.format(value) + (floor() ? "+" : "");
         }
     }
 
@@ -71,6 +88,7 @@ public final class ValueSum {
                                Predicate<T> canMiss, Predicate<T> empty) {
         long value = 0;
         int misses = 0;
+        int backup = 0;
         for (T item : items) {
             if (item == null || empty.test(item)) {
                 continue;
@@ -78,6 +96,9 @@ public final class ValueSum {
             ItemAppraisal.Appraisal appraisal = appraise.apply(item);
             if (appraisal.priced()) {
                 value += appraisal.total();
+                if (appraisal.usesBackup()) {
+                    backup++;
+                }
                 if (!appraisal.complete()) {
                     misses++;
                 }
@@ -85,6 +106,6 @@ public final class ValueSum {
                 misses++;
             }
         }
-        return new Total(value, misses);
+        return new Total(value, misses, backup);
     }
 }

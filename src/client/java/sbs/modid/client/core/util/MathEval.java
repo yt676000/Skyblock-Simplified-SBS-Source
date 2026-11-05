@@ -9,6 +9,7 @@
 package sbs.modid.client.core.util;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * A tiny arithmetic evaluator for search / amount fields, with SkyBlock's coin suffixes.
@@ -31,6 +32,8 @@ public final class MathEval {
     /** The suffix multipliers, in the spelling players type them. */
     private static final String SUFFIXES = "kmbt";
     private static final double[] SUFFIX_VALUE = {1e3, 1e6, 1e9, 1e12};
+    private static final Pattern TRAILING_ZEROS = Pattern.compile("0+$");
+    private static final Pattern TRAILING_DOT = Pattern.compile("\\.$");
 
     private final String input;
     private int pos;
@@ -261,7 +264,7 @@ public final class MathEval {
     private static String trim(double value) {
         String text = String.format(Locale.ROOT, "%.2f", value);
         if (text.contains(".")) {
-            text = text.replaceAll("0+$", "").replaceAll("\\.$", "");
+            text = TRAILING_DOT.matcher(TRAILING_ZEROS.matcher(text).replaceAll("")).replaceAll("");
         }
         return text;
     }

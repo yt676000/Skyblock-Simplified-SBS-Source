@@ -51,6 +51,9 @@ public final class ChatPriceCache {
     /** Strips every Minecraft formatting code (§ + colour/format char), case-insensitively. */
     private static final Pattern FORMATTING = Pattern.compile("(?i)§[0-9a-fk-or]");
 
+    /** Anything that is not an upper-case letter or digit - becomes an id underscore. */
+    private static final Pattern NON_ID_CHARS = Pattern.compile("[^A-Z0-9]+");
+
     /**
      * Relaxed matcher for both order-setup lines, tolerant of Hypixel's spacing / localisation:
      * "[Bazaar] … Sell Offer Setup! 64x Enchanted Diamond for 1,000,000 coins." (and the Buy variant).
@@ -75,6 +78,7 @@ public final class ChatPriceCache {
             return;
         }
         loaded = true;
+        PriceVersion.bump();
         Path path = filePath();
         try {
             if (Files.exists(path)) {
@@ -107,6 +111,7 @@ public final class ChatPriceCache {
         }
         Long previous = unitPrices.put(skyblockId, unitPrice);
         if (previous == null || previous != unitPrice) {
+            PriceVersion.bump();
             save();
         }
     }
@@ -142,7 +147,7 @@ public final class ChatPriceCache {
 
     /** Normalises a display name to the SkyBlock id convention (e.g. "Enchanted Diamond" -> "ENCHANTED_DIAMOND"). */
     private static String normalizeId(String name) {
-        return name.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_");
+        return NON_ID_CHARS.matcher(name.trim().toUpperCase(Locale.ROOT)).replaceAll("_");
     }
 
     private synchronized void save() {

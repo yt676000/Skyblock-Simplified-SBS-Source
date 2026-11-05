@@ -18,6 +18,7 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -126,6 +127,13 @@ public final class EventTimers {
     private volatile String jacobLine;
     private volatile String volcanoLine;
 
+    /**
+     * Bumped whenever something {@link #entries()} reads changes outside the clock and the config:
+     * the Jacob or Volcano line, the clock's anchor. Part of {@link #modelKey()}, so the card's
+     * cached rows follow a scan that changed them instead of waiting for the next second.
+     */
+    private volatile int dataRevision;
+
     private long lastScanAt;
     private long lastLogAt;
 
@@ -197,8 +205,11 @@ public final class EventTimers {
         if (day > 0 && minute >= 0) {
             adjustClock(day, minute, now);
         }
-        jacobLine = jacob;
-        volcanoLine = volcano;
+        if (!Objects.equals(jacob, jacobLine) || !Objects.equals(volcano, volcanoLine)) {
+            jacobLine = jacob;
+            volcanoLine = volcano;
+            dataRevision++;
+        }
 
         // Watching a contest run pins the cycle's phase - remember it for good.
         int today = currentDayOfYear();
@@ -209,6 +220,11 @@ public final class EventTimers {
         readCalendar(now);
         // The event calendar: refresh the tab widget reading and fire a due start alert.
         CalendarEvents.getInstance().tick(minuteOfYear());
+        // Island weather: probe, sidebar detection and the start alert. A new island or a weather
+        // seen live changes the row.
+        if (sbs.modid.client.helper.timers.weather.WeatherTracker.getInstance().tick(now)) {
+            dataRevision++;
+        }
 
         if (syncDayOfYear < 0 && now - lastLogAt > 30_000L && ScoreboardReader.hasSidebar()) {
             lastLogAt = now;
@@ -305,6 +321,59 @@ public final class EventTimers {
 
     // ------------------------------------------------------------------ rows
 
+    /**
+     * Everything {@link #entries()} depends on, so the card can cache its rows and rebuild them only
+     * when this changes. Every countdown is formatted to the second, so the wall-clock second is the
+     * finest input; the SkyBlock minute, the lobby day and the revisions catch the changes that do
+     * not land on a second boundary.
+     *
+     * @param wallSecond       real seconds since the epoch: every countdown steps on it
+     * @param minuteOfYear     the extrapolated SkyBlock clock ({@link #minuteOfYear()})
+     * @param lobbyDay         the server day-night clock in days
+     * @param configRevision   {@link ConfigManager#revision()}: toggles, Dark Auction minute, Jacob phase
+     * @param dataRevision     scan results: the Jacob and Volcano lines, the clock anchor
+     * @param calendarRevision the event calendar's tab reading, mayor and minister
+     * @param calendarData     the loaded calendar document, compared by identity (a reload swaps it)
+     */
+    public record ModelKey(long wallSecond, long minuteOfYear, long lobbyDay, int configRevision,
+                           int dataRevision, int calendarRevision, Object calendarData) {
+    }
+
+    /** The last key {@link #modelKey()} handed out, returned again while nothing in it moved. */
+    private ModelKey lastModelKey;
+
+    /**
+     * The key for the rows {@link #entries()} would build right now. Field by field against the last
+     * key, so a steady frame allocates nothing (it is asked every frame by the timer card).
+     */
+    public ModelKey modelKey() {
+        CalendarEvents calendar = CalendarEvents.getInstance();
+        long wallSecond = Math.floorDiv(System.currentTimeMillis(), 1_000L);
+        long minute = minuteOfYear();
+        long day = lobbyDay();
+        int configRevision = ConfigManager.getInstance().revision();
+        int data = dataRevision;
+        int calendarRevision = calendar.revision();
+        Object calendarData = calendar.data();
+        ModelKey last = lastModelKey;
+        if (last != null && last.wallSecond() == wallSecond && last.minuteOfYear() == minute
+                && last.lobbyDay() == day && last.configRevision() == configRevision
+                && last.dataRevision() == data && last.calendarRevision() == calendarRevision
+                && last.calendarData() == calendarData) {
+            return last;
+        }
+        last = new ModelKey(wallSecond, minute, day, configRevision, data, calendarRevision, calendarData);
+        lastModelKey = last;
+        return last;
+    }
+
+    /** {@link #modelKey()} from its inputs; the seam the key test drives. */
+    static ModelKey key(long nowMs, long minuteOfYear, long lobbyDay, int configRevision, int dataRevision,
+                        int calendarRevision, Object calendarData) {
+        return new ModelKey(Math.floorDiv(nowMs, 1_000L), minuteOfYear, lobbyDay, configRevision,
+                dataRevision, calendarRevision, calendarData);
+    }
+
     /** Every enabled row, in display order. */
     public List<TimerEntry> entries() {
         var cfg = cfg();
@@ -326,6 +395,10 @@ public final class EventTimers {
             if (volcano != null) {
                 rows.add(TimerEntry.measured("Volcano", volcano));
             }
+        }
+        TimerEntry weather = sbs.modid.client.helper.timers.weather.WeatherTracker.getInstance().row();
+        if (weather != null) {
+            rows.add(weather);
         }
         if (cfg.showSkyblockDate && currentDayOfYear() > 0) {
             rows.add(TimerEntry.measured("SkyBlock", dateText()));
@@ -417,6 +490,7 @@ public final class EventTimers {
         syncDayOfYear = day;
         syncMinuteOfDay = minute;
         syncRealMs = now;
+        dataRevision++;
     }
 
     /**
@@ -525,7 +599,7 @@ public final class EventTimers {
     }
 
     /** "1h 04m" / "12m 40s" / "45s" - the coarsest form that still answers "do I have time". */
-    static String shortDuration(long seconds) {
+    public static String shortDuration(long seconds) {
         if (seconds < 0) {
             return "-";
         }

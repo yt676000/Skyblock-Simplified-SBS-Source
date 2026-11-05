@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Each slayer's RNG meter, per account and SkyBlock profile: read exactly from the
@@ -44,6 +45,8 @@ import java.util.Map;
  */
 public final class RngMeterTracker implements ProfileScopedStore {
 
+    // Above INSTANCE: the constructor registers with ProfileContext, which may load the profile now.
+    private static final Pattern FORMATTING = Pattern.compile("(?i)§.");
     private static final RngMeterTracker INSTANCE = new RngMeterTracker();
     private static final String FILE = "slayer_rng.json";
 
@@ -55,6 +58,8 @@ public final class RngMeterTracker implements ProfileScopedStore {
     /** This session's known gains per slayer: {sum, count}. Not persisted. */
     private final Map<SlayerBoss, long[]> session = new EnumMap<>(SlayerBoss.class);
     private volatile boolean loaded;
+    /** Bumped whenever a meter is read or rewritten; the Slayer card rebuilds when it moves. */
+    private volatile int version;
 
     private SlayerBoss levelLineBoss;
     private long levelLineAt;
@@ -66,6 +71,11 @@ public final class RngMeterTracker implements ProfileScopedStore {
 
     public static RngMeterTracker getInstance() {
         return INSTANCE;
+    }
+
+    /** Moves whenever any meter, or this session's gains, may have changed. */
+    public int version() {
+        return version;
     }
 
     /** The meter of {@code boss}, or {@code null} when it has never been read on this profile. */
@@ -143,6 +153,7 @@ public final class RngMeterTracker implements ProfileScopedStore {
         SkyblockSimplifiedSBS.LOGGER.info("[SBS][Slayer] RNG meter {}: {} -> {}{} (gain {})",
                 levelLineBoss, before, total, exact ? "" : " (abbreviated)", gain < 0 ? "unknown" : gain);
         levelLineBoss = null;
+        version++;
         save();
     }
 
@@ -190,14 +201,15 @@ public final class RngMeterTracker implements ProfileScopedStore {
                     reading.percent(), reading.selectedDrop(), state.current);
         }
         state.applyMenu(reading.current(), reading.goal(), reading.selectedDrop(), now);
+        version++;   // menuAt moved even when the figures did not, and menuAt picks the card's slayer
         if (changed) {
             save();
         }
     }
 
     private static boolean isSlayerMenu(Screen screen) {
-        String title = screen.getTitle() == null ? "" : screen.getTitle().getString()
-                .replaceAll("(?i)§.", "").trim();
+        String title = screen.getTitle() == null ? "" : FORMATTING.matcher(screen.getTitle().getString())
+                .replaceAll("").trim();
         if (title.equals("Slayer")) {
             return true;
         }
@@ -258,6 +270,7 @@ public final class RngMeterTracker implements ProfileScopedStore {
             SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Slayer] could not read {} ({})", FILE, e.toString());
         }
         loaded = true;
+        version++;
     }
 
     @Override

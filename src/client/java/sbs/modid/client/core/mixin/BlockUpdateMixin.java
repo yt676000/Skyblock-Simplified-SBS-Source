@@ -55,6 +55,36 @@ public abstract class BlockUpdateMixin {
         // Effective Ore Blocks: queues the position for a re-check next tick, once the level holds
         // the new state. Returns on a boolean read while the overlay is not armed.
         sbs.modid.client.skills.mining.logic.EffectiveBlockScanner.getInstance().onBlockChanged(pos);
+        // F7 Lights device: lever and lamp flips, for learning the wiring. One boolean read outside
+        // the Goldor phase.
+        sbs.modid.client.dungeons.floorseven.logic.LightsDeviceTracker lights =
+                sbs.modid.client.dungeons.floorseven.logic.LightsDeviceTracker.getInstance();
+        if (lights.armed()) {
+            lights.onBlockChange(pos, level.getBlockState(pos), state);
+        }
+        // F7 Shoot the Target: the target block lighting up and going out. Returns on a boolean read
+        // outside the Goldor phase.
+        sbs.modid.client.dungeons.floorseven.logic.ShootTargetTracker shootTarget =
+                sbs.modid.client.dungeons.floorseven.logic.ShootTargetTracker.getInstance();
+        if (shootTarget.armed()) {
+            shootTarget.onBlockChange(pos, level.getBlockState(pos), state);
+        }
+        // M7 tick probe: logs block changes in the Storm and Goldor phases on the server-tick clock.
+        // Returns on a boolean read outside that window.
+        sbs.modid.client.dungeons.floorseven.logic.M7TickProbe.getInstance()
+                .onBlockChanged(pos, level.getBlockState(pos), state);
+        // Riftstalker Mania probe (debug): block changes near the player during your own Bloodfiend
+        // fight. One boolean read otherwise - checked here so the old state is not even looked up.
+        sbs.modid.client.combat.vampire.logic.ManiaProbe maniaProbe =
+                sbs.modid.client.combat.vampire.logic.ManiaProbe.getInstance();
+        if (maniaProbe.armed()) {
+            maniaProbe.onBlockChanged(pos, level.getBlockState(pos), state);
+        }
+        // Server Scanner (dev): block updates near the player while a capture records them. One
+        // boolean read otherwise - checked here so the old state is not even looked up.
+        if (sbs.modid.client.core.dev.scanner.ServerScanner.BLOCKS) {
+            sbs.modid.client.core.dev.scanner.ServerScanner.onBlock(pos, level.getBlockState(pos), state);
+        }
         TerracottaTracker tracker = TerracottaTracker.getInstance();
         if (!tracker.armed()) {
             return;

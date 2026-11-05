@@ -45,6 +45,7 @@ public final class AbilityCooldowns {
     private static final Pattern LORE_COOLDOWN = Pattern.compile("(?i)Cooldown:\\s*([0-9]+)s");
     private static final Pattern CHAT_COOLDOWN =
             Pattern.compile("(?i)This ability is on cooldown for\\s*([0-9]+)s");
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     /** Wither blades: using them triggers Wither Shield's fixed 5s cooldown (not in their lore). */
     private static final Set<String> WITHER_BLADES =
@@ -103,7 +104,7 @@ public final class AbilityCooldowns {
             return false;
         }
         for (Component line : lore.lines()) {
-            String text = line.getString().replaceAll(SECTION_SIGN + ".", "");
+            String text = FORMATTING.matcher(line.getString()).replaceAll("");
             if (text.contains("Wither Impact") || text.contains("Wither Shield")) {
                 return true;
             }
@@ -116,7 +117,7 @@ public final class AbilityCooldowns {
         if (message == null) {
             return;
         }
-        Matcher m = CHAT_COOLDOWN.matcher(message.replaceAll(SECTION_SIGN + ".", ""));
+        Matcher m = CHAT_COOLDOWN.matcher(FORMATTING.matcher(message).replaceAll(""));
         if (!m.find()) {
             return;
         }
@@ -214,7 +215,7 @@ public final class AbilityCooldowns {
             return -1;
         }
         for (Component line : lore.lines()) {
-            Matcher m = LORE_COOLDOWN.matcher(line.getString().replaceAll(SECTION_SIGN + ".", ""));
+            Matcher m = LORE_COOLDOWN.matcher(FORMATTING.matcher(line.getString()).replaceAll(""));
             if (m.find()) {
                 return Integer.parseInt(m.group(1));
             }

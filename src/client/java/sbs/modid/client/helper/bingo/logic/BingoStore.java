@@ -40,7 +40,6 @@ import java.util.regex.Pattern;
  */
 public final class BingoStore implements ProfileScopedStore {
 
-    private static final BingoStore INSTANCE = new BingoStore();
 
     private static final String FILE = "bingo.json";
     private static final int SCHEMA_VERSION = 1;
@@ -59,6 +58,10 @@ public final class BingoStore implements ProfileScopedStore {
     private boolean loaded;
     private boolean unreadable;
     private final java.util.Set<String> loggedChat = new java.util.HashSet<>();
+
+    // Declared after every static field: the constructor registers patterns, and a field
+    // initialised below this line is still null when it runs (the puzzle chat was dead for it).
+    private static final BingoStore INSTANCE = new BingoStore();
 
     private BingoStore() {
         ProfileContext.getInstance().register(this);

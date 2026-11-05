@@ -203,6 +203,12 @@ public final class FairySoulDatabase {
         return document == null ? 0 : document.totalSouls;
     }
 
+    /** The game's soul count on {@code island} per the live file, or {@code 0} when unknown. */
+    public static int countOn(String island) {
+        FairySoulData document = data();
+        return document == null ? 0 : document.countOn(island);
+    }
+
     /** Which copy is live and at what version, for the settings status line. */
     public static String status() {
         FairySoulData document = data();

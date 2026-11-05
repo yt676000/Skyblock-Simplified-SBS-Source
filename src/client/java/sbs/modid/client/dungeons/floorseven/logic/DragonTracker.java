@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * The five dragons of the M7 dragon phase: which are up, what each has left, and - the part the
@@ -62,6 +63,7 @@ public final class DragonTracker {
 
     /** How far around a dragon its collar blocks ride. */
     private static final double COLLAR_RADIUS = 8.0;
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     /**
      * One of the five: the colour it is drawn in, the word its name contains, and the block colours
@@ -152,6 +154,16 @@ public final class DragonTracker {
 
     public static DragonTracker getInstance() {
         return INSTANCE;
+    }
+
+    /**
+     * World leave: both maps are keyed by dragon entity id, which a rejoin reassigns. The statues
+     * remembered in the config are positions and survive.
+     */
+    public void onWorldChange() {
+        spawnPositions.clear();
+        identified.clear();
+        dragons = List.of();
     }
 
     private static SBSConfig.DungeonsSettings cfg() {
@@ -266,7 +278,7 @@ public final class DragonTracker {
 
     /** The dragon's own name first, then the colour of the collar riding under its head. */
     private static Kind identify(ClientLevel level, EnderDragon dragon) {
-        Kind named = Kind.byWord(dragon.getName().getString().replaceAll("§.", ""));
+        Kind named = Kind.byWord(FORMATTING.matcher(dragon.getName().getString()).replaceAll(""));
         if (named != null) {
             return named;
         }

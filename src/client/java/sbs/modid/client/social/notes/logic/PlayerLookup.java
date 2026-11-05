@@ -46,7 +46,7 @@ public final class PlayerLookup {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level != null) {
             for (Player player : minecraft.level.players()) {
-                if (player.getGameProfile().name().equalsIgnoreCase(name) && sbs.modid.client.core.player.RealPlayers.isRealPlayer(player)) {
+                if (player.getGameProfile().name().equalsIgnoreCase(name) && sbs.modid.client.core.player.RealPlayers.hasPlayerListEntry(player)) {
                     String uuid = PlayerNoteBook.accountUuid(player.getUUID());
                     if (uuid != null) {
                         return uuid;
@@ -79,7 +79,7 @@ public final class PlayerLookup {
         if (minecraft.level != null) {
             for (Player player : minecraft.level.players()) {
                 String name = player.getGameProfile().name();
-                if (PlayerNoteBook.isValidName(name) && sbs.modid.client.core.player.RealPlayers.isRealPlayer(player)
+                if (PlayerNoteBook.isValidName(name) && sbs.modid.client.core.player.RealPlayers.hasPlayerListEntry(player)
                         && PlayerNoteBook.accountUuid(player.getUUID()) != null) {
                     names.add(name);
                 }

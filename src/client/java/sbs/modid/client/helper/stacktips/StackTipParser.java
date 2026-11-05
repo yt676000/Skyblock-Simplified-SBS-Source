@@ -8,6 +8,7 @@
 
 package sbs.modid.client.helper.stacktips;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -24,14 +25,29 @@ import java.util.regex.Pattern;
  *       id's number equal to {@code generator_tier}, and passes are {@code CATACOMBS_PASS_<n>} /
  *       {@code MASTER_CATACOMBS_PASS_<n>} for 0-10. The id beats the name: the same resource names
  *       {@code BIRCH_GENERATOR_12} "Birch Minion XIi", which a roman-numeral parse would drop.</li>
+ *   <li>Dungeon quality: the {@code baseStatBoostPercentage} roll, read by {@link DungeonQuality};
+ *       the field names and the maximum of 50 are <b>unconfirmed</b> until the probe has run.</li>
  *   <li>Skills and collections: the name shapes below are <b>unverified</b> against a live menu, so
  *       both kinds ship switched off. See {@code docs/features/item-stack-tips.md}.</li>
+ *   <li>New Year Cakes: id {@code NEW_YEAR_CAKE} and the lore line are from the repo item data;
+ *       the custom_data year key is <b>unverified</b>, so the lore is the fallback.</li>
  * </ul>
  */
 public final class StackTipParser {
 
-    /** One parsed tip. {@code text} is what is drawn; it is never empty. */
-    public record Tip(StackTipKind kind, String text) {
+    /**
+     * One parsed tip. {@code text} is what is drawn; it is never empty. {@code color} is an opaque
+     * ARGB colour, or {@link #THEME} for the theme accent - which is retinted live, so it is looked
+     * up at draw time rather than stored here.
+     */
+    public record Tip(StackTipKind kind, String text, int color) {
+
+        /** "Draw in {@code SBSTheme.ACCENT}". */
+        public static final int THEME = 0;
+
+        public Tip(StackTipKind kind, String text) {
+            this(kind, text, THEME);
+        }
     }
 
     private static final Pattern PET = Pattern.compile("^\\[Lvl\\s*(\\d{1,3})]");
@@ -43,7 +59,45 @@ public final class StackTipParser {
                     + "|Social|Taming|Hunting) (\\d{1,2}|[IVXL]+)$");
     private static final Pattern COLLECTION_NAME = Pattern.compile("^(.+) ([IVXL]+)$");
 
+    /** The New Year Cake's lore line: "...as a celebration for the 69th SkyBlock Year!". */
+    private static final Pattern CAKE_LORE = Pattern.compile(
+            "celebration for the (\\d{1,6})(?:st|nd|rd|th) SkyBlock Year", Pattern.CASE_INSENSITIVE);
+    private static final Pattern FORMATTING_CODE = Pattern.compile("§.");
+    static final String CAKE_ID = "NEW_YEAR_CAKE";
+
     private StackTipParser() {
+    }
+
+    /**
+     * {@link #itemTip(String, String)} plus the New Year Cake's year: from {@code customDataYear}
+     * when present, else from the lore line. Plain values in, never the stack.
+     *
+     * @param customDataYear the custom_data {@code new_years_cake} value, {@code null} when absent
+     * @param lore           the lore lines, colour codes stripped or not; {@code null} for none
+     */
+    public static Tip itemTip(String plainName, String id, Integer customDataYear, List<String> lore) {
+        if (CAKE_ID.equals(id)) {
+            return positive(StackTipKind.CAKE_YEAR,
+                    customDataYear != null ? customDataYear : cakeYearFromLore(lore));
+        }
+        return itemTip(plainName, id);
+    }
+
+    /** The SkyBlock year in a cake's lore, or 0 for none. */
+    static int cakeYearFromLore(List<String> lore) {
+        if (lore == null) {
+            return 0;
+        }
+        for (String line : lore) {
+            if (line == null) {
+                continue;
+            }
+            Matcher year = CAKE_LORE.matcher(FORMATTING_CODE.matcher(line).replaceAll(""));
+            if (year.find()) {
+                return Integer.parseInt(year.group(1));
+            }
+        }
+        return 0;
     }
 
     /**
@@ -53,6 +107,16 @@ public final class StackTipParser {
      * @param id        the SkyBlock id, or {@code null}/empty for none
      */
     public static Tip itemTip(String plainName, String id) {
+        return itemTip(plainName, id, null);
+    }
+
+    /**
+     * {@link #itemTip(String, String)}, plus a dungeon drop's quality roll when it has one. A pet,
+     * minion or pass tip wins; none of those carries a roll anyway.
+     *
+     * @param quality the stack's {@link DungeonQuality}, {@code null} for none
+     */
+    public static Tip itemTip(String plainName, String id, DungeonQuality quality) {
         String name = plainName == null ? "" : plainName.trim();
         Matcher pet = PET.matcher(name);
         if (pet.find()) {
@@ -68,7 +132,8 @@ public final class StackTipParser {
                 return new Tip(StackTipKind.DUNGEON_PASS,
                         (pass.group(1) != null ? "M" : "") + Integer.parseInt(pass.group(2)));
             }
-            return null;
+            return quality == null ? null
+                    : new Tip(StackTipKind.DUNGEON_QUALITY, quality.tipText(), quality.color());
         }
         // No id at all (a menu's display copy): fall back to the verified minion name shape.
         Matcher minionName = MINION_NAME.matcher(name);

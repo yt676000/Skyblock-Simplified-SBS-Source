@@ -8,15 +8,22 @@
 
 package sbs.modid.client.ui.settings;
 
+import sbs.modid.client.core.net.UrlGuard;
+
 import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.language.I18n;
 import sbs.modid.client.core.api.GuiStateManager;
 import sbs.modid.client.core.licence.privacy.ConsentManager;
+import sbs.modid.client.core.licence.privacy.ConsentRegistry;
 import sbs.modid.client.core.licence.privacy.ConsentScope;
 import sbs.modid.client.core.licence.privacy.ConsentSource;
 import sbs.modid.client.core.licence.privacy.PrivacyLinks;
+import sbs.modid.client.core.licence.privacy.PrivacyPolicy;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,6 +44,9 @@ import java.util.List;
  * translate normally.
  */
 public final class PrivacyRows {
+
+    private static final DateTimeFormatter DATE =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneId.systemDefault());
 
     private PrivacyRows() {
     }
@@ -66,12 +76,7 @@ public final class PrivacyRows {
         }
 
         rows.add(SettingRow.label("§l" + I18n.get("sbs.privacy.tab.title") + " §r§7- your rights"));
-        // Still a label while the notice is unpublished: a button that 404s reads as "there is no
-        // notice" rather than "it is not online yet". PrivacyLinks.PUBLISHED retires this line and
-        // repoints the button below in one edit, so the two cannot get out of step.
-        if (!PrivacyLinks.PUBLISHED) {
-            rows.add(SettingRow.label("§8" + I18n.get("sbs.privacy.label.notice")));
-        }
+        policy(rows);
         // No address on this screen on purpose. It would be a fourth copy of a string that also
         // lives on the website and in the Impressum, and the copy that is never the one updated is
         // always the one in the client - it ships in a jar people keep for months.
@@ -82,6 +87,28 @@ public final class PrivacyRows {
 
         support(rows);
         return rows;
+    }
+
+    /**
+     * The policy version this build is bound to, the version and date of the user's latest answer,
+     * and a line when the two differ. The policy button itself follows below.
+     */
+    private static void policy(List<SettingRow> rows) {
+        ConsentRegistry registry = ConsentManager.getInstance().registry();
+        rows.add(SettingRow.label("§7" + I18n.get("sbs.privacy.policy.current", PrivacyPolicy.VERSION)));
+        long at = registry.lastAnsweredAt();
+        if (at <= 0L) {
+            rows.add(SettingRow.label("§8" + I18n.get("sbs.privacy.policy.none")));
+            return;
+        }
+        String date = DATE.format(Instant.ofEpochMilli(at));
+        String accepted = registry.acceptedPolicyVersion();
+        rows.add(SettingRow.label("§8" + (accepted.isEmpty()
+                ? I18n.get("sbs.privacy.policy.accepted_unknown", date)
+                : I18n.get("sbs.privacy.policy.accepted", accepted, date))));
+        if (!PrivacyPolicy.VERSION.equals(accepted)) {
+            rows.add(SettingRow.label("§e" + I18n.get("sbs.privacy.policy.outdated")));
+        }
     }
 
     /**
@@ -124,6 +151,22 @@ public final class PrivacyRows {
     }
 
     /**
+     * Opens the Licence Token page on this scope's row, scrolled to it and highlighted, or on the
+     * page itself when the row cannot be found (null scope, or a scope with no switch). Local
+     * navigation only: the "Open privacy settings" button behind {@code ApiFailure.NO_CONSENT}.
+     */
+    public static void openSettings(ConsentScope scope) {
+        String moduleId = sbs.modid.client.core.module.ModuleManager.LICENCE_TOKEN_ID;
+        if (scope == null || !ConfigNavigator.jumpTo(moduleId + ":" + anchor(scope))) {
+            ConfigNavigator.jumpToModule(moduleId);
+        }
+    }
+
+    private static String anchor(ConsentScope scope) {
+        return "privacy_scope_" + scope.id();
+    }
+
+    /**
      * Opens an external URL through the vanilla confirmation prompt.
      *
      * <p>The parent comes from {@link GuiStateManager}, not from {@code Minecraft}: the current
@@ -133,7 +176,7 @@ public final class PrivacyRows {
     private static void open(String url) {
         Screen parent = GuiStateManager.getInstance().getCurrentScreen();
         if (parent != null) {
-            ConfirmLinkScreen.confirmLinkNow(parent, url);
+            UrlGuard.openAfterClick(parent, url);
         }
     }
 
@@ -153,14 +196,14 @@ public final class PrivacyRows {
             // greyed: it cannot be turned on, and the tooltip says why in the user's own terms.
             return SettingRow.toggle(title + " §8(" + I18n.get("sbs.privacy.state.planned") + ")",
                             () -> false, () -> { })
-                    .anchor("privacy_scope_" + scope.id())
+                    .anchor(anchor(scope))
                     .disabled()
                     .describe(I18n.get("sbs.privacy.state.planned.tooltip") + "\n\n" + detail(scope));
         }
         return SettingRow.toggle(title,
                         () -> ConsentManager.isGranted(scope),
                         () -> toggle(scope))
-                .anchor("privacy_scope_" + scope.id())
+                .anchor(anchor(scope))
                 .describe(detail(scope));
     }
 

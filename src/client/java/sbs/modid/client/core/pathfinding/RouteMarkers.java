@@ -13,7 +13,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.render.WorldRender;
 
@@ -32,6 +32,9 @@ import java.util.Set;
  * what keeps a flickering objective's marker still on screen.
  */
 final class RouteMarkers {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
+    private static final int[] SCREEN_NEXT = new int[2];
 
     /** Hidden when the player is this close: they are there. */
     private static final double HIDE_WITHIN = 4.0;
@@ -50,7 +53,7 @@ final class RouteMarkers {
      * Draws every route's marker and returns the waypoints that got one, so the waypoint layer can
      * leave out its own label for them.
      */
-    static Set<Waypoint> draw(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    static Set<Waypoint> draw(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                               SBSConfig.PathfindingSettings cfg, Font font) {
         List<Route> routes = PathfindingManager.getInstance().routes();
         if (routes.isEmpty()) {
@@ -91,30 +94,37 @@ final class RouteMarkers {
      * across an island instead of shrinking to a hairline - the projection makes far things small,
      * and this is the one thing that should not get smaller.
      */
-    private static void drawPillar(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawPillar(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                    Vec3 base, int rgb, double distance, boolean primary, boolean stale) {
         int width = (int) Math.max(2, Math.min(6, 2 + distance / 48.0)) + (primary ? 1 : 0);
         int bottomAlpha = stale ? 70 : primary ? 170 : 120;
         int gw = g.guiWidth();
         int gh = g.guiHeight();
-        int[] previous = WorldRender.projectToScreen(viewProjection, camPos, base, gw, gh);
+        int[] previous = SCREEN;
+        int[] current = SCREEN_NEXT;
+        boolean previousOk = WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                base.x, base.y, base.z, gw, gh, previous);
         for (int i = 1; i <= PILLAR_SLICES; i++) {
             double y = PILLAR_HEIGHT * i / PILLAR_SLICES;
-            int[] current = WorldRender.projectToScreen(viewProjection, camPos, base.add(0, y, 0), gw, gh);
-            if (previous != null && current != null) {
+            boolean currentOk = WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                    base.x, base.y + y, base.z, gw, gh, current);
+            if (previousOk && currentOk) {
                 int alpha = (int) (bottomAlpha * (1.0 - (double) (i - 1) / PILLAR_SLICES));
                 WorldRender.line(g, previous[0], previous[1], current[0], current[1],
                         SciFiPathStyle.argb(rgb, alpha), width);
             }
+            int[] swap = previous;
             previous = current;
+            current = swap;
+            previousOk = currentOk;
         }
     }
 
-    private static void drawLabel(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos, Font font,
+    private static void drawLabel(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos, Font font,
                                   Route route, Waypoint target, Vec3 base, int rgb, double distance) {
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos, base.add(0, LABEL_HEIGHT, 0),
-                g.guiWidth(), g.guiHeight());
-        if (screen == null) {
+        int[] screen = SCREEN;
+        if (!WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                base.x, base.y + LABEL_HEIGHT, base.z, g.guiWidth(), g.guiHeight(), screen)) {
             return;
         }
         g.centeredText(font, Component.literal(label(route, target, distance)), screen[0], screen[1],

@@ -43,6 +43,7 @@ public final class AbilityDamageTracker {
      */
     private static final Pattern ABILITY_DAMAGE = Pattern.compile(
             "^Your\\s+(.+?)\\s+hit\\s+(\\d+)\\s+enem(?:y|ies)\\s+for\\s+([\\d,]+(?:\\.\\d+)?)\\s+damage\\.?$");
+    private static final Pattern FORMATTING = Pattern.compile(String.valueOf((char) 0x00A7) + ".");
 
     /** Hard cap on retained hits, independent of the configured line count. */
     private static final int MAX_RETAINED = 20;
@@ -131,6 +132,6 @@ public final class AbilityDamageTracker {
         if (text == null) {
             return "";
         }
-        return text.replaceAll(String.valueOf((char) 0x00A7) + ".", "").trim();
+        return FORMATTING.matcher(text).replaceAll("").trim();
     }
 }

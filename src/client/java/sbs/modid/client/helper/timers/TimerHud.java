@@ -13,6 +13,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.core.render.CachedModel;
 import sbs.modid.client.ui.hud.edit.logic.HudLayout;
 import sbs.modid.client.ui.hud.edit.model.HudElement;
 import sbs.modid.client.ui.hud.render.HudCard;
@@ -38,25 +39,31 @@ public final class TimerHud {
     }
 
     public static void render(GuiGraphicsExtractor g) {
+        // TEMPORARY measurement split: the card frame (HudCard.draw: glow, plate, material) is
+        // "hud.timersChrome", everything else "hud.timers" - sequential sections, never nested.
+        sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.timers");
+        try {
+            renderMeasured(g);
+        } finally {
+            perf.close();   // the same section object, reopened or not
+        }
+    }
+
+    private static void renderMeasured(GuiGraphicsExtractor g) {
         var cfg = ConfigManager.getInstance().get().timers;
         if (!cfg.enabled || Minecraft.getInstance().player == null
                 || HudLayout.isHidden(HudElement.EVENT_TIMERS)) {
             return;
         }
-        List<TimerEntry> rows = EventTimers.getInstance().entries();
-        if (rows.isEmpty()) {
+        Model model = MODEL.get(EventTimers.getInstance().modelKey());
+        if (model.rows().length == 0) {
             return;
         }
 
         Font font = Minecraft.getInstance().font;
         int lineH = font.lineHeight + 2;
-        String header = "Events";
-        int contentW = font.width(header);
-        for (TimerEntry row : rows) {
-            contentW = Math.max(contentW, font.width(row.label()) + 12 + font.width(row.value()));
-        }
-        int width = Math.max(110, contentW + PAD * 2);
-        int height = PAD * 2 + lineH * (1 + rows.size()) - 2;
+        int width = model.width();
+        int height = PAD * 2 + lineH * (1 + model.rows().length) - 2;
 
         HudElement.Bounds b = HudElement.EVENT_TIMERS.defaultBounds(g.guiWidth(), g.guiHeight());
         int x = Math.round(b.x());
@@ -64,20 +71,52 @@ public final class TimerHud {
         HudLayout.measure(HudElement.EVENT_TIMERS, x, y, width, height);
 
         HudLayout.begin(g, HudElement.EVENT_TIMERS);
-        HudCard.draw(g, x, y, width, height);
+        sbs.modid.client.core.perf.Perf.hud("hud.timers").close();
+        try (sbs.modid.client.core.perf.Perf.Section chrome = sbs.modid.client.core.perf.Perf.hud("hud.timersChrome")) {
+            HudCard.draw(g, x, y, width, height);
+        }
+        sbs.modid.client.core.perf.Perf.hud("hud.timers");
 
         int ix = x + PAD;
         int right = x + width - PAD;
         int iy = y + PAD;
-        g.text(font, Component.literal(header), ix, iy, SBSTheme.ACCENT_BRIGHT);
+        g.text(font, HEADER_TEXT, ix, iy, SBSTheme.ACCENT_BRIGHT);
         iy += lineH;
-        for (TimerEntry row : rows) {
-            g.text(font, Component.literal(row.label()), ix, iy, SBSTheme.TEXT_MUTED);
-            String value = row.value();
-            g.text(font, Component.literal(value), right - font.width(value), iy, colorFor(row));
+        for (Row row : model.rows()) {
+            g.text(font, row.label(), ix, iy, SBSTheme.TEXT_MUTED);
+            g.text(font, row.value(), right - row.valueWidth(), iy, row.color());
             iy += lineH;
         }
         HudLayout.end(g);
+    }
+
+    private static final String HEADER = "Events";
+    private static final Component HEADER_TEXT = Component.literal(HEADER);
+
+    /** One drawn row: components, colour and value width resolved at build. */
+    private record Row(Component label, Component value, int valueWidth, int color) {
+    }
+
+    /** The card's rows and width; rebuilt only when {@link EventTimers.ModelKey} moves (at most per second). */
+    private record Model(Row[] rows, int width) {
+    }
+
+    private static final CachedModel<EventTimers.ModelKey, Model> MODEL =
+            new CachedModel<>("timerHud", key -> build());
+
+    private static Model build() {
+        List<TimerEntry> entries = EventTimers.getInstance().entries();
+        Font font = Minecraft.getInstance().font;
+        int contentW = font.width(HEADER);
+        Row[] rows = new Row[entries.size()];
+        for (int i = 0; i < rows.length; i++) {
+            TimerEntry entry = entries.get(i);
+            int valueW = font.width(entry.value());
+            contentW = Math.max(contentW, font.width(entry.label()) + 12 + valueW);
+            rows[i] = new Row(Component.literal(entry.label()), Component.literal(entry.value()), valueW,
+                    colorFor(entry));
+        }
+        return new Model(rows, Math.max(110, contentW + PAD * 2));
     }
 
     /** Urgent red when a countdown is nearly up, dimmed when the value is a prediction. */

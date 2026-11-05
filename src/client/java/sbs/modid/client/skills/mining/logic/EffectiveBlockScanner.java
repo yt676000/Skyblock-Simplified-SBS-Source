@@ -138,6 +138,15 @@ public final class EffectiveBlockScanner {
         return INSTANCE;
     }
 
+    /**
+     * World leave: the candidates are positions in the old level. The tick re-arms on a new level
+     * object anyway; this releases the old level and its blocks at the edge rather than a tick
+     * later. The per-block-type table is not world state and survives.
+     */
+    public void onWorldChange() {
+        disarm();
+    }
+
     /** Whether the overlay is switched on and the player is somewhere one of its ores is mined. */
     public boolean armed() {
         return armed;

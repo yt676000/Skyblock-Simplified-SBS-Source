@@ -155,8 +155,24 @@ public final class BazaarOrder {
     }
 
     public void setStatus(BazaarStatus status) {
-        this.status = status == null ? BazaarStatus.UNKNOWN : status;
+        BazaarStatus next = status == null ? BazaarStatus.UNKNOWN : status;
+        if (this.status != next) {
+            this.status = next;
+            STATUS_REVISION.incrementAndGet();
+        }
     }
+
+    /**
+     * Bumped whenever any order's {@link #status()} actually changes. Statuses are written in place
+     * (by the API sync and the tracker), so a view caching rows built from them keys on this
+     * together with the tracker's list revision.
+     */
+    public static long statusRevision() {
+        return STATUS_REVISION.get();
+    }
+
+    private static final java.util.concurrent.atomic.AtomicLong STATUS_REVISION =
+            new java.util.concurrent.atomic.AtomicLong();
 
     public long strictlyBetterSince() {
         return strictlyBetterSince;

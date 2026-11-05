@@ -34,10 +34,13 @@ import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.combat.carry.logic.CarryCounter;
 import sbs.modid.client.combat.carry.model.SlayerBoss;
 import sbs.modid.client.combat.slayer.model.BlazeAttunement;
+import sbs.modid.client.combat.slayer.model.InfernoDemon;
+import sbs.modid.client.combat.slayer.model.InfernoPhase;
 import sbs.modid.client.combat.slayer.model.SlayerData;
 import sbs.modid.client.combat.slayer.render.SlayerAlerts;
 import sbs.modid.client.combat.slayer.render.SlayerHighlight;
 import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.combat.vampire.logic.StakeWindow;
 import sbs.modid.client.core.config.SBSConfig.CarryCounterSettings;
 import sbs.modid.client.core.config.SBSConfig.SlayerSettings;
 import sbs.modid.client.dungeons.run.logic.DungeonScoreboard;
@@ -120,6 +123,15 @@ public final class SlayerTracker {
     private static final double DEMON_RANGE = 12.0;
     /** The fight anchor goes stale this long after the last sign of your own Inferno fight. */
     private static final long ANCHOR_TTL_MS = 15_000L;
+    /** How far from your fight a Quazii / Typhoeus tag may stand and still be one of yours. */
+    private static final double DEMON_FIGHT_RANGE = 16.0;
+    /** How far an attunement word may float from a demon's name and still be that demon's. */
+    private static final double DEMON_STACK_RANGE = 3.0;
+    /** Inferno probe: tags worth printing during the fight – demon names and phase-sounding words. */
+    private static final Pattern INFERNO_PROBE = Pattern.compile(
+            "quazii|typhoeus|demon|immune|invulnerable|split", Pattern.CASE_INSENSITIVE);
+    /** Probe lines per fight at most, so one long fight cannot flood the log. */
+    private static final int INFERNO_PROBE_MAX = 300;
     /** The attunement readout stops drawing this long after the tag was last seen. */
     private static final long ATTUNEMENT_FRESH_MS = 2_000L;
     /** Hits the shield takes before it hands over – anything outside 0..8 is not a hit count. */
@@ -182,6 +194,9 @@ public final class SlayerTracker {
     private static final long TNT_ALERT_MS = 3_000L;
 
     private static final char SECTION_SIGN = (char) 0x00A7;
+    private static final Pattern FORMATTING = Pattern.compile("§.");
+    private static final Pattern NON_KEY_CHARS = Pattern.compile("[^A-Z0-9_]");
+    private static final Pattern NON_DIGITS = Pattern.compile("[^0-9]");
 
     /**
      * One highlighted world box handed to {@link SlayerHighlight}.
@@ -238,11 +253,16 @@ public final class SlayerTracker {
     }
 
     /** One slayer-boss nametag: the mob under it, where the tag floats, and its phase wording. */
-    private record BossTag(LivingEntity mob, Vec3 pos, boolean hitsPhase, String state) {
+    private record BossTag(LivingEntity mob, Vec3 pos, boolean hitsPhase, String state, String name,
+                           String raw) {
     }
 
     /** One state word found floating in the world, with where – claimed by the boss it stands at. */
     private record StateTag(Vec3 pos, String word) {
+    }
+
+    /** One Quazii / Typhoeus tag: the demon, the mob it names (null if none found), where the tag is. */
+    private record DemonTag(InfernoDemon demon, LivingEntity mob, Entity tagEntity, Vec3 pos, String tag) {
     }
 
     /**
@@ -283,8 +303,17 @@ public final class SlayerTracker {
      */
     private boolean questActive;
     private boolean bossUp;
+
+    /** Tier of the running Voidgloom quest from its sidebar line, 0 when unknown. */
+    private int questTier;
     private long bossSpawnAt;
     private LivingEntity bossEntity;
+    /** Riftstalker: whether your boss can be staked yet - see {@link #updateStakeWindow}. */
+    private final StakeWindow stakeWindow = new StakeWindow();
+    /** The last raw Riftstalker tag the probe logged, so it logs changes only. */
+    private String lastRiftstalkerTag;
+    /** The stake call-out and box: a hot orange no other slayer cue uses. */
+    private static final int STEAK_COLOR = 0xFFFF7A00;
     private BlockPos beaconPos;
     private long lastBeaconAlertAt;
     private final Set<Integer> alertedEntities = new HashSet<>();
@@ -372,6 +401,20 @@ public final class SlayerTracker {
     /** Throttle for the raw-attunement-tag diagnostic. */
     private long lastAttunementLogAt;
 
+    // ---- Inferno demons + phase ----
+    private final InfernoPhaseClock infernoClock = new InfernoPhaseClock();
+    /** Where your demons were last seen: carries the fight while neither your line nor a tag is. */
+    private Vec3 demonAnchor;
+    private long demonAnchorAt;
+    /**
+     * Probe: every (entity, tag) pair already printed this fight, so the "[SBS][Inferno]" lines show
+     * each demon tag and each of its health changes once rather than four times a second.
+     */
+    private final Set<String> infernoLogged = new HashSet<>();
+    private int infernoProbeLines;
+    /** Your own boss's last confirmed position this fight; gates the demons against a neighbour's. */
+    private Vec3 ownBossPos;
+
     // ---- session stats ----
     private int bossesSlain;
     private int questsFailed;
@@ -386,6 +429,8 @@ public final class SlayerTracker {
     private long lootWindowUntil;
     private long firstEventAt;
     private long lastEventAt;
+    /** Bumped on every change the HUD card shows; the card rebuilds its rows when it moves. */
+    private int version;
 
     private long lastScanAt;
 
@@ -394,6 +439,17 @@ public final class SlayerTracker {
 
     public static SlayerTracker getInstance() {
         return INSTANCE;
+    }
+
+    /**
+     * World leave: only the entity-id sets. An id reused in the next world must neither be
+     * suppressed as already alerted nor inherit a head track. The quest, the session drops and the
+     * kill timing are not world state - a slayer quest survives a warp - and are kept.
+     */
+    public void onWorldChange() {
+        alertedEntities.clear();
+        headTracks.clear();
+        VoidgloomFight.getInstance().reset();
     }
 
     /** Whether your own slayer boss is up right now (read-only; Hide Nearby Players stands down). */
@@ -461,12 +517,16 @@ public final class SlayerTracker {
             SlayerBoss matched = SlayerBoss.matchNametag(line);
             if (matched != null) {
                 sidebarBoss = matched;
+                if (matched == SlayerBoss.VOIDGLOOM) {
+                    questTier = VoidgloomFight.tierOf(line);
+                }
                 quest = true;
             }
         }
         questActive = quest || slayBoss;
-        if (sidebarBoss != null) {
+        if (sidebarBoss != null && sidebarBoss != questBoss) {
             questBoss = sidebarBoss;
+            version++;
         }
         if (slayBoss && !bossUp) {
             bossSpawnAt = now;   // the boss just spawned - kill time starts here
@@ -481,7 +541,12 @@ public final class SlayerTracker {
             // Drop the fight anchor too: with no boss of your own, the nearest attuned mob is by
             // definition somebody else's, and a stale anchor is exactly how it would latch onto one.
             blazeAnchor = null;
+            demonAnchor = null;
+            infernoLogged.clear();
+            infernoProbeLines = 0;
+            ownBossPos = null;
             clearAttunement();
+            VoidgloomFight.getInstance().reset();
         }
         bossUp = slayBoss;
     }
@@ -490,7 +555,15 @@ public final class SlayerTracker {
     private void scanEntities(ClientLevel level, LocalPlayer player, List<HighlightBox> boxes,
                               long now, SlayerSettings settings) {
         boolean minibossHelpers = minibossHelpersAllowed(settings);
-        boolean readAttunement = questBoss == SlayerBoss.INFERNO && blazeHelpersOn(settings);
+        boolean infernoFight = questBoss == SlayerBoss.INFERNO && bossUp;
+        // Read in every Inferno fight, helpers on or not: the phase clock and its probe lines run off
+        // them, and those lines are what the (still unconfirmed) demon wording gets checked against.
+        boolean readDemons = infernoFight;
+        // The demon boxes take their colour from the attunement each demon wears, so they want the
+        // tags read even with every attunement helper off.
+        boolean readAttunement = questBoss == SlayerBoss.INFERNO
+                && (blazeHelpersOn(settings) || settings.demonHighlight && settings.demonAttunementColor);
+        List<DemonTag> demonTags = readDemons ? new ArrayList<>() : List.of();
         String myName = player.getGameProfile().name();
 
         // Collected here, decided after the loop: whose boss a tag belongs to is settled by the
@@ -539,12 +612,26 @@ public final class SlayerTracker {
                 }
                 continue;
             }
+            // Read before the attunement word: should a demon's own line carry its attunement, the
+            // line has to count as both.
+            InfernoDemon demon = readDemons ? InfernoDemon.inNametag(name) : null;
+            if (demon != null) {
+                LivingEntity mob = entity instanceof ArmorStand demonStand ? mobBelow(level, demonStand)
+                        : entity instanceof LivingEntity living ? living : null;
+                demonTags.add(new DemonTag(demon, mob, entity, entity.position(), name));
+            }
+            if (infernoFight) {
+                probeInfernoTag(entity, name, now);
+            }
             if (readAttunement) {
                 AttunementTag tag = readAttunementTag(entity, raw, name);
                 if (tag != null) {
                     attunementTags.add(tag);
                     continue;
                 }
+            }
+            if (demon != null) {
+                continue;
             }
 
             if (!(entity instanceof ArmorStand stand)) {
@@ -556,8 +643,8 @@ public final class SlayerTracker {
                 LivingEntity mob = mobBelow(level, stand, BOSS_TAG_RADIUS, bossSpecies(questBoss));
                 if (mob != null) {
                     bossTags.add(new BossTag(mob, entity.position(),
-                            name.toLowerCase(Locale.ROOT).contains("hits"),
-                            stateIn(stateWords, name)));
+                            VoidgloomShield.isShieldTag(name),
+                            stateIn(stateWords, name), name, raw));
                 }
                 continue;
             }
@@ -657,10 +744,19 @@ public final class SlayerTracker {
         LivingEntity closestBoss = stickToBoss(mine, now);
         bossEntity = closestBoss;
         resolveAttunement(attunementTags, ownerPos, now, settings);
+        resolveDemons(demonTags, attunementTags, ownerPos, player, boxes, now, settings);
         scanHotbarDagger(player);
         updateBossState(mine, stateTags, settings);
+        updateStakeWindow(mine, closestBoss, boxes, now);
         if (tagSample != null && mine != null) {
             logTagsNearBoss(tagSample, mine.pos(), now);
+        }
+        // Voidgloom shield count + laser phase: only a boss proven yours by its "Spawned by" line,
+        // never the nearest-boss fallback - a stranger's shield count is worse than none.
+        if (questBoss == SlayerBoss.VOIDGLOOM && bossUp && mine != null && ownerPos != null
+                && closestBoss != null && (settings.voidgloomShieldHud || settings.voidgloomLaserTimer)) {
+            VoidgloomFight.getInstance().update(now, questTier, mine.name(),
+                    closestBoss.getX(), closestBoss.getY(), closestBoss.getZ());
         }
 
         // Boss phase box. Anchored to the boss so it follows the hit phase's teleporting instead of
@@ -689,6 +785,43 @@ public final class SlayerTracker {
         if (questBoss == SlayerBoss.REVENANT && bossUp && closestBoss != null
                 && (settings.revTntHighlight || settings.revTntAlert)) {
             scanRevTnt(level, closestBoss, boxes, now, settings);
+        }
+    }
+
+    /**
+     * Riftstalker: the Steak Stake window on your own boss. One "STEAK!" flash as it opens, and a box
+     * on the boss for as long as it stays open. Also the {@code [SBS][Riftstalker]} probe: every
+     * change of your boss's tag is logged, raw and plain, because how Hypixel shows the window (a
+     * health share only, or a marker of its own) has not been seen yet. Titles, the action bar and
+     * sounds are not repeated here - the dev ServerScanner already records them.
+     */
+    private void updateStakeWindow(BossTag mine, LivingEntity boss, List<HighlightBox> boxes, long now) {
+        if (questBoss != SlayerBoss.BLOODFIEND || !bossUp || mine == null) {
+            stakeWindow.reset();
+            lastRiftstalkerTag = null;
+            return;
+        }
+        if (!mine.raw().equals(lastRiftstalkerTag)) {
+            lastRiftstalkerTag = mine.raw();
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Riftstalker] t={} tag='{}' raw='{}'",
+                    (now - bossSpawnAt) / 1000.0, mine.name(), mine.raw());
+        }
+        var vampire = ConfigManager.getInstance().get().vampire;
+        if (!vampire.steakCallout && !vampire.steakBox) {
+            return;
+        }
+        boolean wasOpen = stakeWindow.executable();
+        boolean open = stakeWindow.update(mine.name(), vampire.steakThreshold);
+        if (open && !wasOpen) {
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Riftstalker] t={} stake window open at '{}'",
+                    (now - bossSpawnAt) / 1000.0, mine.name());
+            if (vampire.steakCallout) {
+                SlayerAlerts.getInstance().trigger("STEAK!", STEAK_COLOR);
+            }
+        }
+        if (open && vampire.steakBox && boss != null) {
+            boxes.add(HighlightBox.onEntity(boss, boss.getBoundingBox().inflate(0.2), STEAK_COLOR,
+                    "STEAK", false));
         }
     }
 
@@ -906,6 +1039,146 @@ public final class SlayerTracker {
             return null;   // bosses are up, but none of them stands under your own line
         }
         return best;
+    }
+
+    /**
+     * Boxes your own Quazii and Typhoeus and moves the phase clock.
+     *
+     * <p>Whose demons they are is the same question {@link #resolveAttunement} answers, and with the
+     * same handicap: the demons carry no "Spawned by" line. So they are claimed by distance from the
+     * fight – your own line while it is in sight, the attunement anchor while that is fresh, and
+     * otherwise where your demons were last seen, which they then carry along as they walk.
+     *
+     * <p>Only demons you can actually see are boxed, as with the starred-mob boxes: the box is there
+     * to point at a target, and one drawn through a wall points at nothing you can hit.
+     */
+    private void resolveDemons(List<DemonTag> tags, List<AttunementTag> attunementTags, Vec3 ownerPos,
+                               LocalPlayer player, List<HighlightBox> boxes, long now,
+                               SlayerSettings settings) {
+        boolean infernoFight = questBoss == SlayerBoss.INFERNO && bossUp;
+        // The last place your own boss was confirmed (its stack carried your name). The boss sits
+        // the split out where it stood, so this is the one fixed point the demons cannot drag
+        // somewhere else - see the neighbour-fight gate below.
+        if (ownerPos != null && bossEntity != null) {
+            ownBossPos = bossEntity.position();
+        }
+        Vec3 anchor = ownerPos;
+        if (anchor == null && blazeAnchor != null && now - blazeAnchorAt <= ANCHOR_TTL_MS) {
+            anchor = blazeAnchor;
+        }
+        if (anchor == null && demonAnchor != null && now - demonAnchorAt <= ANCHOR_TTL_MS) {
+            anchor = demonAnchor;
+        }
+        if (anchor == null && bossEntity != null) {
+            anchor = bossEntity.position();
+        }
+
+        List<DemonTag> mine = new ArrayList<>(2);
+        if (anchor != null) {
+            for (DemonTag tag : tags) {
+                // Neighbour-fight gate: in a packed spot (the Smoldering Tomb) the next player's
+                // demons stand within range of a drifting anchor, and the demon anchor would then
+                // follow them. Measured against your own boss's last position as well, they cannot.
+                if (tag.pos().distanceToSqr(anchor) <= DEMON_FIGHT_RANGE * DEMON_FIGHT_RANGE
+                        && (ownBossPos == null
+                            || tag.pos().distanceToSqr(ownBossPos) <= DEMON_FIGHT_RANGE * DEMON_FIGHT_RANGE)) {
+                    mine.add(tag);
+                }
+            }
+        }
+        if (!mine.isEmpty()) {
+            demonAnchor = mine.getFirst().pos();
+            demonAnchorAt = now;
+        }
+
+        if (infernoClock.update(now, infernoFight, !mine.isEmpty())) {
+            probe(now, "phase " + infernoClock.phase() + " (split " + infernoClock.split() + ")"
+                    + (mine.isEmpty() ? "" : " demons=" + mine.size()));
+        }
+
+        if (!settings.demonHighlight) {
+            return;
+        }
+        for (DemonTag tag : mine) {
+            Entity target = tag.mob() != null ? tag.mob() : tag.tagEntity();
+            if (!player.hasLineOfSight(target)) {
+                continue;
+            }
+            AABB box = tag.mob() != null ? tag.mob().getBoundingBox().inflate(0.1)
+                    : tag.tagEntity().getBoundingBox().inflate(0.3);
+            boxes.add(HighlightBox.onEntity(target, box, demonColor(tag, attunementTags, settings),
+                    tag.demon().displayName(), false));
+        }
+    }
+
+    /**
+     * The attunement colour off the demon's own stack when it wears one and that is wanted, else the
+     * colour picked for that demon.
+     */
+    private static int demonColor(DemonTag demon, List<AttunementTag> attunementTags,
+                                  SlayerSettings settings) {
+        if (settings.demonAttunementColor) {
+            AttunementTag best = null;
+            double bestSqr = DEMON_STACK_RANGE * DEMON_STACK_RANGE;
+            for (AttunementTag tag : attunementTags) {
+                double sqr = tag.pos().distanceToSqr(demon.pos());
+                if (sqr <= bestSqr) {
+                    bestSqr = sqr;
+                    best = tag;
+                }
+            }
+            if (best != null) {
+                return best.argb();
+            }
+        }
+        return switch (demon.demon()) {
+            case QUAZII -> settings.quaziiColor.argb();
+            case TYPHOEUS -> settings.typhoeusColor.argb();
+        };
+    }
+
+    /**
+     * Probe for the demon phase, whose wording is not pinned down yet: every tag near you during an
+     * Inferno fight that names a demon or sounds like a phase (immune, invulnerable, …) is printed once
+     * per entity and wording, with its entity type, position and the seconds since the boss spawned.
+     * Wording means the text with its numbers taken out, so a health bar ticking down is one line, not
+     * one per hit – the line itself still carries the real text and health as first seen.
+     */
+    private void probeInfernoTag(Entity entity, String name, long now) {
+        if (infernoProbeLines >= INFERNO_PROBE_MAX || !INFERNO_PROBE.matcher(name).find()
+                || !infernoLogged.add(entity.getId() + "|" + InfernoDemon.withoutNumbers(name))) {
+            return;
+        }
+        Vec3 pos = entity.position();
+        probe(now, String.format(Locale.US, "tag '%s' type=%s hp=%s pos=%.1f,%.1f,%.1f",
+                name, speciesOf(entity), InfernoDemon.healthIn(name), pos.x, pos.y, pos.z));
+    }
+
+    /** One probe line, as long as this fight is still under {@link #INFERNO_PROBE_MAX} of them. */
+    private void probe(long now, String what) {
+        if (infernoProbeLines >= INFERNO_PROBE_MAX) {
+            return;
+        }
+        if (++infernoProbeLines == INFERNO_PROBE_MAX) {
+            what += " (probe cap reached, silent for the rest of this fight)";
+        }
+        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Inferno] t={} {}",
+                String.format(Locale.US, "%.1f", (now - bossSpawnAt) / 1000.0), what);
+    }
+
+    /** The phase your Inferno fight is in. */
+    public InfernoPhase infernoPhase() {
+        return infernoClock.phase();
+    }
+
+    /** Milliseconds your Inferno fight has been in its current phase. */
+    public long infernoPhaseElapsed() {
+        return infernoClock.elapsed(System.currentTimeMillis());
+    }
+
+    /** Which split of the fight the demons are (or were last) on, 0 before the first. */
+    public int infernoSplit() {
+        return infernoClock.split();
     }
 
     /** One attunement word off a nametag, with its number and the colour Hypixel drew it in. */
@@ -1358,6 +1631,7 @@ public final class SlayerTracker {
 
     /** Fed every chat line; books quest events, rare drops and the sack breakdown. */
     public void onChat(String text, Component component) {
+        VoidgloomFight.getInstance().probe(System.currentTimeMillis(), "chat", text);
         if (!cfg().enabled || text == null) {
             return;
         }
@@ -1407,6 +1681,7 @@ public final class SlayerTracker {
             pillarSecondShown = -1;
             blazeAnchor = null;
             clearAttunement();
+            VoidgloomFight.getInstance().reset();
             touch(now);
             return;
         }
@@ -1467,6 +1742,7 @@ public final class SlayerTracker {
     }
 
     private void touch(long now) {
+        version++;
         if (firstEventAt == 0) {
             firstEventAt = now;
         }
@@ -1482,6 +1758,11 @@ public final class SlayerTracker {
     /** Whether the overlay should draw at all (any session activity, not too long ago). */
     public boolean sessionVisible() {
         return lastEventAt > 0 && System.currentTimeMillis() - lastEventAt < IDLE_HIDE_MS;
+    }
+
+    /** Moves whenever anything the HUD card shows changes (prices aside - the card polls those). */
+    public int version() {
+        return version;
     }
 
     public SlayerBoss questBoss() {
@@ -1585,6 +1866,7 @@ public final class SlayerTracker {
         lootWindowUntil = 0;
         firstEventAt = 0;
         lastEventAt = 0;
+        version++;
     }
 
     // ------------------------------------------------------------------ helpers
@@ -1594,7 +1876,7 @@ public final class SlayerTracker {
         if (displayName == null) {
             return null;
         }
-        String name = displayName.replaceAll("§.", "").trim();
+        String name = FORMATTING.matcher(displayName).replaceAll("").trim();
         if (name.isEmpty()) {
             return null;
         }
@@ -1606,8 +1888,8 @@ public final class SlayerTracker {
         if (entry != null) {
             return entry.id;
         }
-        String constructed = name.toUpperCase(Locale.ROOT).replace(' ', '_')
-                .replaceAll("[^A-Z0-9_]", "");
+        String constructed = NON_KEY_CHARS.matcher(name.toUpperCase(Locale.ROOT).replace(' ', '_'))
+                .replaceAll("");
         return constructed.isEmpty() ? null : constructed;
     }
 
@@ -1659,7 +1941,7 @@ public final class SlayerTracker {
             return 1;
         }
         try {
-            return Integer.parseInt(raw.replaceAll("[^0-9]", ""));
+            return Integer.parseInt(NON_DIGITS.matcher(raw).replaceAll(""));
         } catch (NumberFormatException e) {
             return 1;
         }

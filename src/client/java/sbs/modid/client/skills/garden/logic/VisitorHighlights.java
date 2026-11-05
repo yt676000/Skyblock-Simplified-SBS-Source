@@ -13,6 +13,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * The decisions behind the Garden visitor highlight, kept pure so they are unit-tested: which visitor
@@ -30,6 +31,9 @@ import java.util.Map;
  * {@link VisitorGuard#valuableRewardIn}, the refuse-guard's own list. No offer = {@link Kind#UNKNOWN}.
  */
 public final class VisitorHighlights {
+
+    private static final Pattern NON_NAME_CHARS = Pattern.compile("[^a-z0-9' .]");
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
 
     private VisitorHighlights() {
     }
@@ -84,7 +88,7 @@ public final class VisitorHighlights {
         List<String> byLength = new ArrayList<>(tabVisitors);
         byLength.sort(Comparator.comparingInt(String::length).reversed());
         for (String candidate : candidates) {
-            String padded = " " + VisitorShoppingList.key(strip(candidate)).replaceAll("[^a-z0-9' .]", " ") + " ";
+            String padded = " " + NON_NAME_CHARS.matcher(VisitorShoppingList.key(strip(candidate))).replaceAll(" ") + " ";
             for (String visitor : byLength) {
                 String key = VisitorShoppingList.key(visitor);
                 if (!key.isEmpty() && padded.contains(" " + key + " ")) {
@@ -142,6 +146,6 @@ public final class VisitorHighlights {
     }
 
     static String strip(String text) {
-        return text == null ? "" : text.replaceAll("§.", "").toLowerCase(Locale.ROOT).trim();
+        return text == null ? "" : COLOUR_CODE.matcher(text).replaceAll("").toLowerCase(Locale.ROOT).trim();
     }
 }

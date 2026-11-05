@@ -10,6 +10,7 @@ package sbs.modid.client.helper.experiment;
 
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.helper.experiment.logic.ExperimentProfit;
 import sbs.modid.client.helper.experiment.logic.ExperimentationTable;
 import sbs.modid.client.ui.settings.SettingRow;
 import sbs.modid.client.core.module.ModuleGroup;
@@ -66,6 +67,7 @@ public final class ExperimentationModule implements SbsModule {
     @Override
     public List<SettingRow> settings() {
         List<SettingRow> rows = new java.util.ArrayList<>(tableSettings());
+        rows.addAll(profitSettings());
         rows.addAll(harpSettings());
         return rows;
     }
@@ -133,13 +135,32 @@ public final class ExperimentationModule implements SbsModule {
                 SettingRow.toggle("Block Misclicks", () -> cfg().blockMisclicks,
                         () -> { cfg().blockMisclicks = !cfg().blockMisclicks; save(); })
                         .describe("Swallows clicks on the wrong tile in Chronomatron and "
-                                + "Ultrasequencer, so a slip of the mouse cannot end the round. "
-                                + "It stands down the moment it is unsure: two refused clicks in "
-                                + "a row, or a board it has lost track of, and it stops blocking "
-                                + "for the rest of the round so you can always finish by hand. "
-                                + "Never active in Superpairs. Default: off."),
-                SettingRow.label("Stops out-of-order clicks in Chronomatron / Ultrasequencer (never Superpairs)"),
-                SettingRow.label("Gives up after two refusals in a row - it never blocks you out"),
+                                + "Ultrasequencer only, so a slip of the mouse cannot end the round. "
+                                + "Every kind of click is checked: left, right and middle click, "
+                                + "shift-click and number keys. A blocked click outlines the tile in "
+                                + "red. It stands down the moment it is unsure - too many refused "
+                                + "clicks in a row (a double-click counts once), or a board it has "
+                                + "lost track of - and then shows \"Misclick guard paused this "
+                                + "round\" so you can always finish by hand. Superpairs is never "
+                                + "guarded: every card there is a legal click. Needs the Experimentation "
+                                + "Table switch and the Chronomatron or Ultrasequencer Helper on. "
+                                + "Default: off.")
+                        .disabledWhile(() -> !cfg().enabled || (!cfg().chronomatron && !cfg().ultrasequencer),
+                                "Turn on Experimentation Table and the Chronomatron or Ultrasequencer Helper"),
+                SettingRow.label("Stops out-of-order clicks in Chronomatron and Ultrasequencer only (never Superpairs)"),
+                SettingRow.label("Gives up after the refusals below - it never blocks you out"),
+
+                SettingRow.intField("Guard Gives Up After", 1, 5, () -> cfg().misclickVetoLimit,
+                        v -> { cfg().misclickVetoLimit = v; save(); }, " refusals")
+                        .describe("How many refused clicks in a row make the misclick guard stand "
+                                + "down for the rest of the round. A fast double-click on the same "
+                                + "tile counts as one. Higher blocks more stray clicks; lower gets "
+                                + "out of your way sooner if the helper has lost track. Default: 2."),
+                SettingRow.rangeSlider("Guard Idle Timeout", 1000, 10000, () -> cfg().misclickIdleMs,
+                        v -> { cfg().misclickIdleMs = v; save(); }, " ms")
+                        .describe("Chronomatron, while the pattern is being shown: clicks are "
+                                + "refused until the board has been quiet this long, then the guard "
+                                + "assumes it missed something and lets clicks through. Default: 3000 ms."),
 
                 SettingRow.toggle("Guardian Pet Alert", () -> cfg().guardianPetAlert,
                         () -> { cfg().guardianPetAlert = !cfg().guardianPetAlert; save(); })
@@ -147,6 +168,41 @@ public final class ExperimentationModule implements SbsModule {
                                 + "pet equipped - the pet adds bonus XP, and forgetting the swap "
                                 + "wastes the attempt."),
                 SettingRow.label("Warns in chat when you open the table without a Guardian pet"));
+    }
+
+    /** Experiment Profit: what the claimed rewards were worth. Display only, off by default. */
+    private static List<SettingRow> profitSettings() {
+        return List.of(
+                SettingRow.label("— Experiment Profit —"),
+                SettingRow.toggle("Experiment Profit", () -> cfg().profitTracker,
+                                () -> { cfg().profitTracker = !cfg().profitTracker; save(); })
+                        .describe("A card with what your Experimentation Table claims were worth today: "
+                                + "claims, the value of the bottles and books won, your cost and the net. "
+                                + "Rewards are read from the chat after \"You claimed the ... rewards!\" "
+                                + "and priced when the card is drawn. Default: off."),
+                SettingRow.toggle("Show Session Instead Of Today", () -> cfg().profitShowSession,
+                                () -> { cfg().profitShowSession = !cfg().profitShowSession; save(); })
+                        .describe("Shows only the claims since you joined instead of today's. Default: off."),
+                SettingRow.segmented("Price Rewards At", List.of("Sell", "Buy"),
+                                () -> cfg().profitPriceSide,
+                                i -> { cfg().profitPriceSide = i; save(); })
+                        .describe("Sell: what you would get selling the rewards now (Bazaar instant sell, "
+                                + "lowest BIN). Buy: what they would cost you to buy."),
+                SettingRow.intField("Cost Per Session", 0, 1_000_000_000, () -> cfg().profitSessionCost,
+                                v -> { cfg().profitSessionCost = v; save(); }, " coins")
+                        .describe("Coins taken off the net once per visit to the table (claims less than "
+                                + "30 minutes apart are one visit) - for example what you count your "
+                                + "Bits or bottles as. Default: 0."),
+                SettingRow.button("Reset Session", () -> ExperimentProfit.getInstance().resetSession())
+                        .describe("Starts this session's counts again from zero."),
+                SettingRow.button("Reset Today", () -> ExperimentProfit.getInstance().resetToday())
+                        .describe("Clears today's counts as well. Cannot be undone."),
+                SettingRow.button("Move / Resize Card", () -> net.minecraft.client.Minecraft.getInstance()
+                                .setScreenAndShow(new sbs.modid.client.ui.hud.edit.ui.HudEditorScreen(
+                                        new sbs.modid.client.ui.hud.edit.model.HudElement[] {
+                                                sbs.modid.client.ui.hud.edit.model.HudElement.EXPERIMENT_PROFIT},
+                                        "Edit Experiment Profit")))
+                        .describe("Opens the editor where you drag the card anywhere and scale it."));
     }
 
     /** Melody's Harp (The Park, Melody's Plateau). Display only. */

@@ -14,7 +14,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.location.SkyBlockLocation;
@@ -36,6 +37,8 @@ import java.util.List;
  * opens, empties or clicks a minion.
  */
 public final class MinionStopHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     /** Half-width of the box round a minion's feet. A minion stand is small. */
     private static final double HALF = 0.5;
@@ -67,7 +70,7 @@ public final class MinionStopHighlight {
 
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
 
         for (MinionStateStore.Stopped entry : stopped) {
@@ -78,9 +81,9 @@ public final class MinionStopHighlight {
 
             String text = MinionStoppages.label(entry.type, entry.tier)
                     + " - " + entry.reason.displayName();
-            int[] screen = WorldRender.projectToScreen(viewProjection, camPos,
-                    new Vec3(entry.x, entry.y + HEIGHT + 0.3, entry.z), g.guiWidth(), g.guiHeight());
-            if (screen != null) {
+            int[] screen = SCREEN;
+            if (WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                    entry.x, entry.y + HEIGHT + 0.3, entry.z, g.guiWidth(), g.guiHeight(), screen)) {
                 g.text(font, Component.literal(text),
                         screen[0] - font.width(text) / 2, screen[1], color);
             }

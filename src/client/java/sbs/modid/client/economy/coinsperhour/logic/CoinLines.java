@@ -90,7 +90,7 @@ public final class CoinLines {
         if (raw == null || raw.isEmpty()) {
             return null;
         }
-        String line = raw.replaceAll("§.", "").trim();
+        String line = FORMATTING.matcher(raw).replaceAll("").trim();
         for (Rule rule : RULES) {
             Matcher matcher = rule.pattern.matcher(line);
             if (matcher.find()) {
@@ -112,6 +112,9 @@ public final class CoinLines {
 
     /** Scoreboard purse: "Purse: 621,748,621" (instance logs); "Piggy:" is the older spelling. */
     private static final Pattern PURSE = Pattern.compile("^(?:Purse|Piggy):\\s*([\\d,]+(?:\\.\\d+)?)");
+
+    /** A § and whatever follows it - stripped before a chat line is classified. */
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     /** The purse value on a colour-stripped sidebar line, or {@code -1} when it is not that line. */
     public static long purse(String line) {

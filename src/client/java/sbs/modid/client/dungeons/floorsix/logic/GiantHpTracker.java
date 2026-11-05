@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Giant health for Sadan's second phase (F6 / M6): what each of the four has left, where you can
@@ -67,6 +68,7 @@ public final class GiantHpTracker {
     private static final String HEALTH_MARKS = "❤♥";
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     /** The four by name, for the ones whose entity is not a vanilla giant underneath. */
     private static final Set<String> GIANT_NAMES = Set.of(
@@ -197,7 +199,7 @@ public final class GiantHpTracker {
      * spacing Hypixel puts around it.
      */
     public static String healthIn(String raw) {
-        String clean = raw.replaceAll(SECTION_SIGN + ".", "");
+        String clean = FORMATTING.matcher(raw).replaceAll("");
         int heart = -1;
         for (int i = clean.length() - 1; i >= 0; i--) {
             if (HEALTH_MARKS.indexOf(clean.charAt(i)) >= 0) {

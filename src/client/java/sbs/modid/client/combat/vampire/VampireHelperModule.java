@@ -26,7 +26,9 @@ import java.util.List;
  * <p><b>Scope, deliberately narrow.</b> The Bloodfiend's own fight cues - the Twinclaws warning, the
  * Blood Ichor and Killer Spring highlights - already live in the Slayer module, and duplicating them
  * here would mean two features flashing at the same event. What was missing is the effigies, which
- * belong to the château rather than to a boss fight and are not slayer state at all.
+ * belong to the château rather than to a boss fight and are not slayer state at all. The one
+ * exception is the Steak Stake call-out: its settings live here because players look for it under
+ * vampire, but it runs in {@code SlayerTracker}, on the boss the Slayer module already tracks.
  *
  * <p><b>Informational only.</b> This module shows what is happening and when; it never acts. There
  * is no code path in it that writes to input, rotation or item use.
@@ -120,9 +122,30 @@ public final class VampireHelperModule implements SbsModule {
                 SettingRow.rangeSlider("Broken Opacity", 0, 100, () -> cfg().brokenOpacity,
                         value -> { cfg().brokenOpacity = value; save(); }, "%")));
 
+        rows.add(SettingRow.label("§8—— Riftstalker ——"));
+        rows.add(SettingRow.toggle("Steak Call-out", () -> cfg().steakCallout,
+                        () -> { cfg().steakCallout = !cfg().steakCallout; save(); })
+                .describe("Flashes a big STEAK! the moment your own Bloodfiend drops low enough to "
+                        + "be finished with the Steak Stake. Only your boss, never somebody "
+                        + "else's; pings with the Slayer alert sound. Needs the Slayer module on - "
+                        + "that is what finds your boss."));
+        rows.add(SettingRow.toggle("Box the Boss", () -> cfg().steakBox,
+                        () -> { cfg().steakBox = !cfg().steakBox; save(); })
+                .describe("Boxes your boss in orange for as long as the stake works."));
+        rows.add(SettingRow.rangeSlider("Stake Threshold", 5, 50, () -> cfg().steakThreshold,
+                value -> { cfg().steakThreshold = value; save(); }, "%"));
+
         rows.addAll(AlertChannelRows.forAlert("broken_effigy", "you aim at a broken effigy's base",
                 () -> cfg().alertChannels,
                 mask -> { cfg().alertChannels = mask; save(); }));
+
+        rows.add(SettingRow.label("§8—— Debug ——"));
+        rows.add(SettingRow.toggle("Mania Probe (Log)", () -> cfg().maniaProbe,
+                () -> { cfg().maniaProbe = !cfg().maniaProbe; save(); })
+                .describe("Writes block changes within 12 blocks, server and boss chat lines (no player chat), nametags and health "
+                        + "drops to the game log while your own Riftstalker is up, tagged "
+                        + "[SBS][Riftstalker], at most 500 lines per fight. Only for measuring the "
+                        + "Mania phase - draws and sends nothing."));
 
         rows.add(SettingRow.label("§8—— Status ——"));
         rows.add(SettingRow.label("§8" + statusLine()));

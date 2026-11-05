@@ -8,7 +8,10 @@
 
 package sbs.modid.client.core.input;
 
+import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.core.dev.DevMode;
+import sbs.modid.client.core.dev.scanner.ServerScanner;
 
 /**
  * State behind "Keep Mouse Position": the cursor position on the menu the player was last looking
@@ -72,7 +75,66 @@ public final class MouseKeeper {
      */
     private static boolean guardFired = true;
 
+    /**
+     * How long a grab caused by a server close may wait for the next menu, in ms.
+     *
+     * <p><b>This is the fix for backpacks, Ender Chest pages, Accessory Bag pages and the Sack of
+     * Sacks.</b> Those switches arrive as a server close followed ~1 ms later (same client tick) by
+     * an open. The close runs {@code clientSideCloseContainer → Gui.setScreen(null) → grabMouse}
+     * (26.2 bytecode), and the grab calls {@code glfwSetCursorPos(centre)} in NORMAL mode - a real
+     * move of the OS cursor - and then disables the cursor, so GLFW also saves the centre as the
+     * position the next release restores to. The guard then had to repair a centred cursor after
+     * the fact. Not grabbing at all between two menus leaves nothing to repair: the cursor never
+     * moves. A close with no follow-up still grabs, just this much later.
+     */
+    private static final long DEFERRED_GRAB_MS = 150L;
+
+    /** True only while {@code handleContainerClose} runs its {@code clientSideCloseContainer}. */
+    private static boolean serverClosing;
+    private static long pendingGrabUntil;
+
     private MouseKeeper() {
+    }
+
+    /** Brackets the server close's own screen reset; see {@link #DEFERRED_GRAB_MS}. */
+    public static void serverClosing(boolean closing) {
+        serverClosing = closing;
+    }
+
+    /**
+     * Whether a {@code grabMouse} happening right now should be held back: only the one a server
+     * close triggers, and only with the feature on. Starts the deferral window.
+     */
+    public static boolean deferGrab() {
+        if (!serverClosing || !enabled()) {
+            return false;
+        }
+        pendingGrabUntil = System.currentTimeMillis() + DEFERRED_GRAB_MS;
+        return true;
+    }
+
+    /** Whether a held-back grab is still waiting. */
+    public static boolean grabPending() {
+        return pendingGrabUntil != 0;
+    }
+
+    /** Whether the held-back grab's window is over (no menu followed), so it should run now. */
+    public static boolean grabDue() {
+        return pendingGrabUntil != 0 && System.currentTimeMillis() >= pendingGrabUntil;
+    }
+
+    public static void clearPendingGrab() {
+        pendingGrabUntil = 0;
+    }
+
+    /** {@code [SBS][Mouse]} line plus a scanner {@code mouse} event, both dev mode only. */
+    public static void debug(String event, double x, double y, String detail) {
+        if (!DevMode.ACTIVE) { // DEV-ONLY: diagnostics for Keep Mouse Position
+            return;
+        }
+        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Mouse] {} at {},{} kept={},{} {}", event,
+                Math.round(x), Math.round(y), Math.round(keptX), Math.round(keptY), detail);
+        ServerScanner.onMouse(event, x, y, keptX, keptY, detail);
     }
 
     static boolean enabled() {
@@ -96,6 +158,18 @@ public final class MouseKeeper {
         }
         keptX = x;
         keptY = y;
+    }
+
+    /** "Center On First Menu": a menu opened from gameplay starts centred. */
+    public static boolean centerOnFirstOpen() {
+        return enabled() && ConfigManager.getInstance().get().convenience.centerMouseOnFirstOpen;
+    }
+
+    /** Makes the centre the kept position, so the first menu's centred cursor is not "fixed". */
+    public static void keepCentre(double x, double y) {
+        keptX = x;
+        keptY = y;
+        guardUntil = 0;
     }
 
     /** Whether there is a kept position worth restoring to (and the feature is on). */
@@ -129,6 +203,7 @@ public final class MouseKeeper {
         guardCy = centerY;
         guardUntil = System.currentTimeMillis() + GUARD_MS;
         guardFired = false;
+        debug("guard-arm", centerX, centerY, "");
     }
 
     /** Where the transition was expected to teleport to, for the miss report. */
@@ -163,6 +238,7 @@ public final class MouseKeeper {
     public static void consumeGuard() {
         guardUntil = 0;
         guardFired = true;
+        debug("guard-disarm", keptX, keptY, "");
     }
 
     /**

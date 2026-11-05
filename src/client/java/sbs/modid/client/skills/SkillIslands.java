@@ -98,6 +98,11 @@ public final class SkillIslands {
         return onAny(MINING_ISLANDS);
     }
 
+    /** Whether the player is on a foraging island - regardless of the island-lock setting. */
+    public static boolean onForagingIsland() {
+        return onAny(FORAGING_ISLANDS);
+    }
+
     /** Whether the live location matches any entry of the whitelist. */
     private static boolean onAny(List<String> islands) {
         for (String island : islands) {

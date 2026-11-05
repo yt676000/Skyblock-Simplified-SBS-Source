@@ -22,6 +22,7 @@ import sbs.modid.client.ui.theme.SBSTheme;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * The Spirit Bear card: how full the arena's lantern ring is, the countdown once it completes, and
@@ -35,6 +36,7 @@ public final class SpiritBearHud {
     private static final int MIN_W = 128;
     private static final int BEAR_COLOR = 0xFFFFC020;
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     private SpiritBearHud() {
     }
@@ -116,6 +118,6 @@ public final class SpiritBearHud {
     }
 
     private static String strip(String text) {
-        return text.replaceAll(SECTION_SIGN + ".", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 }

@@ -8,6 +8,7 @@
 
 package sbs.modid.client.helper.yearofthepig.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -160,6 +161,7 @@ public final class ShinyOrbTracker {
 
     /** An item reward inside the loot line: "16x Enchanted Potato", or a bare "Flying Pig". */
     private static final Pattern REWARD_ITEM = Pattern.compile("(?:([\\d,]+)x )?(.+)");
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     /**
      * One activated orb: where it sits, which pig belongs to it, and when it dies. The {@code id} is
@@ -232,6 +234,12 @@ public final class ShinyOrbTracker {
     private int lastOrbCount = -1;
     private long settleUntil;
     private long lastScanAt;
+
+    /**
+     * Bumped on every booked event (through {@link #touch()}) and on a reset, so the session card
+     * rebuilds on a change - and on its one-second clock, for prices that move without telling.
+     */
+    private volatile int version;
 
     private ShinyOrbTracker() {
     }
@@ -384,6 +392,22 @@ public final class ShinyOrbTracker {
     // Tick: orb consumption, orb expiry, pig scan
     // ------------------------------------------------------------------
 
+    /**
+     * Out of a world: drop the live state so a rejoin never resumes a stale orb, and force the diff
+     * to re-baseline against the inventory the server is about to stream back. Runs at the
+     * world-leave edge too, so it also happens while the module is off. Loot and XP totals survive.
+     */
+    public void onWorldChange() {
+        activeOrbs = List.of();
+        chargedOrbs = List.of();
+        warnedOrbs.clear();
+        pendingExpiries.clear();
+        nearbyPigs = List.of();
+        hasEventGear = false;
+        lastOrbCount = -1;
+        settleUntil = System.currentTimeMillis() + JOIN_SETTLE_MS;
+    }
+
     /** Called once per client tick. Gates itself on the module toggle. */
     public void onClientTick() {
         if (!enabled()) {
@@ -393,16 +417,7 @@ public final class ShinyOrbTracker {
         LocalPlayer player = minecraft.player;
         ClientLevel level = minecraft.level;
         if (player == null || level == null) {
-            // Out of a world: drop the live state so a rejoin never resumes a stale orb, and force
-            // the diff to re-baseline against the inventory the server is about to stream back.
-            activeOrbs = List.of();
-            chargedOrbs = List.of();
-            warnedOrbs.clear();
-            pendingExpiries.clear();
-            nearbyPigs = List.of();
-            hasEventGear = false;
-            lastOrbCount = -1;
-            settleUntil = System.currentTimeMillis() + JOIN_SETTLE_MS;
+            onWorldChange();
             return;
         }
         scanOrbConsumption(player);
@@ -565,7 +580,7 @@ public final class ShinyOrbTracker {
 
     /** Whether a nametag names a shiny pig, colour codes and level prefixes included. */
     private static boolean isShinyPigName(String raw) {
-        return raw != null && raw.replaceAll("§.", "").toLowerCase(Locale.ROOT).contains("shiny pig");
+        return raw != null && FORMATTING.matcher(raw).replaceAll("").toLowerCase(Locale.ROOT).contains("shiny pig");
     }
 
     /** Whether an entity is a vanilla pig, by type name so no version-specific class is imported. */
@@ -682,6 +697,11 @@ public final class ShinyOrbTracker {
         return pigOf(activeOrb());
     }
 
+    /** Moves whenever a session figure changes; see {@link #version}. */
+    public int version() {
+        return version;
+    }
+
     public int orbsUsed() {
         return orbsUsed;
     }
@@ -775,6 +795,7 @@ public final class ShinyOrbTracker {
         skillXp.clear();
         firstEventAt = 0;
         lastEventAt = 0;
+        version++;
     }
 
     // ------------------------------------------------------------------ helpers
@@ -786,12 +807,13 @@ public final class ShinyOrbTracker {
             firstEventAt = now;
         }
         lastEventAt = now;
+        version++;
     }
 
     private static void playSound(float pitch) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
-            player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, pitch);
+            SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, pitch);
         }
     }
 

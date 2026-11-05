@@ -8,6 +8,7 @@
 
 package sbs.modid.client.helper.inventory.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
@@ -458,7 +459,7 @@ public final class SlotBindings {
     private static void playSound(float pitch) {
         Player player = Minecraft.getInstance().player;
         if (player != null) {
-            player.playSound(SoundEvents.NOTE_BLOCK_BASS.value(), 0.5f, pitch);
+            SbsSounds.play(SoundEvents.NOTE_BLOCK_BASS.value(), 0.5f, pitch);
         }
     }
 

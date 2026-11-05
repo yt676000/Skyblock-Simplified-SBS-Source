@@ -226,6 +226,13 @@ public final class BurrowChat {
             return;
         }
 
+        // Payouts are booked first and the line still falls through: a burrow's reward line also
+        // classifies the burrow below. Mob drops only in the Hub, where the creatures are.
+        DianaLoot.Loot loot = DianaLoot.parse(text);
+        if (loot != null && (loot.source() != DianaLoot.Source.MOB || SkyBlockLocation.onIsland("Hub"))) {
+            DianaTracker.getInstance().onLoot(loot);
+        }
+
         // The finish line carries "(10/10)" too, so it is tested before the progress line.
         if (CHAIN_DONE.matcher(text).matches()) {
             onChainFinished();

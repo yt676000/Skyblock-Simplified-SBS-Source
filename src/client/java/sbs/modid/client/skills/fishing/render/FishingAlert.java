@@ -8,6 +8,7 @@
 
 package sbs.modid.client.skills.fishing.render;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -73,7 +74,7 @@ public final class FishingAlert {
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft.player != null) {
                 // The note block "pling" cuts through ambient water noise without being a jumpscare.
-                minecraft.player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.6f);
+                SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.6f);
             }
         }
     }

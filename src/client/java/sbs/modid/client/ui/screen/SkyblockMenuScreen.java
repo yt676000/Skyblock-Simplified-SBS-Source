@@ -78,9 +78,9 @@ public final class SkyblockMenuScreen extends Screen {
      * compiling correctly.
      */
     private void togglePreview() {
-        settings().previewMode = settings().previewMode.showsPreview()
+        settings().setPreviewMode(settings().previewMode.showsPreview()
                 ? sbs.modid.client.helper.storage.StoragePreviewMode.OFF
-                : sbs.modid.client.helper.storage.StoragePreviewMode.PREVIEW;
+                : sbs.modid.client.helper.storage.StoragePreviewMode.PREVIEW, "legacy menu toggle");
         ConfigManager.getInstance().save();
     }
 

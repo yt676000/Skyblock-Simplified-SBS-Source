@@ -15,6 +15,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.core.render.CachedModel;
 import sbs.modid.client.core.render.OverlayColor;
 import sbs.modid.client.helper.visual.render.Chroma;
 import sbs.modid.client.ui.hud.logic.HypixelHudState;
@@ -23,6 +24,7 @@ import sbs.modid.client.ui.hud.logic.ServerStatsTracker;
 import sbs.modid.client.ui.hud.render.HudCard;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
+import sbs.modid.client.ui.theme.ThemedHex;
 import sbs.modid.client.ui.hud.edit.model.HudElement;
 import sbs.modid.client.ui.hud.edit.logic.HudLayout;
 import sbs.modid.client.combat.cooldowns.CooldownOverlay;
@@ -81,14 +83,27 @@ public final class SBSHudRenderer {
      * the track is translucent by design and the fills are solid, and that distinction is not
      * something a colour picker (which only speaks RGB) should be able to destroy.
      */
-    private static int barColor(String hex, int stock) {
+    private static int barColor(ThemedHex slot, String hex, int stock) {
+        return slot.resolve(hex, stock);
+    }
+
+    /** One resolved slot per segment, so a bar re-parses its hex only when it or the theme changes. */
+    private static final ThemedHex TRACK = new ThemedHex(SBSHudRenderer::parseRgb);
+    private static final ThemedHex OVERHEAL = new ThemedHex(SBSHudRenderer::parseRgb);
+    private static final ThemedHex HEALTH = new ThemedHex(SBSHudRenderer::parseRgb);
+    private static final ThemedHex MANA = new ThemedHex(SBSHudRenderer::parseRgb);
+    private static final ThemedHex OVERFLOW_MANA = new ThemedHex(SBSHudRenderer::parseRgb);
+    private static final ThemedHex VITALITY = new ThemedHex(SBSHudRenderer::parseRgb);
+    private static final ThemedHex XP = new ThemedHex(SBSHudRenderer::parseRgb);
+
+    private static int parseRgb(String hex) {
         Integer rgb = OverlayColor.parseHex(hex);
-        return rgb == null ? stock : (stock & 0xFF000000) | rgb;
+        return rgb == null ? ThemedHex.INVALID : rgb;
     }
 
     /** The empty track behind every bar - themed, or the player's own. */
     private static int trackColor() {
-        return barColor(colors().trackHex, SBSTheme.HUD_TRACK);
+        return barColor(TRACK, colors().trackHex, SBSTheme.HUD_TRACK);
     }
 
     /**
@@ -126,11 +141,11 @@ public final class SBSHudRenderer {
         // part – so the red→yellow transition is seamless and both bar ends stay rounded.
         if (filledWidth > 0) {
             SciFiRender.roundedRect(g, x, y, filledWidth, BAR_HEIGHT, BAR_RADIUS,
-                    barColor(colors().overhealHex, SBSTheme.HUD_OVERHEAL));
+                    barColor(OVERHEAL, colors().overhealHex, SBSTheme.HUD_OVERHEAL));
         }
         if (healthWidth > 0) {
             SciFiRender.roundedRect(g, x, y, healthWidth, BAR_HEIGHT, BAR_RADIUS,
-                    barColor(colors().healthHex, SBSTheme.HUD_HEALTH));
+                    barColor(HEALTH, colors().healthHex, SBSTheme.HUD_HEALTH));
         }
     }
 
@@ -164,11 +179,11 @@ public final class SBSHudRenderer {
         // the left – the teal→blue transition stays seamless, exactly like the health bar's overheal.
         if (filledWidth > 0) {
             SciFiRender.roundedRect(g, x, y, filledWidth, BAR_HEIGHT, BAR_RADIUS,
-                    barColor(colors().manaHex, SBSTheme.HUD_MANA));
+                    barColor(MANA, colors().manaHex, SBSTheme.HUD_MANA));
         }
         if (overflowWidth > 0) {
             SciFiRender.roundedRect(g, x, y, overflowWidth, BAR_HEIGHT, BAR_RADIUS,
-                    barColor(colors().overflowManaHex, HUD_OVERFLOW_MANA));
+                    barColor(OVERFLOW_MANA, colors().overflowManaHex, HUD_OVERFLOW_MANA));
         }
         drawStaleManaFlag(g, x, y, state);
     }
@@ -219,7 +234,7 @@ public final class SBSHudRenderer {
         SciFiRender.roundedRect(g, x, y, BAR_WIDTH, BAR_HEIGHT, BAR_RADIUS, trackColor());
         if (filledWidth > 0) {
             SciFiRender.roundedRect(g, x, y, filledWidth, BAR_HEIGHT, BAR_RADIUS,
-                    barColor(colors().vitalityHex, SBSTheme.HUD_VITALITY));
+                    barColor(VITALITY, colors().vitalityHex, SBSTheme.HUD_VITALITY));
         }
     }
 
@@ -248,7 +263,7 @@ public final class SBSHudRenderer {
         SciFiRender.roundedRect(g, x, y, XP_BAR_WIDTH, BAR_HEIGHT, BAR_RADIUS, trackColor());
         if (filledWidth > 0) {
             SciFiRender.roundedRect(g, x, y, filledWidth, BAR_HEIGHT, BAR_RADIUS,
-                    barColor(colors().xpHex, SBSTheme.HUD_XP));
+                    barColor(XP, colors().xpHex, SBSTheme.HUD_XP));
         }
     }
 
@@ -257,6 +272,21 @@ public final class SBSHudRenderer {
      * text. Both are GUI-editor elements (movable / scalable / hideable) gated on their toggles.
      */
     public static void renderHudExtras(GuiGraphicsExtractor g) {
+        // TEMPORARY measurement split: the Equipped Loadout card is measured on its own (card and
+        // preview player as two sections, LoadoutsOverlay), so everything else is "hud.hudExtras",
+        // opened twice - before and after it. Sequential, never nested.
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.hudExtras")) {
+            renderHudExtrasBeforeLoadout(g);
+        }
+    }
+
+    private static void renderHudExtrasAfterLoadout(GuiGraphicsExtractor g) {
+        try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.hudExtras")) {
+            renderHudExtrasAfterLoadout(g);
+        }
+    }
+
+    private static void renderHudExtrasBeforeLoadout(GuiGraphicsExtractor g) {
         var cfg = ConfigManager.getInstance().get().hypixelGui;
         // Vitality bar: a new stat with no vanilla element to replace, so it is drawn here (above the
         // health bar) gated on its mode + fresh vitality data + the editor's hide toggle.
@@ -301,6 +331,8 @@ public final class SBSHudRenderer {
         sbs.modid.client.dungeons.run.render.DungeonScoreHud.render(g);
         // AH flip popup cards (in-world pass; over containers OverlayRenderMixin draws them instead).
         sbs.modid.client.economy.auctions.ui.AhFlipPopups.getInstance().renderHud(g);
+        // Craft Helper card (in-world pass; over containers ScreenForeground draws it, interactive).
+        sbs.modid.client.economy.crafthelper.ui.CraftHelperHud.getInstance().renderHud(g);
         // Web Browser: keeps a page (e.g. a video) drawn over the world while no screen is open.
         sbs.modid.client.helper.browser.WebBrowserManager.getInstance().renderHud(g);
     }
@@ -320,10 +352,60 @@ public final class SBSHudRenderer {
         Font font = minecraft.font;
         ServerStatsTracker stats = ServerStatsTracker.getInstance();
 
-        int ping = stats.ping(minecraft);
-        double tps = stats.tps();
-        int fps = minecraft.getFps();
+        statsKey = StatsKey.of(statsKey, stats.ping(minecraft), stats.tps(), minecraft.getFps(),
+                SBSTheme.revision(), font);
+        StatsModel m = STATS_MODEL.get(statsKey);
 
+        HudElement.Bounds b = HudElement.SERVER_STATS.defaultBounds(g.guiWidth(), g.guiHeight());
+        int x = Math.round(b.x());
+        int y = Math.round(b.y());
+        int w = m.width() + 10;
+        int h = font.lineHeight + 7;
+
+        HudLayout.measure(HudElement.SERVER_STATS, x, y, w, h);
+        HudLayout.begin(g, HudElement.SERVER_STATS);
+        HudCard.draw(g, x, y, w, h);
+        int tx = x + 5;
+        int ty = y + 4;
+        Component[] texts = m.texts();
+        for (int i = 0; i < texts.length; i++) {
+            g.text(font, texts[i], tx, ty, m.colors()[i]);
+            tx += m.widths()[i];
+        }
+        HudLayout.end(g);
+    }
+
+    /**
+     * What the Server Stats card is built from. The card shows TPS to one decimal, so the tenth is
+     * all a TPS change has to be to rebuild it; {@code tps} is the raw value the build formats (as
+     * before) and is not compared by {@link #of}. The theme revision covers the muted label colour.
+     */
+    record StatsKey(int ping, int tpsTenths, double tps, int fps, int themeRevision, Font font) {
+
+        /** {@code last} itself while nothing shown moved, so a steady frame allocates no key. */
+        static StatsKey of(StatsKey last, int ping, double tps, int fps, int themeRevision, Font font) {
+            int tpsTenths = tps >= 0 ? (int) Math.round(tps * 10) : -1;
+            if (last != null && last.ping == ping && last.tpsTenths == tpsTenths && last.fps == fps
+                    && last.themeRevision == themeRevision && last.font == font) {
+                return last;
+            }
+            return new StatsKey(ping, tpsTenths, tps, fps, themeRevision, font);
+        }
+    }
+
+    /** The Server Stats card's segments, their colours and widths, and the total text width. */
+    private record StatsModel(Component[] texts, int[] colors, int[] widths, int width) {
+    }
+
+    private static StatsKey statsKey;
+    private static final CachedModel<StatsKey, StatsModel> STATS_MODEL =
+            new CachedModel<>("hud.serverStats", SBSHudRenderer::buildServerStats);
+
+    private static StatsModel buildServerStats(StatsKey key) {
+        Font font = key.font();
+        int ping = key.ping();
+        double tps = key.tps();
+        int fps = key.fps();
         String pingText = ping >= 0 ? ping + "ms" : "-";
         String tpsText = tps >= 0 ? String.format(java.util.Locale.US, "%.1f", tps) : "-";
         String fpsText = String.valueOf(Math.max(0, fps));
@@ -339,96 +421,171 @@ public final class SBSHudRenderer {
         int[] colors = {SBSTheme.TEXT_MUTED, pingColor, SBSTheme.TEXT_MUTED,
                 SBSTheme.TEXT_MUTED, tpsColor, SBSTheme.TEXT_MUTED,
                 SBSTheme.TEXT_MUTED, fpsColor};
+        Component[] components = new Component[texts.length];
+        int[] widths = new int[texts.length];
         int textW = 0;
-        for (String text : texts) {
-            textW += font.width(text);
-        }
-
-        HudElement.Bounds b = HudElement.SERVER_STATS.defaultBounds(g.guiWidth(), g.guiHeight());
-        int x = Math.round(b.x());
-        int y = Math.round(b.y());
-        int w = textW + 10;
-        int h = font.lineHeight + 7;
-
-        HudLayout.measure(HudElement.SERVER_STATS, x, y, w, h);
-        HudLayout.begin(g, HudElement.SERVER_STATS);
-        HudCard.draw(g, x, y, w, h);
-        int tx = x + 5;
-        int ty = y + 4;
         for (int i = 0; i < texts.length; i++) {
-            g.text(font, Component.literal(texts[i]), tx, ty, colors[i]);
-            tx += font.width(texts[i]);
+            components[i] = Component.literal(texts[i]);
+            widths[i] = font.width(texts[i]);
+            textW += widths[i];
         }
-        HudLayout.end(g);
+        return new StatsModel(components, colors, widths, textW);
     }
+
+    /** A colour code and the character after it, for the pet card's plain-title option. */
+    private static final java.util.regex.Pattern FORMATTING_CODE = java.util.regex.Pattern.compile("§.");
 
     /**
      * Active Pet card: [icon] Name [Lvl] / XP bar + percent + absolute XP / held item. The card
      * sizes itself to its content, so long names or XP texts never overflow the frame.
      */
-    private static void renderActivePet(GuiGraphicsExtractor g) {
-        PetTracker pet = PetTracker.getInstance();
-        if (!pet.hasPet()) {
-            return;
-        }
-        Font font = Minecraft.getInstance().font;
-        HudElement.Bounds b = HudElement.ACTIVE_PET.defaultBounds(g.guiWidth(), g.guiHeight());
-        int x = Math.round(b.x());
-        int y = Math.round(b.y());
+    private static final int PET_BAR_W = 60;
+    private static final int PET_TEXT_X = 26;
+    /** Frames between re-asking for a default pet head that is still a stand-in (the skull is async). */
+    private static final int PET_ICON_REPOLL_FRAMES = 40;
 
+    /**
+     * Everything the Active Pet card draws that is not position: built from one {@link
+     * PetTracker.PetState} and kept until that snapshot, the number setting or the name-colour
+     * setting changes, so a steady frame formats, measures and allocates nothing.
+     */
+    private record PetCardModel(Component title, Component line2, Component heldLine,
+                                int w, int h, int fill, boolean maxLevel) {
+    }
+
+    /**
+     * What the Active Pet card is built from: the pet snapshot (compared by its {@code version},
+     * which {@link PetTracker} bumps on every real change), the short-number and name-colour
+     * settings, and the font.
+     */
+    record PetKey(PetTracker.PetState pet, int version, boolean shortNumbers, boolean serverColors, Font font) {
+
+        /** {@code last} itself while nothing moved, so a steady frame allocates no key. */
+        static PetKey of(PetKey last, PetTracker.PetState pet, boolean shortNumbers, boolean serverColors,
+                         Font font) {
+            if (last != null && last.version == pet.version() && last.shortNumbers == shortNumbers
+                    && last.serverColors == serverColors && last.font == font) {
+                return last;
+            }
+            return new PetKey(pet, pet.version(), shortNumbers, serverColors, font);
+        }
+    }
+
+    private static PetKey petKey;
+    private static final CachedModel<PetKey, PetCardModel> PET_MODEL =
+            new CachedModel<>("hud.activePet", SBSHudRenderer::buildPetModel);
+
+    /** The default pet head, resolved once per pet name; re-polled only until the real skull lands. */
+    private static String petIconName = "";
+    private static String petIconKey = "";
+    private static net.minecraft.world.item.ItemStack petFallbackIcon = net.minecraft.world.item.ItemStack.EMPTY;
+    private static boolean petFallbackFinal;
+    private static int petIconPollIn;
+
+    private static PetCardModel petModel(PetTracker.PetState pet, Font font) {
+        boolean shortNumbers = sbs.modid.client.core.util.NumberDisplay.enabled();
+        // Hypixel writes the pet's rarity into the name as colour codes. Kept by default (the colour
+        // is a fact about the pet), but strippable for a card that matches every other card's title.
+        boolean serverColors = ConfigManager.getInstance().get().hypixelGui.petNameServerColors;
+        petKey = PetKey.of(petKey, pet, shortNumbers, serverColors, font);
+        return PET_MODEL.get(petKey);
+    }
+
+    private static PetCardModel buildPetModel(PetKey key) {
+        PetTracker.PetState pet = key.pet();
+        Font font = key.font();
+        boolean serverColors = key.serverColors();
         String title = pet.name() + "  [Lvl " + pet.level() + "]";
-        double percent = pet.xpPercent();
+        if (!serverColors) {
+            title = FORMATTING_CODE.matcher(title).replaceAll("");
+        }
+        double percent = pet.percent();
         String secondLine;
-        if (pet.isMaxLevel()) {
+        if (pet.maxLevel()) {
             secondLine = "MAX LEVEL";
             percent = 100;
         } else {
             String percentText = percent >= 0
-                    ? String.format(java.util.Locale.US, "%.1f%%", percent) : "?%";
-            String xpText = pet.xpText();
-            secondLine = xpText.isEmpty() ? percentText : percentText + "  " + xpText;
+                    ? String.format(java.util.Locale.ROOT, "%.1f%%", percent) : "?%";
+            secondLine = pet.hasXpFigures()
+                    ? percentText + "  " + sbs.modid.client.core.util.NumberDisplay.format(pet.xpCurrent())
+                            + "/" + sbs.modid.client.core.util.NumberDisplay.format(pet.xpNeeded())
+                    : percentText;
         }
         String held = pet.heldItem();
+        String heldText = held.isEmpty() ? "" : "Held: " + held;
 
         // Dynamic card size: width fits the widest line, height fits 2 or 3 text rows.
-        int barW = 60;
-        int textX = 26;
         int lineH = font.lineHeight + 2;
-        int w = textX + Math.max(Math.max(font.width(title), barW + 6 + font.width(secondLine)),
-                held.isEmpty() ? 0 : font.width("Held: " + held)) + 8;
+        int w = PET_TEXT_X + Math.max(Math.max(font.width(title), PET_BAR_W + 6 + font.width(secondLine)),
+                held.isEmpty() ? 0 : font.width(heldText)) + 8;
         int h = 6 + lineH * (held.isEmpty() ? 2 : 3) + 2;
+
+        // The XP bar's fill in pixels; -1 when the percent is unknown (track only).
+        int fill = percent >= 0 ? (int) Math.round(Math.min(100, percent) / 100.0 * PET_BAR_W) : -1;
+        return new PetCardModel(Component.literal(title), Component.literal(secondLine),
+                held.isEmpty() ? null : Component.literal(heldText), w, h, fill, pet.maxLevel());
+    }
+
+    /** The real captured skin when there is one, else the default head for this pet's name. */
+    private static net.minecraft.world.item.ItemStack petIcon(PetTracker.PetState pet) {
+        if (!pet.capturedIcon().isEmpty()) {
+            return pet.capturedIcon();
+        }
+        sbs.modid.client.core.player.PetIconCache icons = sbs.modid.client.core.player.PetIconCache.getInstance();
+        if (!pet.name().equals(petIconName)) {
+            petIconName = pet.name();
+            petIconKey = sbs.modid.client.core.item.SkyblockItem.normalizeName(pet.name());
+            petFallbackFinal = false;
+            petIconPollIn = 0;
+        }
+        if (!petFallbackFinal && --petIconPollIn <= 0) {
+            petFallbackIcon = icons.iconOrFallback(petIconKey);
+            petFallbackFinal = icons.hasFetched(petIconKey);
+            petIconPollIn = PET_ICON_REPOLL_FRAMES;
+        }
+        return petFallbackIcon;
+    }
+
+    private static void renderActivePet(GuiGraphicsExtractor g) {
+        // One read: every field below comes from the same snapshot, never half old pet, half new.
+        PetTracker.PetState pet = PetTracker.getInstance().state();
+        if (!pet.hasPet()) {
+            return;
+        }
+        Font font = Minecraft.getInstance().font;
+        PetCardModel m = petModel(pet, font);
+        HudElement.Bounds b = HudElement.ACTIVE_PET.defaultBounds(g.guiWidth(), g.guiHeight());
+        int x = Math.round(b.x());
+        int y = Math.round(b.y());
+        int w = m.w();
+        int h = m.h();
+        int lineH = font.lineHeight + 2;
 
         HudLayout.measure(HudElement.ACTIVE_PET, x, y, w, h);
         HudLayout.begin(g, HudElement.ACTIVE_PET);
         HudCard.draw(g, x, y, w, h);
-        g.item(pet.icon(), x + 4, y + (h - 16) / 2);
+        g.item(petIcon(pet), x + 4, y + (h - 16) / 2);
 
-        int tx = x + textX;
+        int tx = x + PET_TEXT_X;
         int ty = y + 4;
-        // Hypixel writes the pet's rarity into the name as colour codes. Kept by default (the colour
-        // is a fact about the pet), but strippable for a card that matches every other card's title.
-        String titleText = ConfigManager.getInstance().get().hypixelGui.petNameServerColors
-                ? title : title.replaceAll("§.", "");
-        g.text(font, Component.literal(titleText), tx, ty, SBSTheme.ACCENT_BRIGHT);
+        g.text(font, m.title(), tx, ty, SBSTheme.ACCENT_BRIGHT);
         ty += lineH;
 
         // XP bar + percent (+ absolute XP when known).
         int barY = ty + (font.lineHeight - 4) / 2;
-        SciFiRender.roundedRect(g, tx, barY, barW, 4, 2, SBSTheme.HUD_TRACK);
-        if (pet.isMaxLevel() && ConfigManager.getInstance().get().hypixelGui.chromaMaxPetBar) {
+        SciFiRender.roundedRect(g, tx, barY, PET_BAR_W, 4, 2, SBSTheme.HUD_TRACK);
+        if (m.maxLevel() && ConfigManager.getInstance().get().hypixelGui.chromaMaxPetBar) {
             // Nothing left to fill, so the full bar becomes the "maxed" shimmer instead.
-            chromaBar(g, tx, barY, barW, 4, 2);
-        } else if (percent >= 0) {
-            int fill = (int) Math.round(Math.min(100, percent) / 100.0 * barW);
-            if (fill > 0) {
-                SciFiRender.roundedRect(g, tx, barY, fill, 4, 2, SBSTheme.ACCENT);
-            }
+            chromaBar(g, tx, barY, PET_BAR_W, 4, 2);
+        } else if (m.fill() > 0) {
+            SciFiRender.roundedRect(g, tx, barY, m.fill(), 4, 2, SBSTheme.ACCENT);
         }
-        g.text(font, Component.literal(secondLine), tx + barW + 6, ty, SBSTheme.TEXT_MUTED);
+        g.text(font, m.line2(), tx + PET_BAR_W + 6, ty, SBSTheme.TEXT_MUTED);
         ty += lineH;
 
-        if (!held.isEmpty()) {
-            g.text(font, Component.literal("Held: " + held), tx, ty, SBSTheme.TEXT_MUTED);
+        if (m.heldLine() != null) {
+            g.text(font, m.heldLine(), tx, ty, SBSTheme.TEXT_MUTED);
         }
         HudLayout.end(g);
     }
@@ -512,13 +669,41 @@ public final class SBSHudRenderer {
         }
         Font font = Minecraft.getInstance().font;
         HudElement.Bounds b = HudElement.ITEM_COOLDOWN.defaultBounds(g.guiWidth(), g.guiHeight());
-        String text = String.format(java.util.Locale.US, "%.1fs", seconds);
-        HudLayout.measure(HudElement.ITEM_COOLDOWN, b.x(), b.y(), font.width(text), font.lineHeight);
+        cooldownKey = CooldownKey.of(cooldownKey, seconds, SBSTheme.revision(), font);
+        CooldownModel m = COOLDOWN_MODEL.get(cooldownKey);
+        HudLayout.measure(HudElement.ITEM_COOLDOWN, b.x(), b.y(), m.width(), font.lineHeight);
         HudLayout.begin(g, HudElement.ITEM_COOLDOWN);
-        g.text(font, Component.literal(text),
-                Math.round(b.x()), Math.round(b.y()), SBSTheme.ACCENT_BRIGHT);
+        g.text(font, m.text(), Math.round(b.x()), Math.round(b.y()), m.color());
         HudLayout.end(g);
     }
+
+    /**
+     * What the cooldown text is built from: the remaining time in tenths (all the text shows),
+     * the theme revision (its colour) and the font. {@code seconds} is the raw value the build
+     * formats and is not compared by {@link #of}.
+     */
+    record CooldownKey(long tenths, double seconds, int themeRevision, Font font) {
+
+        /** {@code last} itself while the shown tenth is unchanged, so a steady frame allocates no key. */
+        static CooldownKey of(CooldownKey last, double seconds, int themeRevision, Font font) {
+            long tenths = Math.round(seconds * 10);
+            if (last != null && last.tenths == tenths && last.themeRevision == themeRevision
+                    && last.font == font) {
+                return last;
+            }
+            return new CooldownKey(tenths, seconds, themeRevision, font);
+        }
+    }
+
+    private record CooldownModel(Component text, int width, int color) {
+    }
+
+    private static CooldownKey cooldownKey;
+    private static final CachedModel<CooldownKey, CooldownModel> COOLDOWN_MODEL =
+            new CachedModel<>("hud.itemCooldown", key -> {
+                String text = String.format(java.util.Locale.US, "%.1fs", key.seconds());
+                return new CooldownModel(Component.literal(text), key.font().width(text), SBSTheme.ACCENT_BRIGHT);
+            });
 
     /**
      * Draws the subtle 1-pixel darkened border one pixel outside the bar. Rendered before the bar so

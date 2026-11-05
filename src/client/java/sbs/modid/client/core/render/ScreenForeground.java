@@ -116,6 +116,9 @@ public final class ScreenForeground {
         if (!FloatingWindows.isContainerRaised()) {
             renderWindows(container, g, mouseX, mouseY);
         }
+        // Craft Helper card: above the windows, like the AH cards; its clicks are routed first to match.
+        MenuRenderPriority.run("crafthelper.hud", RenderTier.RELEVANT,
+                () -> sbs.modid.client.economy.crafthelper.ui.CraftHelperHud.getInstance().render(container, g, mouseX, mouseY));
         // AH flip popup cards: above every window, so they are always visible and clickable
         // (their click hook in ContainerSearchBarMixin matches: it runs before the window loop).
         MenuRenderPriority.run("auctions.flip_popups", RenderTier.RELEVANT,

@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Turns chat lines into Nucleus run events. Pure - text and a clock in, events out.
@@ -31,6 +32,8 @@ import java.util.regex.Matcher;
  * after its last line.
  */
 public final class NucleusChatParser {
+
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
 
     /** Which reward block a loot line came from. */
     public enum Source {
@@ -246,7 +249,7 @@ public final class NucleusChatParser {
 
     /** Drops legacy {@code §x} codes and the spaces Hypixel centres and indents its blocks with. */
     public static String strip(String raw) {
-        return raw.replaceAll("§.", "").trim();
+        return COLOUR_CODE.matcher(raw).replaceAll("").trim();
     }
 
     /** {@code ❈ Fine Jade Gemstone} to {@code Fine Jade Gemstone}; anything else unchanged. */

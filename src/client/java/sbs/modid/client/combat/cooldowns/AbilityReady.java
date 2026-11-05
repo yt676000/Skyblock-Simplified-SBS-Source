@@ -45,6 +45,7 @@ public final class AbilityReady {
      * never the ready alert, which comes from {@link #READY} alone.
      */
     static final Pattern USE = Pattern.compile("^You used your ([A-Z][A-Za-z' -]{1,40}) (Pickaxe|Axe) Ability!$");
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     /**
      * Heart of the Mountain pickaxe abilities, on by default even when their first sighting is the
@@ -75,7 +76,7 @@ public final class AbilityReady {
         if (line == null) {
             return null;
         }
-        String text = line.replaceAll("§.", "").strip();
+        String text = FORMATTING.matcher(line).replaceAll("").strip();
         Matcher use = USE.matcher(text);
         if (use.matches()) {
             String ability = use.group(1).strip();

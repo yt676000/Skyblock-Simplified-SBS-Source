@@ -16,7 +16,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.combat.vampire.logic.BloodEffigyTracker;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
@@ -37,6 +38,8 @@ import java.util.Locale;
  * <p>Informational only. Nothing here writes to input, rotation or item use.
  */
 public final class BloodEffigyRenderer {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     /** Effigies further than this are drawn without a label. */
     private static final double LABEL_RANGE = 80.0;
@@ -64,7 +67,7 @@ public final class BloodEffigyRenderer {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
 
         for (BloodEffigyTracker.Effigy effigy : effigies) {
@@ -89,9 +92,9 @@ public final class BloodEffigyRenderer {
             if (distance > LABEL_RANGE) {
                 continue;
             }
-            int[] screen = WorldRender.projectToScreen(viewProjection, camPos,
-                    centre.add(0, (top - baseY) / 2.0 + 0.5, 0), g.guiWidth(), g.guiHeight());
-            if (screen == null) {
+            int[] screen = SCREEN;
+            if (!WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z, centre.x,
+                    centre.y + (top - baseY) / 2.0 + 0.5, centre.z, g.guiWidth(), g.guiHeight(), screen)) {
                 continue;
             }
             g.centeredText(font, Component.literal(label(cfg, effigy)),

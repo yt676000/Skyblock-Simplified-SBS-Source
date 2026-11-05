@@ -283,6 +283,7 @@ public final class SbsSocket {
         try {
             ticket = tickets.fetch();
         } catch (SbsApi.NoConsentException | SbsApi.NoLicenceException refused) {
+            ApiFailure.logBackground("[SBS][Socket]", "ticket for " + uri.getPath(), refused);
             stopSelf(gen, StopReason.REFUSED);
             return;
         } catch (TicketRejectedException rejected) {

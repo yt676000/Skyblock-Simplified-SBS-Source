@@ -48,7 +48,7 @@ public final class MagicStick {
             return false;
         }
         CustomData data = stack.get(DataComponents.CUSTOM_DATA);
-        return data != null && MARKER_VALUE.equals(data.copyTag().getStringOr(MARKER_KEY, ""));
+        return data != null && MARKER_VALUE.equals(sbs.modid.client.core.item.SkyblockItem.customTag(data).getStringOr(MARKER_KEY, ""));
     }
 
     /** A fresh Magic Stick Thingy. */

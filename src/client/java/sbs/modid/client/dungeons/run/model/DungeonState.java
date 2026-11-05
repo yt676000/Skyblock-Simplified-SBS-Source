@@ -12,24 +12,24 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import sbs.modid.client.core.dev.RoomMapReader;
-import sbs.modid.client.dungeons.run.logic.DungeonScoreboard;
 
 /**
  * Holds the live dungeon state (in-dungeon flag + the cell-resolved map snapshot) and refreshes it only
  * on a real <b>block event</b>.
  *
- * <p>Performance rule (as required): the heavy work – scanning the sidebar scoreboard and re-reading the
- * map pixels – runs <b>only when {@code player.blockPosition()} changes</b>, never in a permanent time
- * loop. {@link #updateIfMoved()} is called each frame from the HUD renderer but returns immediately (a
- * single {@link BlockPos} comparison) while the player stays on the same block.
+ * <p>Performance rule (as required): the heavy work – re-reading the map pixels – runs <b>only when
+ * {@code player.blockPosition()} changes</b>, never in a permanent time loop. {@link #tick} is called
+ * once per client tick by {@code DungeonStateManager}, which passes the floor flag it already read off
+ * the sidebar; it returns immediately (a single {@link BlockPos} comparison) while the player stays on
+ * the same block. Render code only reads the {@code volatile} fields.
  */
 public final class DungeonState {
 
     private static final DungeonState INSTANCE = new DungeonState();
 
     private BlockPos lastBlock;
-    private boolean inDungeon;
-    private RoomMapReader.MapSnapshot snapshot;
+    private volatile boolean inDungeon;
+    private volatile RoomMapReader.MapSnapshot snapshot;
 
     private DungeonState() {
     }
@@ -38,8 +38,17 @@ public final class DungeonState {
         return INSTANCE;
     }
 
+    /** Client tick: clears the state off a floor, otherwise refreshes it via {@link #updateIfMoved}. */
+    public void tick(boolean onFloor) {
+        if (!onFloor) {
+            reset();
+            return;
+        }
+        updateIfMoved();
+    }
+
     /** Refreshes the state, but only when the player has moved to a different block since last time. */
-    public void updateIfMoved() {
+    private void updateIfMoved() {
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
         if (player == null || minecraft.level == null) {
@@ -53,8 +62,8 @@ public final class DungeonState {
         lastBlock = current.immutable();
 
         // Heavy work, gated on the block change:
-        inDungeon = DungeonScoreboard.isInDungeon();
-        snapshot = inDungeon ? RoomMapReader.readSnapshot() : null;
+        inDungeon = true;
+        snapshot = RoomMapReader.readSnapshot();
     }
 
     public boolean isInDungeon() {

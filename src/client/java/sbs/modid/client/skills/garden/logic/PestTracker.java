@@ -8,6 +8,7 @@
 
 package sbs.modid.client.skills.garden.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -58,6 +59,10 @@ import java.util.regex.Pattern;
  * pattern keys on the shape ("... spawned/appeared in Plot N") rather than the exact wording.
  */
 public final class PestTracker {
+
+    private static final Pattern LEADING_FLUFF = Pattern.compile("(?i)^.*?[!,]\\s*");
+    private static final Pattern LEADING_COUNT = Pattern.compile("(?i)^(an?|\\d+)\\s+");
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
     private static final PestTracker INSTANCE = new PestTracker();
 
@@ -178,11 +183,47 @@ public final class PestTracker {
     private long lastScanAt;
     private long lastWidgetLogAt;
 
+    /**
+     * Bumped whenever anything the pest cards show changes - a spawn, Phillip's buff, a widget scan
+     * that read something different, a world change - so the cards rebuild their text on a change
+     * (or their one-second clock) instead of every frame.
+     */
+    private volatile int version;
+
+    /** The pest card as last built, and what it was built for. Render thread only. */
+    private HudCard.Snapshot timerCard;
+    private int timerBuiltVersion = -1;
+    private long timerBuiltSecond = -1;
+    private int timerBuiltConfig = -1;
+
+    /** The standalone cooldown card as last built: value row, optional reference row. */
+    private HudCard.Snapshot cooldownCard;
+    private boolean cooldownReady;
+    private int cooldownBuiltVersion = -1;
+    private long cooldownBuiltSecond = -1;
+    private int cooldownBuiltConfig = -1;
+
+    private static final Component TITLE_HEAD = Component.literal("PEST!");
+    /** The title line as a component, rebuilt only when {@link #titleText} is replaced. */
+    private String titleBuiltFor;
+    private Component titleLine;
+
     private PestTracker() {
     }
 
     public static PestTracker getInstance() {
         return INSTANCE;
+    }
+
+    /** Moves whenever anything a pest card shows changes; see {@link #version}. */
+    public int version() {
+        return version;
+    }
+
+    /** The cooldown settings the cards read, packed into one int to compare per frame. */
+    public int cooldownConfigKey() {
+        var c = cfg();
+        return cooldownSeconds() << 2 | (c.pestCustomCooldown ? 1 : 0) | (c.pestShowHypixelCooldown ? 2 : 0);
     }
 
     private static sbs.modid.client.core.config.SBSConfig.GardenSettings cfg() {
@@ -223,6 +264,7 @@ public final class PestTracker {
         readyArmed = false;
         spawnsThisSession++;
         dataSeenAt = lastSpawnAt;
+        version++;
 
         // Proof the detection half fired, whatever the alert settings are - "no notification" is
         // otherwise indistinguishable from "the spawn line was never recognised".
@@ -274,9 +316,9 @@ public final class PestTracker {
      * last two words are kept, which is what every pest name is at most.
      */
     private static String cleanPestName(String raw) {
-        String cleaned = raw == null ? "" : raw.replaceAll("(?i)^.*?[!,]\\s*", "").trim();
-        cleaned = cleaned.replaceAll("(?i)^(an?|\\d+)\\s+", "").trim();
-        String[] words = cleaned.split("\\s+");
+        String cleaned = raw == null ? "" : LEADING_FLUFF.matcher(raw).replaceAll("").trim();
+        cleaned = LEADING_COUNT.matcher(cleaned).replaceAll("").trim();
+        String[] words = WHITESPACE.split(cleaned);
         if (words.length > 2) {
             cleaned = words[words.length - 2] + " " + words[words.length - 1];
         }
@@ -324,6 +366,7 @@ public final class PestTracker {
         }
         phillipFortune = amount;
         phillipEndsAt = System.currentTimeMillis() + millis;
+        version++;
     }
 
     /** The Farming Fortune Phillip's running buff is worth, or {@code 0} when none is known. */
@@ -402,6 +445,7 @@ public final class PestTracker {
         // one running again.
         readyArmed = false;
         loggedCooldownRaw = "";
+        version++;
         // The infested-plot walk is about plots that were infested in the world we just left.
         InfestedPlotWarp.reset();
     }
@@ -485,8 +529,19 @@ public final class PestTracker {
             if (before > 0 && foundAlive >= 0 && foundAlive < before) {
                 profit.onCountDrop(before - foundAlive, now, trapFilled);
             }
-            infested = Set.copyOf(foundPlots);
-            status = Map.copyOf(foundStatus);
+            // Only a reading that differs counts as a change (and replaces the old one, which also
+            // keeps the plot order the card shows steady between identical scans).
+            if (!infested.equals(foundPlots)) {
+                infested = Set.copyOf(foundPlots);
+                version++;
+            }
+            if (!status.equals(foundStatus)) {
+                status = Map.copyOf(foundStatus);
+                version++;
+            }
+            if (alive != before) {
+                version++;
+            }
             dataSeenAt = now;
         }
         if (sawWidget) {
@@ -814,7 +869,7 @@ public final class PestTracker {
     private static void playAlert(float pitch) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
-            mc.player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, pitch);
+            SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, pitch);
         }
     }
 
@@ -863,9 +918,15 @@ public final class PestTracker {
         int alpha = (int) (255 * (life > 0.66f ? (1 - life) / 0.34f : 1f));
         int color = (Math.max(16, Math.min(255, alpha)) << 24) | 0x00E05A5A;
 
+        String text = titleText;
+        if (!text.equals(titleBuiltFor)) {
+            titleBuiltFor = text;
+            titleLine = Component.literal(text);
+        }
+
         HudLayout.begin(g, HudElement.PEST_ALERT);
-        g.centeredText(font, Component.literal("PEST!"), centreX, y, color);
-        g.centeredText(font, Component.literal(titleText), centreX, y + font.lineHeight + 2, color);
+        g.centeredText(font, TITLE_HEAD, centreX, y, color);
+        g.centeredText(font, titleLine, centreX, y + font.lineHeight + 2, color);
         HudLayout.end(g);
     }
 
@@ -897,9 +958,49 @@ public final class PestTracker {
         if (dataSeenAt == 0 || now - dataSeenAt > HIDE_AFTER_MS) {
             return;
         }
-        List<String[]> rows = new ArrayList<>(5);
+        // Rebuilt on a change, a cooldown setting, or the one-second clock the countdowns read.
+        int version = this.version;
+        long second = now / 1000L;
+        int config = cooldownConfigKey();
+        if (version != timerBuiltVersion || second != timerBuiltSecond || config != timerBuiltConfig) {
+            timerBuiltVersion = version;
+            timerBuiltSecond = second;
+            timerBuiltConfig = config;
+            timerCard = buildTimerCard(now);
+        }
+        HudCard.Snapshot card = timerCard;
+        if (card == null) {
+            return;
+        }
+
+        Font font = Minecraft.getInstance().font;
+        int lineH = font.lineHeight + 2;
+        int pad = 5;
+        HudElement.Bounds b = HudElement.PEST_TIMER.defaultBounds(g.guiWidth(), g.guiHeight());
+        int x = Math.round(b.x());
+        int y = Math.round(b.y());
+        HudLayout.measure(HudElement.PEST_TIMER, x, y, card.width(), card.height());
+
+        HudLayout.begin(g, HudElement.PEST_TIMER);
+        HudCard.draw(g, x, y, card.width(), card.height());
+
+        int ix = x + pad;
+        int right = x + card.width() - pad;
+        int iy = y + pad;
+        for (HudCard.Line line : card.rows()) {
+            HudCard.drawLine(g, font, line, ix, right, iy);
+            iy += lineH;
+        }
+        HudLayout.end(g);
+    }
+
+    /** The pest card's rows, header first, or {@code null} when it has nothing to say. */
+    private HudCard.Snapshot buildTimerCard(long now) {
+        Font font = Minecraft.getInstance().font;
+        List<HudCard.Line> rows = new ArrayList<>(7);
+        rows.add(HudCard.Line.of(font, "Pests", SBSTheme.ACCENT_BRIGHT));
         if (alive >= 0) {
-            rows.add(new String[]{"Alive", String.valueOf(alive)});
+            rows.add(row(font, "Alive", String.valueOf(alive), SBSTheme.TEXT));
         }
         Set<Integer> plots = infested;
         if (!plots.isEmpty()) {
@@ -910,58 +1011,41 @@ public final class PestTracker {
                 }
                 sb.append(plot);
             }
-            rows.add(new String[]{"Plots", sb.toString()});
+            rows.add(row(font, "Plots", sb.toString(), SBSTheme.TEXT));
         }
         if (lastSpawnAt > 0) {
-            rows.add(new String[]{"Last spawn", FarmingText.duration(now - lastSpawnAt) + " ago"});
+            rows.add(row(font, "Last spawn", FarmingText.duration(now - lastSpawnAt) + " ago", SBSTheme.TEXT));
         }
         Cooldown state = cooldown();
         if (state.kind() != CooldownKind.UNKNOWN) {
-            rows.add(new String[]{"Cooldown", cooldownText(state)});
+            String text = cooldownText(state);
+            rows.add(row(font, "Cooldown", text, text.startsWith("ready") ? 0xFFE05A5A : SBSTheme.TEXT));
             String reference = hypixelReferenceText();
             if (reference != null) {
-                rows.add(new String[]{"", reference});
+                rows.add(row(font, "", reference, SBSTheme.TEXT));
             }
         }
         if (spawnsThisSession > 0) {
-            rows.add(new String[]{"Session", String.valueOf(spawnsThisSession)});
+            rows.add(row(font, "Session", String.valueOf(spawnsThisSession), SBSTheme.TEXT));
         }
-        if (rows.isEmpty()) {
-            return;
+        if (rows.size() == 1) {
+            return null;
         }
 
-        Font font = Minecraft.getInstance().font;
         int lineH = font.lineHeight + 2;
         int pad = 5;
-        String header = "Pests";
-        int contentW = font.width(header);
-        for (String[] row : rows) {
-            contentW = Math.max(contentW, font.width(row[0]) + 12 + font.width(row[1]));
+        int contentW = rows.get(0).leftWidth();
+        for (int i = 1; i < rows.size(); i++) {
+            contentW = Math.max(contentW, rows.get(i).width(12));
         }
         int width = Math.max(126, contentW + pad * 2);
-        int height = pad * 2 + lineH * (1 + rows.size()) - 2;
+        int height = pad * 2 + lineH * rows.size() - 2;
+        return new HudCard.Snapshot(List.copyOf(rows), width, height, null);
+    }
 
-        HudElement.Bounds b = HudElement.PEST_TIMER.defaultBounds(g.guiWidth(), g.guiHeight());
-        int x = Math.round(b.x());
-        int y = Math.round(b.y());
-        HudLayout.measure(HudElement.PEST_TIMER, x, y, width, height);
-
-        HudLayout.begin(g, HudElement.PEST_TIMER);
-        HudCard.draw(g, x, y, width, height);
-
-        int ix = x + pad;
-        int right = x + width - pad;
-        int iy = y + pad;
-        g.text(font, Component.literal(header), ix, iy, SBSTheme.ACCENT_BRIGHT);
-        iy += lineH;
-        for (String[] row : rows) {
-            g.text(font, Component.literal(row[0]), ix, iy, SBSTheme.TEXT_MUTED);
-            int color = "Cooldown".equals(row[0]) && row[1].startsWith("ready")
-                    ? 0xFFE05A5A : SBSTheme.TEXT;
-            g.text(font, Component.literal(row[1]), right - font.width(row[1]), iy, color);
-            iy += lineH;
-        }
-        HudLayout.end(g);
+    /** A muted label with its value flush right. */
+    private static HudCard.Line row(Font font, String label, String value, int valueColor) {
+        return HudCard.Line.of(font, label, SBSTheme.TEXT_MUTED, value, valueColor);
     }
 
     /**
@@ -991,23 +1075,27 @@ public final class PestTracker {
         if (!onGarden()) {
             return;
         }
-        Cooldown state = cooldown();
-        if (state.kind() == CooldownKind.UNKNOWN) {
+        int version = this.version;
+        long second = System.currentTimeMillis() / 1000L;
+        int config = cooldownConfigKey();
+        if (version != cooldownBuiltVersion || second != cooldownBuiltSecond || config != cooldownBuiltConfig) {
+            cooldownBuiltVersion = version;
+            cooldownBuiltSecond = second;
+            cooldownBuiltConfig = config;
+            cooldownCard = buildCooldownCard();
+        }
+        HudCard.Snapshot card = cooldownCard;
+        if (card == null) {
             return;
         }
-        boolean ready = state.kind() == CooldownKind.READY;
-        String label = "Pests";
-        String value = cooldownText(state);
-        String reference = hypixelReferenceText();
+        boolean ready = cooldownReady;
+        HudCard.Line main = card.rows().get(0);
+        HudCard.Line reference = card.rows().size() > 1 ? card.rows().get(1) : null;
 
         Font font = Minecraft.getInstance().font;
         int pad = 5;
-        int width = Math.max(88, pad * 2 + font.width(label) + 10 + font.width(value));
-        int height = pad * 2 + font.lineHeight;
-        if (reference != null) {
-            width = Math.max(width, pad * 2 + font.width(reference));
-            height += font.lineHeight + 1;
-        }
+        int width = card.width();
+        int height = card.height();
 
         HudElement.Bounds b = HudElement.PEST_COOLDOWN.defaultBounds(g.guiWidth(), g.guiHeight());
         int x = Math.round(b.x());
@@ -1023,13 +1111,38 @@ public final class PestTracker {
                 ready ? 0xFFE0A14D : SBSTheme.PANEL_BORDER);
         SciFiRender.roundedRectGradient(g, x + 1, y + 1, width - 2, height - 2,
                 SBSTheme.HUD_CORNER - 1, SBSTheme.PANEL_FILL_TOP, SBSTheme.PANEL_FILL_BOTTOM);
-        g.text(font, Component.literal(label), x + pad, y + pad, SBSTheme.TEXT_MUTED);
-        g.text(font, Component.literal(value), x + width - pad - font.width(value), y + pad,
-                ready ? 0xFFE0A14D : SBSTheme.TEXT);
+        HudCard.drawLine(g, font, main, x + pad, x + width - pad, y + pad);
         if (reference != null) {
-            g.text(font, Component.literal(reference), x + pad, y + pad + font.lineHeight + 1,
-                    SBSTheme.TEXT_MUTED);
+            HudCard.drawLine(g, font, reference, x + pad, x + width - pad, y + pad + font.lineHeight + 1);
         }
         HudLayout.end(g);
+    }
+
+    /**
+     * The standalone cooldown card: the label/value row, then the Hypixel reference when there is
+     * one - or {@code null} while the cooldown is unknown. Sets {@link #cooldownReady} alongside.
+     */
+    private HudCard.Snapshot buildCooldownCard() {
+        Cooldown state = cooldown();
+        if (state.kind() == CooldownKind.UNKNOWN) {
+            return null;
+        }
+        boolean ready = state.kind() == CooldownKind.READY;
+        cooldownReady = ready;
+        String reference = hypixelReferenceText();
+
+        Font font = Minecraft.getInstance().font;
+        int pad = 5;
+        HudCard.Line main = HudCard.Line.of(font, "Pests", SBSTheme.TEXT_MUTED,
+                cooldownText(state), ready ? 0xFFE0A14D : SBSTheme.TEXT);
+        int width = Math.max(88, pad * 2 + main.width(10));
+        int height = pad * 2 + font.lineHeight;
+        if (reference == null) {
+            return new HudCard.Snapshot(List.of(main), width, height, null);
+        }
+        HudCard.Line ref = HudCard.Line.of(font, reference, SBSTheme.TEXT_MUTED);
+        width = Math.max(width, pad * 2 + ref.leftWidth());
+        height += font.lineHeight + 1;
+        return new HudCard.Snapshot(List.of(main, ref), width, height, null);
     }
 }

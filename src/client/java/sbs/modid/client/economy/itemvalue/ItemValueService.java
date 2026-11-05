@@ -264,6 +264,12 @@ public final class ItemValueService {
             PriceApi.getInstance().fetchItem(id, "all", (data, error) -> {
                 if (data == null) {
                     priceCache.remove(id, future); // failures are not remembered – retry next check
+                } else if (!data.isBazaar()) {
+                    // The API's "now" for an AH item is its lowest BIN: a sample for the backup store.
+                    double now = statsOf(data).now();
+                    if (now > 0) {
+                        sbs.modid.client.economy.prices.BackupPrices.getInstance().observeApi(id, Math.round(now));
+                    }
                 }
                 future.complete(data);
             });

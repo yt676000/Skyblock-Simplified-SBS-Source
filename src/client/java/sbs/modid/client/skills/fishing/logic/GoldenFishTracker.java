@@ -49,6 +49,11 @@ public final class GoldenFishTracker {
         return timer.view(now);
     }
 
+    /** Whether the clock is running - its reset warning and expiry need ticks with no bobber out. */
+    public boolean busy() {
+        return cfg().goldenFishTimer && timer.active();
+    }
+
     /** Left the world. */
     public void onNoPlayer() {
         timer.reset();

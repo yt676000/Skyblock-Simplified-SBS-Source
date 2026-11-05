@@ -12,6 +12,7 @@ import sbs.modid.client.skills.mining.treasurechest.model.TreasureChestSignals;
 
 import java.util.Locale;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Reads a treasure chest's reward block out of chat, one line at a time.
@@ -27,6 +28,8 @@ import java.util.regex.Matcher;
  * caller cannot forget it. Pure - text and a clock in, events out.
  */
 public final class ChestLootParser {
+
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
 
     /** What one line meant. */
     public enum Kind {
@@ -116,6 +119,6 @@ public final class ChestLootParser {
 
     /** Drops legacy {@code §x} codes and the surrounding whitespace Hypixel centres headers with. */
     public static String strip(String raw) {
-        return raw.replaceAll("§.", "").trim();
+        return COLOUR_CODE.matcher(raw).replaceAll("").trim();
     }
 }

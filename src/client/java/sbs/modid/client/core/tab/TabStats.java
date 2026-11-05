@@ -144,6 +144,7 @@ public final class TabStats {
     private static final Pattern ROW = Pattern.compile(
             "^([A-Za-z][A-Za-z ]*?)\\s*:?\\s*[^\\dA-Za-z+-]*([+-]?[\\d,]+(?:\\.\\d+)?)"
                     + "(?:\\s*/\\s*[+-]?([\\d,]+(?:\\.\\d+)?))?\\s*%?\\b.*$");
+    private static final Pattern LEADING_GLYPH = Pattern.compile("^[^A-Za-z]+");
 
     private TabStats() {
     }
@@ -227,6 +228,6 @@ public final class TabStats {
 
     /** Drops the leading icon glyph: whatever Hypixel uses this year, it is not a letter. */
     private static String deglyph(String line) {
-        return line == null ? "" : line.replaceFirst("^[^A-Za-z]+", "").trim();
+        return line == null ? "" : LEADING_GLYPH.matcher(line).replaceFirst("").trim();
     }
 }

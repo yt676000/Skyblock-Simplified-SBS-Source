@@ -20,6 +20,7 @@ import sbs.modid.client.core.item.SkyblockItem;
 import sbs.modid.client.economy.recipe.logic.EnchantmentRecipeProvider;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Item Overlay module: identifies Enchanted Books at a glance by abbreviating the enchant straight
@@ -51,6 +52,7 @@ public final class EnchantBookOverlay {
     private static final int COLOR_ULTIMATE = 0xFFFF55FF;
     /** Gold – the tier when the book sits at the enchant's max obtainable level. */
     private static final int COLOR_MAX_TIER = 0xFFFFAA00;
+    private static final Pattern WORD_SEPARATOR = Pattern.compile("[ \\-]+");
 
     private EnchantBookOverlay() {
     }
@@ -97,7 +99,7 @@ public final class EnchantBookOverlay {
      */
     static String abbreviate(String nbtKey) {
         String display = EnchantNames.displayName(nbtKey);
-        String[] words = display.split("[ \\-]+");
+        String[] words = WORD_SEPARATOR.split(display);
         if (words.length == 0 || words[0].isEmpty()) {
             return "?";
         }

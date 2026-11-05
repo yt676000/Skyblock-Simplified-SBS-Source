@@ -11,6 +11,7 @@ package sbs.modid.client.ui.hud.render;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.ui.theme.SBSTheme;
+import sbs.modid.client.ui.theme.ThemedHex;
 
 import java.util.List;
 
@@ -53,17 +54,17 @@ public final class CardChrome {
 
     /** The card's border, or the theme's when nothing is pinned. */
     public static int border() {
-        return resolve(cfg().hudCardBorderHex, SBSTheme.PANEL_BORDER);
+        return BORDER.resolve(cfg().hudCardBorderHex, SBSTheme.PANEL_BORDER);
     }
 
     /** The glow behind the card, or the theme's. */
     public static int glow() {
-        return resolve(cfg().hudCardGlowHex, SBSTheme.PANEL_GLOW);
+        return GLOW.resolve(cfg().hudCardGlowHex, SBSTheme.PANEL_GLOW);
     }
 
     /** The top of the card's background gradient, or the theme's. */
     public static int fillTop() {
-        return resolve(cfg().hudCardFillHex, SBSTheme.PANEL_FILL_TOP);
+        return FILL.resolve(cfg().hudCardFillHex, SBSTheme.PANEL_FILL_TOP);
     }
 
     /**
@@ -108,24 +109,24 @@ public final class CardChrome {
                 | (Math.clamp(g, 0, 255) << 8) | Math.clamp(b, 0, 255);
     }
 
-    /**
-     * A stored {@code RRGGBB} override, or {@code fallback} when it is blank or unreadable.
-     *
-     * <p>The override keeps the theme value's alpha. A card frame's transparency is what makes it a
-     * HUD element rather than a solid box over the game, and asking for it in a hex field is asking
-     * the player to make the game unplayable by typing eight characters instead of six.
+    /*
+     * The three overrides, each resolved once per edit or theme change rather than per card per
+     * frame - see ThemedHex. An override keeps the theme value's alpha: a card frame's transparency
+     * is what makes it a HUD element rather than a solid box over the game, and asking for it in a
+     * hex field is asking the player to make the game unplayable by typing eight characters, not six.
      */
-    private static int resolve(String hex, int fallback) {
-        if (isBlank(hex)) {
-            return fallback;
-        }
+    private static final ThemedHex BORDER = new ThemedHex(CardChrome::parseRgb);
+    private static final ThemedHex GLOW = new ThemedHex(CardChrome::parseRgb);
+    private static final ThemedHex FILL = new ThemedHex(CardChrome::parseRgb);
+
+    /** A stored {@code RRGGBB} override as RGB, or {@link ThemedHex#INVALID} when unreadable. */
+    private static int parseRgb(String hex) {
         try {
-            int rgb = Integer.parseInt(hex.trim().replace("#", ""), 16) & 0xFFFFFF;
-            return (fallback & 0xFF000000) | rgb;
+            return Integer.parseInt(hex.trim().replace("#", ""), 16) & 0xFFFFFF;
         } catch (NumberFormatException notAColour) {
             // Half-typed text is the normal state of a field being edited, not an error worth
             // logging - the card simply keeps the theme's colour until the six characters are there.
-            return fallback;
+            return ThemedHex.INVALID;
         }
     }
 

@@ -80,9 +80,15 @@ public final class Route {
     /** On a cached deep route, no progress for this long while on it means it is blocked. */
     private static final long BLOCKED_MS = 20_000L;
 
-    /** Completion summaries for the same route are not logged more often than this. */
-    private static final long SUMMARY_LOG_MS = 30_000L;
-    private static final Map<String, Long> SUMMARY_LOGGED = new HashMap<>();
+    /**
+     * A changed goal set does not restart a search sooner than this after the last one started,
+     * while there is a path to follow meanwhile. Live targets ("the nearest mithril") move every
+     * few hundred milliseconds; following each move re-planned ~2 times a second.
+     */
+    static final long GOAL_REPLAN_MS = 3_000L;
+
+    /** A running deep search is only abandoned for a goal that moved at least this far. */
+    private static final double DEEP_GOAL_MOVE = 16.0;
 
     /** How a route's search is currently running. */
     enum Phase { ASTAR, HYBRID, CACHED, DEEP }
@@ -99,6 +105,10 @@ public final class Route {
     private Set<BlockPos> teleports = Set.of();
     private Set<BlockPos> padLandings = Set.of();
     private Set<BlockPos> sneaks = Set.of();
+    /** Per node of {@link #path}: x, y, z of its raised centre - see {@link #centres()}. */
+    private double[] centres = new double[0];
+    /** Per node of {@link #path}: {@link #NODE_SNEAK}, {@link #NODE_HOP} and {@link #NODE_PAD} bits. */
+    private byte[] nodeFlags = new byte[0];
     private Waypoint target;
     private List<Waypoint> goals = List.of();
     private PlayerMobility.Mobility mobility;
@@ -127,6 +137,8 @@ public final class Route {
     private PathfinderTask deep;
     private boolean hybridTried;
     private long searchStartNanos;
+    /** Wall time the current or last search started - the {@link #GOAL_REPLAN_MS} rhythm. */
+    private long searchStartedAt;
     private long phaseStartNanos;
     private double startDistance;
     private long switchBudgetMs;
@@ -170,6 +182,48 @@ public final class Route {
     /** Path nodes the player can only pass sneaking (1.5-block headroom). */
     public Set<BlockPos> sneakNodes() {
         return sneaks;
+    }
+
+    /** {@link #nodeFlags()} bit: the node is in {@link #sneakNodes()}. */
+    static final byte NODE_SNEAK = 1;
+    /** {@link #nodeFlags()} bit: the node is in {@link #teleportNodes()}. */
+    static final byte NODE_HOP = 2;
+    /** {@link #nodeFlags()} bit: the node is in {@link #padNodes()}. */
+    static final byte NODE_PAD = 4;
+
+    /**
+     * The drawn position of every path node, three doubles per node: the block centre, raised to
+     * rest on the floor. Built once whenever the path changes, so the renderer reads numbers instead
+     * of creating vectors per node every frame. Read-only; three entries per {@link #path()} node.
+     */
+    double[] centres() {
+        return centres;
+    }
+
+    /**
+     * The node sets as bits per path index, built with {@link #centres()}: the renderer tests a byte
+     * instead of hashing a {@link BlockPos} into the sets per node per frame. Read-only.
+     */
+    byte[] nodeFlags() {
+        return nodeFlags;
+    }
+
+    /** Rebuilds {@link #centres} and {@link #nodeFlags} from the current path and node sets. */
+    private void rebuildGeometry() {
+        int n = path.size();
+        double[] xyz = new double[n * 3];
+        byte[] flags = new byte[n];
+        for (int i = 0; i < n; i++) {
+            BlockPos node = path.get(i);
+            xyz[i * 3] = node.getX() + 0.5;
+            xyz[i * 3 + 1] = node.getY() + PathRenderer.PATH_Y_OFFSET;
+            xyz[i * 3 + 2] = node.getZ() + 0.5;
+            flags[i] = (byte) ((sneaks.contains(node) ? NODE_SNEAK : 0)
+                    | (teleports.contains(node) ? NODE_HOP : 0)
+                    | (padLandings.contains(node) ? NODE_PAD : 0));
+        }
+        centres = xyz;
+        nodeFlags = flags;
     }
 
     /** The goal the route leads to - for a set, the one the search picked. */
@@ -316,6 +370,7 @@ public final class Route {
         teleports = Set.of();
         padLandings = Set.of();
         sneaks = Set.of();
+        rebuildGeometry();
         noRoute = false;
         noRouteFrom = null;
         target = null;
@@ -339,32 +394,37 @@ public final class Route {
     /**
      * Spends up to {@code budget} nodes on the running search.
      *
-     * @return the nodes it was allowed, for the manager's calibration; 0 when nothing ran - and for
-     *         the deep search, which runs on its own small time slice, not the shared node budget
+     * Stops early once {@code deadlineNanos} has passed, whatever is left of the budget.
+     *
+     * @return the nodes actually expanded, for the manager's calibration; 0 when nothing ran - and
+     *         for the deep search, which runs on its own small time slice, not the shared node budget
      */
-    int step(int budget) {
+    int step(int budget, long deadlineNanos) {
         if (task != null) {
-            stepAstar(task, budget);
-            return budget;
+            return stepAstar(task, budget, deadlineNanos);
         }
         if (hybrid != null) {
-            stepHybrid(budget);
-            return budget;
+            return stepHybrid(budget, deadlineNanos);
         }
         if (deep != null) {
             if (phase == Phase.CACHED) {
-                stepCached(budget);
-                return budget;
+                return stepCached(budget, deadlineNanos);
             }
-            stepDeep();
+            stepDeep(deadlineNanos);
         }
         return 0;
     }
 
-    private void stepAstar(PathfinderTask running, int budget) {
+    private int stepAstar(PathfinderTask running, int budget, long deadlineNanos) {
         int before = running.expanded();
-        boolean done = running.step(budget);
-        phaseNodes += running.expanded() - before;
+        boolean done = running.step(budget, deadlineNanos);
+        int spent = running.expanded() - before;
+        phaseNodes += spent;
+        stepAstarResult(running, done);
+        return spent;
+    }
+
+    private void stepAstarResult(PathfinderTask running, boolean done) {
         if (!done) {
             if (hybridEligible() && !hybridTried && SwitchBudget.shouldSwitch(elapsedMs(phaseStartNanos),
                     switchBudgetMs, startDistance, running.bestDistance())) {
@@ -395,14 +455,19 @@ public final class Route {
         complete("astar");
     }
 
-    private void stepHybrid(int budget) {
+    private int stepHybrid(int budget, long deadlineNanos) {
         HybridPlanner running = hybrid;
         int before = running.nodes();
-        boolean done = running.step(budget);
-        phaseNodes += running.nodes() - before;
-        if (!done) {
-            return;
+        boolean done = running.step(budget, deadlineNanos);
+        int spent = running.nodes() - before;
+        phaseNodes += spent;
+        if (done) {
+            finishHybrid(running);
         }
+        return spent;
+    }
+
+    private void finishHybrid(HybridPlanner running) {
         hybrid = null;
         openSegments = running.openSegments();
         fineSegments = running.fineSegments();
@@ -418,14 +483,19 @@ public final class Route {
     }
 
     /** The A* that joins the player onto a cached deep route, then the cached rest of it. */
-    private void stepCached(int budget) {
+    private int stepCached(int budget, long deadlineNanos) {
         PathfinderTask running = deep;
         int before = running.expanded();
-        boolean done = running.step(budget);
-        phaseNodes += running.expanded() - before;
-        if (!done) {
-            return;
+        boolean done = running.step(budget, deadlineNanos);
+        int spent = running.expanded() - before;
+        phaseNodes += spent;
+        if (done) {
+            finishCached(running);
         }
+        return spent;
+    }
+
+    private void finishCached(PathfinderTask running) {
         deep = null;
         BlockPos joined = running.reachedGoalPos();
         int at = joined == null ? -1 : cachedRoute.indexOf(joined);
@@ -444,13 +514,13 @@ public final class Route {
         complete("cached");
     }
 
-    private void stepDeep() {
+    private void stepDeep(long deadlineNanos) {
         PathfinderTask running = deep;
-        long sliceStart = System.nanoTime();
+        long sliceEnd = Math.min(System.nanoTime() + DEEP_SLICE_NANOS, deadlineNanos);
         int before = running.expanded();
         boolean done = false;
-        while (System.nanoTime() - sliceStart < DEEP_SLICE_NANOS) {
-            if (running.step(256)) {
+        while (System.nanoTime() < sliceEnd) {
+            if (running.step(256, sliceEnd)) {
                 done = true;
                 break;
             }
@@ -573,6 +643,7 @@ public final class Route {
         teleports = hops;
         padLandings = landings;
         sneaks = crouched;
+        rebuildGeometry();
         reachedGoal = reached;
         noRoute = proven;
         if (noRoute) {
@@ -601,35 +672,18 @@ public final class Route {
         lastSwitch = String.format(Locale.ROOT,
                 "switch %s->%s d=%d blocks budget=%d ms elapsed=%d ms nodes=%d progress=%d%% (remaining %d blocks)",
                 from, to, Math.round(distance), switchBudgetMs, elapsed, phaseNodes, progress, Math.round(remaining));
-        sbs.modid.SkyblockSimplifiedSBS.LOGGER.info("[SBS][Path] {}", lastSwitch);
+        PathLog.switched(to);
     }
 
-    /** The route is done: the per-phase totals, once per route (throttled). */
+    /** The route is done: its totals go into the per-minute {@link PathLog} summary. */
     private void complete(String mode) {
         endPhase();
         phase = null;
-        String key = source + ">" + goalsKey();
-        long now = System.currentTimeMillis();
-        Long last = SUMMARY_LOGGED.get(key);
-        if (last != null && now - last < SUMMARY_LOG_MS) {
-            return;
-        }
-        SUMMARY_LOGGED.put(key, now);
-        long totalMs = elapsedMs(searchStartNanos);
         long totalNodes = 0;
-        StringBuilder phases = new StringBuilder();
-        for (Phase each : Phase.values()) {
-            long[] totals = phaseTotals.get(each);
-            if (totals == null) {
-                continue;
-            }
+        for (long[] totals : phaseTotals.values()) {
             totalNodes += totals[1];
-            phases.append(' ').append(each.name().toLowerCase(Locale.ROOT)).append('=')
-                    .append(totals[0]).append("ms/").append(totals[1]).append('n');
         }
-        sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
-                "[SBS][Path] mode={} ms={} nodes={} segments open={} fine={} reached={} |{}",
-                mode, totalMs, totalNodes, openSegments, fineSegments, reachedGoal, phases);
+        PathLog.searched(source, mode, elapsedMs(searchStartNanos), totalNodes, reachedGoal);
     }
 
     private String goalsKey() {
@@ -742,6 +796,7 @@ public final class Route {
         }
         if (best > 0 && best < path.size()) {
             path = new ArrayList<>(path.subList(best, path.size()));
+            rebuildGeometry();
         }
     }
 
@@ -753,7 +808,8 @@ public final class Route {
     boolean needsRecompute(BlockPos playerBlock, Vec3 playerPos, List<Waypoint> current,
                            PlayerMobility.Mobility now, double tolerance, double verticalTolerance) {
         // A deep search can run for a minute: a changed target ends it rather than waiting it out.
-        if (phase == Phase.DEEP && !sameGoals(current, goals)) {
+        // A goal that only shifted a few blocks does not throw a minute of work away.
+        if (phase == Phase.DEEP && !sameGoals(current, goals) && goalsMovedFar(current, goals)) {
             cancel();
         }
         if (searching()) {
@@ -783,7 +839,10 @@ public final class Route {
             return true;
         }
         if (!sameGoals(current, goals)) {
-            return true;
+            // There is a path to follow meanwhile: a moving target is re-planned on a rhythm, not
+            // on every move. Leaving the path (below) still re-plans at once.
+            return System.currentTimeMillis() - searchStartedAt >= GOAL_REPLAN_MS
+                    || !isOnPath(playerPos, tolerance, verticalTolerance);
         }
         if (!now.equals(mobility)) {
             return true;
@@ -814,6 +873,14 @@ public final class Route {
     /** Identity comparison on purpose: waypoints are the live objects, see the store. */
     static boolean sameGoals(List<Waypoint> a, List<Waypoint> b) {
         return a.size() == b.size() && a.containsAll(b);
+    }
+
+    /** Whether the first goal moved more than {@link #DEEP_GOAL_MOVE}, or the set changed size. */
+    static boolean goalsMovedFar(List<Waypoint> current, List<Waypoint> searched) {
+        if (current.size() != searched.size() || current.isEmpty()) {
+            return true;
+        }
+        return current.getFirst().pos().distSqr(searched.getFirst().pos()) > DEEP_GOAL_MOVE * DEEP_GOAL_MOVE;
     }
 
     /**
@@ -850,6 +917,7 @@ public final class Route {
         fineSegments = 0;
         lastSwitch = "";
         searchStartNanos = System.nanoTime();
+        searchStartedAt = System.currentTimeMillis();
         phaseStartNanos = searchStartNanos;
         phaseNodes = 0;
         double distance = HybridPlanner.horizontal(from, positions.getFirst());

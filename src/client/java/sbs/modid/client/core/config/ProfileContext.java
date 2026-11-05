@@ -52,6 +52,8 @@ public final class ProfileContext {
     /** Tab-list widget line "Profile: Apple" (cute names are a single word). */
     private static final Pattern PROFILE_TAB = Pattern.compile("(?i)Profile:\\s*([A-Za-z]+)");
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING_CODE = Pattern.compile(SECTION_SIGN + ".");
+    private static final Pattern UNSAFE_CHARS = Pattern.compile("[^A-Za-z0-9_.-]");
 
     private final List<ProfileScopedStore> stores = new CopyOnWriteArrayList<>();
     private volatile String account = DEFAULT;
@@ -253,7 +255,7 @@ public final class ProfileContext {
         if (value == null) {
             return "";
         }
-        String out = value.trim().replaceAll(SECTION_SIGN + ".", "").replaceAll("[^A-Za-z0-9_.-]", "_");
+        String out = UNSAFE_CHARS.matcher(FORMATTING_CODE.matcher(value.trim()).replaceAll("")).replaceAll("_");
         return out.length() > 40 ? out.substring(0, 40) : out;
     }
 

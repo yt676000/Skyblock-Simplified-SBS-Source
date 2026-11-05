@@ -8,6 +8,10 @@
 
 package sbs.modid.client.economy.bazaar.logic;
 
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+
 import com.google.gson.Gson;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.economy.bazaar.model.BazaarSnapshot;
@@ -73,11 +77,12 @@ public final class BazaarApiClient {
                     .header("User-Agent", "SkyblockSimplified/1.0")
                     .GET()
                     .build();
-            HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<byte[]> response = SecureHttp.send(MessageTypes.HYPIXEL_BAZAAR, request,
+                    HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() != 200) {
                 return null;
             }
-            Response parsed = gson.fromJson(inflate(response), Response.class);
+            Response parsed = MessageSchemas.parse(MessageTypes.HYPIXEL_BAZAAR, inflate(response), Response.class);
             return (parsed != null && parsed.success && parsed.products != null) ? parsed : null;
         } catch (Exception e) {
             SkyblockSimplifiedSBS.LOGGER.warn("[SBS] Bazaar request failed: {}", e.toString());
@@ -87,16 +92,7 @@ public final class BazaarApiClient {
 
     /** Inflates a gzip body (by header or magic bytes); an uncompressed body is passed through. */
     private static String inflate(HttpResponse<byte[]> response) throws Exception {
-        byte[] raw = response.body();
-        boolean gzip = response.headers().firstValue("Content-Encoding")
-                .map(value -> value.toLowerCase(Locale.ROOT).contains("gzip")).orElse(false)
-                || (raw.length > 2 && (raw[0] & 0xFF) == 0x1F && (raw[1] & 0xFF) == 0x8B);
-        if (!gzip) {
-            return new String(raw, StandardCharsets.UTF_8);
-        }
-        try (GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(raw))) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
+        return SecureHttp.inflateText(response, MessageTypes.HYPIXEL_BAZAAR);
     }
 
     // ------------------------------------------------------------------

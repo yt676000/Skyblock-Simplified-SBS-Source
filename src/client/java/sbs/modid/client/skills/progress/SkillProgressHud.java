@@ -73,6 +73,20 @@ public final class SkillProgressHud {
             Map.entry("social", Items.EMERALD));
     private static final Item DEFAULT_ICON = Items.EXPERIENCE_BOTTLE;
 
+    /** Everything the overlay draws that is not geometry, built when its key moves. */
+    private record Model(ItemStack icon, Component title, Component pct, int pctWidth, double progress,
+                         List<Component> lines) {
+    }
+
+    /**
+     * The overlay as last built. Rebuilt on a tracker change, a statistic toggle, the number format,
+     * or the one-second clock the decaying rate and ETA read. Render thread only.
+     */
+    private static Model model;
+    private static int builtTracker = -1;
+    private static long builtSecond = -1;
+    private static int builtToggles = -1;
+
     private SkillProgressHud() {
     }
 
@@ -95,7 +109,19 @@ public final class SkillProgressHud {
 
     private static void draw(GuiGraphicsExtractor g, SkillTracker tracker, int x, int y, int width) {
         Font font = Minecraft.getInstance().font;
-        List<String> lines = buildLines(tracker);
+        SBSConfig.SkillOverlaySettings cfg = cfg();
+        int version = tracker.version();
+        long second = System.currentTimeMillis() / 1000L;
+        int toggles = (cfg.showRate ? 1 : 0) | (cfg.showEta ? 2 : 0) | (cfg.showActions ? 4 : 0)
+                | (sbs.modid.client.core.util.NumberDisplay.enabled() ? 8 : 0);
+        if (model == null || version != builtTracker || second != builtSecond || toggles != builtToggles) {
+            builtTracker = version;
+            builtSecond = second;
+            builtToggles = toggles;
+            model = build(font, tracker);
+        }
+        Model m = model;
+        List<Component> lines = m.lines();
 
         int bodyH = ICON + LINE_GAP + BAR_HEIGHT
                 + lines.size() * (font.lineHeight + LINE_GAP);
@@ -109,27 +135,37 @@ public final class SkillProgressHud {
         int iy = y + PAD;
 
         // Header row: icon, "Mining 27" on the left, the percentage hard right.
-        g.item(new ItemStack(icon(tracker.skill())), ix, iy);
-        String title = tracker.skill() + levelSuffix(tracker.level());
-        g.text(font, Component.literal(title), ix + ICON + 4, iy + (ICON - font.lineHeight) / 2, TEXT, true);
-        String pct = String.format(Locale.ROOT, "%.1f%%", tracker.progress() * 100.0);
-        g.text(font, Component.literal(pct), x + width - PAD - font.width(pct),
+        g.item(m.icon(), ix, iy);
+        g.text(font, m.title(), ix + ICON + 4, iy + (ICON - font.lineHeight) / 2, TEXT, true);
+        g.text(font, m.pct(), x + width - PAD - m.pctWidth(),
                 iy + (ICON - font.lineHeight) / 2, TEXT, true);
 
         // Progress bar.
         int barY = iy + ICON + LINE_GAP;
         int barW = width - PAD * 2;
         g.fill(ix, barY, ix + barW, barY + BAR_HEIGHT, BAR_TRACK);
-        int filled = (int) Math.round(barW * tracker.progress());
+        int filled = (int) Math.round(barW * m.progress());
         if (filled > 0) {
             g.fill(ix, barY, ix + filled, barY + BAR_HEIGHT, BAR_FILL);
         }
 
         int ly = barY + BAR_HEIGHT + LINE_GAP;
-        for (String line : lines) {
-            g.text(font, Component.literal(line), ix, ly, TEXT_MUTED, true);
+        for (Component line : lines) {
+            g.text(font, line, ix, ly, TEXT_MUTED, true);
             ly += font.lineHeight + LINE_GAP;
         }
+    }
+
+    private static Model build(Font font, SkillTracker tracker) {
+        String pct = String.format(Locale.ROOT, "%.1f%%", tracker.progress() * 100.0);
+        List<String> text = buildLines(tracker);
+        List<Component> lines = new ArrayList<>(text.size());
+        for (String line : text) {
+            lines.add(Component.literal(line));
+        }
+        return new Model(new ItemStack(icon(tracker.skill())),
+                Component.literal(tracker.skill() + levelSuffix(tracker.level())),
+                Component.literal(pct), font.width(pct), tracker.progress(), List.copyOf(lines));
     }
 
     /**

@@ -9,6 +9,7 @@
 package sbs.modid.client.economy.itemvalue;
 
 import net.minecraft.world.item.ItemStack;
+import sbs.modid.client.economy.prices.BackupPrices;
 import sbs.modid.client.economy.prices.BazaarPriceCache;
 import sbs.modid.client.economy.prices.ChatPriceCache;
 import sbs.modid.client.economy.prices.ItemPriceKey;
@@ -53,9 +54,21 @@ public final class ItemAppraisal {
     }
 
     /** A valued stack: the worth of one item, of the whole stack, and what could not be priced. */
-    public record Appraisal(long unit, long total, int pricedParts, int unpricedParts) {
+    public record Appraisal(long unit, long total, int pricedParts, int unpricedParts, int backupParts) {
 
-        public static final Appraisal NONE = new Appraisal(0, 0, 0, 0);
+        public static final Appraisal NONE = new Appraisal(0, 0, 0, 0, 0);
+
+        public Appraisal(long unit, long total, int pricedParts, int unpricedParts) {
+            this(unit, total, pricedParts, unpricedParts, 0);
+        }
+
+        /**
+         * Whether any part was priced from {@link BackupPrices} - a last known price, not a live one -
+         * so a display has to mark it.
+         */
+        public boolean usesBackup() {
+            return backupParts > 0;
+        }
 
         /** Whether anything at all could be priced (a total of 0 is otherwise meaningless). */
         public boolean priced() {
@@ -85,13 +98,20 @@ public final class ItemAppraisal {
         long unit = 0;
         int priced = 0;
         int unpriced = 0;
+        int backup = 0;
 
         // The base item gets the whole candidate list (SkyBlock id, pet/book/rune form, display
         // name, either shard spelling), because that is what makes a custom Hypixel item resolve at
         // all. Through ItemPriceKey rather than PriceLookup directly, so this path and the two
         // hunting screens resolve a stack identically - which they did not, and shards paid for it.
         List<String> candidates = ItemPriceKey.keysFor(stack);
-        Long base = firstPrice(candidates, Side.SELL);
+        Long base = firstPrice(candidates, Side.SELL, true);
+        if (base == null) {
+            base = firstPrice(candidates, Side.SELL, false);
+            if (base != null) {
+                backup++;
+            }
+        }
         if (base != null) {
             unit += base;
             priced++;
@@ -101,7 +121,13 @@ public final class ItemAppraisal {
 
         String baseId = candidates.isEmpty() ? null : candidates.get(0);
         for (ItemModifiers.Part part : ItemModifiers.parseModifiers(stack, baseId)) {
-            Long value = partPrice(part, Side.SELL);
+            Long value = partPrice(part, Side.SELL, true);
+            if (value == null) {
+                value = partPrice(part, Side.SELL, false);
+                if (value != null) {
+                    backup++;
+                }
+            }
             if (value == null) {
                 unpriced++;
                 continue;
@@ -112,7 +138,7 @@ public final class ItemAppraisal {
 
         long baseValue = base == null ? 0L : base;
         int count = Math.max(1, stack.getCount());
-        return new Appraisal(unit, unit + baseValue * (count - 1), priced, unpriced);
+        return new Appraisal(unit, unit + baseValue * (count - 1), priced, unpriced, backup);
     }
 
     /**
@@ -122,14 +148,20 @@ public final class ItemAppraisal {
      * @return the part's total value, or {@code null} when no market knows it
      */
     public static Long partPrice(ItemModifiers.Part part, Side side) {
+        Long live = partPrice(part, side, true);
+        return live != null ? live : partPrice(part, side, false);
+    }
+
+    /** {@link #partPrice} from live prices only ({@code liveOnly}), or from backups only. */
+    private static Long partPrice(ItemModifiers.Part part, Side side, boolean liveOnly) {
         if (part == null) {
             return null;
         }
         if (part.isBook()) {
             // The composition factor is already inside bookPrice; a book part's count is always 1.
-            return bookPrice(part.enchantKey, part.enchantTier, side);
+            return bookPrice(part.enchantKey, part.enchantTier, side, liveOnly);
         }
-        Long unit = part.itemId == null ? null : price(part.itemId, side);
+        Long unit = part.itemId == null ? null : price(part.itemId, side, liveOnly);
         return unit == null ? null : Math.round(unit * part.count);
     }
 
@@ -143,13 +175,18 @@ public final class ItemAppraisal {
      * cheapest way of building tier T – {@code 2^(T-k)} books of any lower tier k that exists.
      */
     public static Long bookPrice(String enchantKey, int tier, Side side) {
+        Long live = bookPrice(enchantKey, tier, side, true);
+        return live != null ? live : bookPrice(enchantKey, tier, side, false);
+    }
+
+    private static Long bookPrice(String enchantKey, int tier, Side side, boolean liveOnly) {
         if (enchantKey == null || tier <= 0) {
             return null;
         }
         String key = enchantKey.toUpperCase(Locale.ROOT);
         if (EnchantMarketRules.isStacking(enchantKey)) {
             for (int k = 1; k <= tier; k++) {
-                Long value = price(BOOK_PREFIX + key + "_" + k, side);
+                Long value = price(BOOK_PREFIX + key + "_" + k, side, liveOnly);
                 if (value != null) {
                     return value;   // levelled by gameplay: any applied tier is worth one book
                 }
@@ -157,11 +194,11 @@ public final class ItemAppraisal {
             return null;
         }
         if (tier > EnchantMarketRules.maxCombinableTier(enchantKey)) {
-            return price(BOOK_PREFIX + key + "_" + tier, side);
+            return price(BOOK_PREFIX + key + "_" + tier, side, liveOnly);
         }
         Long best = null;
         for (int k = 1; k <= tier; k++) {
-            Long value = price(BOOK_PREFIX + key + "_" + k, side);
+            Long value = price(BOOK_PREFIX + key + "_" + k, side, liveOnly);
             if (value == null) {
                 continue;
             }
@@ -173,10 +210,19 @@ public final class ItemAppraisal {
         return best;
     }
 
-    /** The first candidate id any market knows a price for, or {@code null}. */
+    /**
+     * The first candidate id any market knows a price for, or {@code null}. Every candidate is tried
+     * live before any is tried from backups, so a backup of one spelling never beats a live price of
+     * another.
+     */
     public static Long firstPrice(List<String> candidates, Side side) {
+        Long live = firstPrice(candidates, side, true);
+        return live != null ? live : firstPrice(candidates, side, false);
+    }
+
+    private static Long firstPrice(List<String> candidates, Side side, boolean liveOnly) {
         for (String candidate : candidates) {
-            Long value = price(candidate, side);
+            Long value = price(candidate, side, liveOnly);
             if (value != null) {
                 return value;
             }
@@ -193,11 +239,32 @@ public final class ItemAppraisal {
      * @return the unit price, or {@code null} when no market knows this id
      */
     public static Long price(String itemId, Side side) {
+        Long live = price(itemId, side, true);
+        return live != null ? live : price(itemId, side, false);
+    }
+
+    /**
+     * {@link #price} from one tier of data: the live markets ({@code liveOnly}), or the last known
+     * prices in {@link BackupPrices} once the live pass found nothing.
+     */
+    private static Long price(String itemId, Side side, boolean liveOnly) {
         if (itemId == null || itemId.isBlank()) {
             return null;
         }
         String id = itemId.toUpperCase(Locale.ROOT);
-        Long lbin = LbinCache.getInstance().getLbin(id);
+        if (!liveOnly) {
+            Long ah = BackupPrices.getInstance().ahFallback(id);
+            if (ah != null) {
+                return ah;
+            }
+            Long bazaar = backupBazaar(id, side);
+            if (bazaar != null) {
+                return bazaar;
+            }
+            String alias = ItemPriceKey.shardAlias(id);
+            return alias == null ? null : backupBazaar(alias, side);
+        }
+        Long lbin = LbinCache.getInstance().getLiveLbin(id);
         if (lbin != null && lbin > 0) {
             return lbin;
         }
@@ -221,11 +288,21 @@ public final class ItemAppraisal {
 
     /** One id's Bazaar price on the requested side, or {@code null} when the book says nothing. */
     private static Long bazaarPrice(String id, Side side) {
-        BazaarPriceCache.BzPrice bazaar = BazaarPriceCache.getInstance().get(id);
+        BazaarPriceCache.BzPrice bazaar = BazaarPriceCache.getInstance().getLive(id);
         if (bazaar == null) {
             return null;
         }
         long value = side == Side.BUY ? bazaar.buy() : bazaar.sell();
+        return value > 0 ? value : null;
+    }
+
+    /** One id's backup Bazaar price on the requested side, or {@code null}. */
+    private static Long backupBazaar(String id, Side side) {
+        BazaarPriceCache.BzPrice merged = BackupPrices.getInstance().bazaarFallback(id, null);
+        if (merged == null) {
+            return null; // no backup, past the maximum age, or backups are off
+        }
+        long value = side == Side.BUY ? merged.buy() : merged.sell();
         return value > 0 ? value : null;
     }
 }

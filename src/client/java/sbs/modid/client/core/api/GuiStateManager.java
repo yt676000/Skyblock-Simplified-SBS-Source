@@ -31,8 +31,15 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Captures the <b>real</b> open Minecraft screen / container once per client tick and
- * publishes an immutable {@link GuiState} snapshot.
+ * Captures the <b>real</b> open Minecraft screen / container and publishes an immutable
+ * {@link GuiState} snapshot for the local HTTP API ({@link ApiServer}), its only reader.
+ *
+ * <p>Demand-driven: the tick task is gated on {@link #captureWanted}, which is true only while
+ * the API server runs and was polled in the last {@link #DEMAND_WINDOW_MS}. Without a client the
+ * capture costs nothing. The first request after an idle spell waits for a fresh capture
+ * ({@link #awaitFresh}), so a response never carries a stale snapshot. Within a capture the slot
+ * list is rebuilt only when the screen, {@code containerId} or {@code stateId} changed
+ * ({@link SlotListCache}).
  *
  * <p>It reads {@code AbstractContainerScreen.getMenu()} – so it works for every
  * container screen (chest, generic container, player inventory, merchant, anvil,
@@ -58,6 +65,18 @@ public final class GuiStateManager {
     private String previousScreenClass;
     private String previousScreenTitle;
 
+    /** How long one API request keeps the per-tick capture running. */
+    static final long DEMAND_WINDOW_MS = 30_000L;
+    /** How long the first request after an idle spell waits for a fresh capture. */
+    private static final long FRESH_WAIT_MS = 250L;
+
+    /** Wall-clock millis of the last API request; written by the HTTP threads. */
+    private volatile long lastDemandMillis = Long.MIN_VALUE / 2;
+    /** Bumped after every published snapshot, so a waiting HTTP thread can see a fresh one. */
+    private volatile long captureCount;
+
+    private final SlotListCache slotCache = new SlotListCache();
+
     private GuiStateManager() {
     }
 
@@ -82,10 +101,44 @@ public final class GuiStateManager {
         return state.get();
     }
 
+    /**
+     * Tick gate: the API server runs and someone polled it recently. Nothing else reads the
+     * snapshot or the {@link GuiEvents} it posts (no listener is registered anywhere), so the
+     * whole tick can be skipped otherwise.
+     */
+    public static boolean captureWanted() {
+        return ApiServer.getInstance().running()
+                && System.currentTimeMillis() - INSTANCE.lastDemandMillis < DEMAND_WINDOW_MS;
+    }
+
+    /**
+     * Called by the HTTP threads before they read {@link #getState()}: records the demand and, if
+     * the capture was idle, waits briefly for the client thread to publish a fresh snapshot.
+     */
+    void awaitFresh() {
+        long now = System.currentTimeMillis();
+        boolean wasIdle = now - lastDemandMillis >= DEMAND_WINDOW_MS;
+        lastDemandMillis = now;
+        if (!wasIdle) {
+            return;
+        }
+        // Two captures: the first may have started before the demand was recorded.
+        long target = captureCount + 2;
+        long deadline = now + FRESH_WAIT_MS;
+        try {
+            while (captureCount < target && System.currentTimeMillis() < deadline) {
+                Thread.sleep(5L);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     public void tick(Minecraft minecraft) {
         try {
             GuiState snapshot = capture(minecraft);
             state.set(snapshot);
+            captureCount++;
             detectEvents(snapshot);
         } catch (Throwable t) {
             // Never let API capture break the game tick.
@@ -99,6 +152,9 @@ public final class GuiStateManager {
         int fps = minecraft.getFps();
 
         Screen screen = getCurrentScreen();
+        if (!(screen instanceof AbstractContainerScreen<?>)) {
+            slotCache.clear();
+        }
         if (screen == null) {
             return new GuiState(false, null, null, 0, 0, List.of(), player, worldLoaded, fps, timestamp);
         }
@@ -113,11 +169,26 @@ public final class GuiStateManager {
         // Real container data – generic over every AbstractContainerScreen..
         if (screen instanceof AbstractContainerScreen<?> containerScreen) {
             AbstractContainerMenu menu = containerScreen.getMenu();
-            slotCount = menu.getItems().size();
+            // slots.size(), not getItems().size(): getItems() copies every stack.
+            slotCount = menu.slots.size();
             // rows only makes sense for chest-type menus.
             if (menu instanceof ChestMenu chestMenu) {
                 rows = chestMenu.getRowCount();
             }
+            slots = slotCache.get(screen, menu.containerId, menu.getStateId());
+            if (slots == null) {
+                slots = captureSlots(menu, slotCount);
+                slotCache.store(screen, menu.containerId, menu.getStateId(), slots);
+            }
+        }
+
+        return new GuiState(true, screenClass, title, rows, slotCount, slots, player, worldLoaded, fps, timestamp);
+    }
+
+    /** Reads every slot of the menu into an immutable list. */
+    private static List<GuiState.SlotInfo> captureSlots(AbstractContainerMenu menu, int slotCount) {
+        // Indented one level deeper than needed: kept to leave the original loop untouched in the diff.
+        {
             List<GuiState.SlotInfo> collected = new ArrayList<>(slotCount);
             for (int i = 0; i < slotCount; i++) {
                 Slot slot = menu.getSlot(i);
@@ -136,10 +207,8 @@ public final class GuiStateManager {
                             false));
                 }
             }
-            slots = List.copyOf(collected);
+            return List.copyOf(collected);
         }
-
-        return new GuiState(true, screenClass, title, rows, slotCount, slots, player, worldLoaded, fps, timestamp);
     }
 
     /** Registry id, e.g. {@code minecraft:diamond}. */

@@ -139,6 +139,20 @@ public final class BazaarPriceCache {
      */
     public BzPrice get(String skyblockId) {
         Map<String, BzPrice> snapshot = demand();
+        if (skyblockId == null) {
+            return null;
+        }
+        BzPrice live = snapshot.get(skyblockId);
+        if (live != null && live.buy() > 0 && live.sell() > 0) {
+            return live;
+        }
+        // A missing product or a side with no orders: the last price BackupPrices saw, if any.
+        return BackupPrices.getInstance().bazaarFallback(skyblockId, live);
+    }
+
+    /** {@link #get} from the live snapshot only, never a backup. */
+    public BzPrice getLive(String skyblockId) {
+        Map<String, BzPrice> snapshot = demand();
         return skyblockId == null ? null : snapshot.get(skyblockId);
     }
 
@@ -177,7 +191,12 @@ public final class BazaarPriceCache {
             return upper;
         }
         String alias = ItemPriceKey.shardAlias(upper);
-        return alias != null && snapshot.containsKey(alias) ? alias : null;
+        if (alias != null && snapshot.containsKey(alias)) {
+            return alias;
+        }
+        // A product delisted since: its backup still answers under its own key.
+        return BackupPrices.getInstance().bazaarSeries(upper, false) != null
+                || BackupPrices.getInstance().bazaarSeries(upper, true) != null ? upper : null;
     }
 
     /** Prices for an id under {@link #keyFor}'s rule, or {@code null} when nothing matches. */
@@ -275,6 +294,10 @@ public final class BazaarPriceCache {
         if (cfg.itemOverlay.showBazaarPrice
                 || cfg.gemstoneProfit.enabled
                 || cfg.nucleusRun.enabled
+                || (cfg.dungeonProfit.enabled
+                        && sbs.modid.client.dungeons.run.logic.DungeonStateManager.getInstance().inDungeon())
+                || (cfg.kuudraProfit.enabled
+                        && sbs.modid.client.combat.kuudra.logic.KuudraTracker.getInstance().inHollow())
                 || cfg.hunting.missingShards
                 || sbs.modid.client.economy.minions.logic.MinionCalcService.wantsAhPrices()) {
             return true;
@@ -335,6 +358,8 @@ public final class BazaarPriceCache {
         }
         this.prices = Map.copyOf(map);
         this.volumes = Map.copyOf(volumeMap);
+        PriceVersion.bump();
+        BackupPrices.getInstance().observeBazaar(this.prices);
 
         // Once, when the map first fills. Two numbers rather than one: the shard count is the one
         // that separates "the Bazaar answered" from "the Bazaar answered and it still trades the

@@ -16,6 +16,7 @@ import sbs.modid.client.social.notes.model.PlayerNote;
 import sbs.modid.client.social.notes.model.PlayerNoteBook;
 import sbs.modid.client.social.notes.ui.PlayerNotesScreen;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
@@ -33,6 +34,7 @@ import java.util.TreeSet;
  *   <li>{@code /sbs avoid <name> [reason]} / {@code /sbs trust <name> [text]} - set the tag, and the
  *       text when one is given.</li>
  *   <li>{@code /sbs notes [search]} - the notes screen.</li>
+ *   <li>{@code /sbs notes friends} - the noted players in your last {@code /friend list}.</li>
  * </ul>
  */
 public final class PlayerNotesCommands {
@@ -51,7 +53,13 @@ public final class PlayerNotesCommands {
     public static void handle(String verb, String args) {
         String rest = args == null ? "" : args.trim();
         switch (verb.toLowerCase(Locale.ROOT)) {
-            case "notes" -> openScreen(rest);
+            case "notes" -> {
+                if (rest.equalsIgnoreCase("friends")) {
+                    notedFriends();
+                } else {
+                    openScreen(rest);
+                }
+            }
             case "avoid" -> tag(NoteTag.AVOID, rest, "avoid");
             case "trust" -> tag(NoteTag.TRUSTED, rest, "trust");
             default -> note(rest);
@@ -126,6 +134,22 @@ public final class PlayerNotesCommands {
         }
         store.remove(entry);
         say("§7Removed the note about §f" + entry.name + "§7.");
+    }
+
+    private static void notedFriends() {
+        List<String> names = PlayerNotesListAnnotator.getInstance().notedFriends();
+        if (names.isEmpty()) {
+            say("§7No noted friends in your last §f/friend list§7 - run it first.");
+            return;
+        }
+        say("§7Noted friends from your last §f/friend list§7:");
+        for (String name : names) {
+            PlayerNote note = PlayerNotesStore.getInstance().book().match(name, PlayerLookup.uuidOf(name));
+            if (note != null) {
+                SBSChat.send(Component.literal("  §f" + note.name + " §7- " + tagText(note.tag))
+                        .withColor(SBSChat.WHITE).append(PlayerNotesListAnnotator.marker(note)));
+            }
+        }
     }
 
     // ------------------------------------------------------------------ tab completion

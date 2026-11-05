@@ -23,6 +23,7 @@ import sbs.modid.client.ui.hud.edit.model.HudElement;
 import sbs.modid.client.ui.hud.edit.logic.HudLayout;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The Dungeon Score HUD card: floor, secrets, crypts, deaths, cleared-room %, elapsed time, the
@@ -155,8 +156,9 @@ public final class DungeonScoreHud {
     }
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     private static String strip(String text) {
-        return text.replaceAll(SECTION_SIGN + ".", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 }

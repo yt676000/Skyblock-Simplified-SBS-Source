@@ -14,7 +14,6 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
@@ -25,8 +24,11 @@ import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.mixin.AbstractContainerScreenAccessor;
 import sbs.modid.client.dungeons.run.logic.DungeonStateManager;
 import sbs.modid.client.dungeons.terminal.TerminalSolutions.Hint;
+import sbs.modid.client.ui.render.ActionMarks;
+import sbs.modid.client.ui.render.MarkKind;
 
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Highlights the solution of the F7/M7 phase-3 terminals - <b>display only, it never clicks</b>. Reads
@@ -34,16 +36,17 @@ import java.util.Map;
  * next correct action, and marks them; the player still clicks themselves.
  *
  * <p>All six terminals of the Goldor gates are covered - see {@link TerminalType} for the list and
- * {@link TerminalSolutions} for how each is solved. The marks are:
+ * {@link TerminalSolutions} for how each is solved. The marks use the shared mark language
+ * ({@link ActionMarks}, mapped by {@link TerminalMarks}):
  *
  * <ul>
- *   <li><b>green outline</b> - click this slot,</li>
- *   <li><b>thin dark-green outline</b> - the click after this one (ordered terminal), there to aim at
- *       and never clickable,</li>
- *   <li><b>orange outline with a negative number</b> - right-click it that many times (rubix, where
- *       the cycle is shorter backwards),</li>
- *   <li><b>blue outline</b> - melody's button for the row, waiting for its note; it turns green with
- *       a "!" for the moment the note stands on the marked column.</li>
+ *   <li><b>filled glow</b> - click this slot,</li>
+ *   <li><b>hollow ring</b> - the click after this one (ordered terminal), there to aim at and never
+ *       clickable,</li>
+ *   <li><b>filled amber with a corner notch and a top-left count</b> - right-click it that many
+ *       times (rubix, where the cycle is shorter backwards); a left-click count sits bottom-right,</li>
+ *   <li><b>ring with a dot</b> - melody's button for the row, waiting for its note; it fills and
+ *       pulses for the moment the note stands on the marked column.</li>
  * </ul>
  *
  * <p>With <i>Block Wrong Clicks</i> on, a click on a slot that is not part of the solution is vetoed
@@ -56,9 +59,12 @@ import java.util.Map;
 public final class TerminalSolver {
 
     private static final TerminalSolver INSTANCE = new TerminalSolver();
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     private volatile TerminalType type = TerminalType.NONE;
     private volatile Map<Integer, Hint> hints = Map.of();
+    private volatile int melodyColumn = -1;
+    private volatile long progress;
     private Object lastScreen;
 
     private TerminalSolver() {
@@ -76,6 +82,16 @@ public final class TerminalSolver {
     /** The slots to act on, as of the last tick. Never null, possibly empty. */
     public Map<Integer, Hint> hints() {
         return hints;
+    }
+
+    /** Board progress as of the last tick, packed; read it with {@link TerminalMarks#done} / {@link TerminalMarks#total}. */
+    public long progress() {
+        return progress;
+    }
+
+    /** Melody's marked column as of the last tick, or {@code -1}. Read here so render never scans. */
+    public int melodyColumn() {
+        return melodyColumn;
     }
 
     /**
@@ -134,11 +150,80 @@ public final class TerminalSolver {
         }
         AbstractContainerMenu menu = container.getMenu();
         hints = TerminalSolutions.solve(found, title, menu, upperSlots(menu));
+        melodyColumn = found == TerminalType.MELODY ? TerminalSolutions.melodyColumn(menu, upperSlots(menu)) : -1;
+        progress = progressOf(found, menu, upperSlots(menu), hints);
+    }
+
+    /**
+     * Counts what is done and what is left, for the board's "4/10". Display only - read off the same
+     * board the solve read, in the tick, so the render path never scans item ids.
+     */
+    private static long progressOf(TerminalType type, AbstractContainerMenu menu, int upper,
+                                   Map<Integer, Hint> solution) {
+        int todo = 0;
+        int lowestDue = Integer.MAX_VALUE;
+        for (Hint hint : solution.values()) {
+            if (!hint.preview()) {
+                todo++;
+                lowestDue = Math.min(lowestDue, parsePositive(hint.label()));
+            }
+        }
+        int done = 0;
+        switch (type) {
+            case ORDER -> {
+                // Every numbered pane still due is red; the lowest number marked is the one due, so
+                // everything below it has been clicked.
+                int red = 0;
+                for (int i = 0; i < upper; i++) {
+                    if ("red".equals(TerminalSolutions.paneColour(TerminalSolutions.item(menu, i)))) {
+                        red++;
+                    }
+                }
+                done = lowestDue == Integer.MAX_VALUE ? 0 : lowestDue - 1;
+                todo = red;
+            }
+            case COLOR, STARTS_WITH, ITEM_NAME -> {
+                for (int i = 0; i < upper; i++) {
+                    if (TerminalSolutions.item(menu, i).hasFoil()) {
+                        done++;
+                    }
+                }
+            }
+            case PANES -> {
+                for (int i = 0; i < upper; i++) {
+                    String colour = TerminalSolutions.paneColour(TerminalSolutions.item(menu, i));
+                    if ("lime".equals(colour) || "green".equals(colour)) {
+                        done++;
+                    }
+                }
+            }
+            default -> {
+            }
+        }
+        return TerminalMarks.progress(type, done, todo);
+    }
+
+    /** A small positive integer label, or {@link Integer#MAX_VALUE} when it is not one. */
+    static int parsePositive(String label) {
+        if (label == null || label.isEmpty() || label.length() > 3) {
+            return Integer.MAX_VALUE;
+        }
+        int value = 0;
+        for (int i = 0; i < label.length(); i++) {
+            char c = label.charAt(i);
+            if (c < '0' || c > '9') {
+                return Integer.MAX_VALUE;
+            }
+            value = value * 10 + (c - '0');
+        }
+        return value == 0 ? Integer.MAX_VALUE : value;
     }
 
     private void clear() {
         type = TerminalType.NONE;
         hints = Map.of();
+        melodyColumn = -1;
+        progress = 0L;
         lastScreen = null;
     }
 
@@ -247,18 +332,11 @@ public final class TerminalSolver {
             int x = left + slot.x;
             int y = top + slot.y;
             Hint hint = entry.getValue();
-            // A look-ahead gets the thin ring: it has to be findable at a glance without ever being
-            // mistaken for the slot that is actually due.
-            if (hint.preview()) {
-                thinOutline(g, x, y, hint.color());
-            } else {
-                outline(g, x, y, hint.color());
-            }
-            String label = hint.label();
-            if (label != null && !label.isEmpty()) {
-                g.text(font, Component.literal(label), x + 17 - font.width(label), y + 9,
-                        hint.color());
-            }
+            // A look-ahead gets the hollow ring: findable at a glance, never mistaken for the slot
+            // that is actually due (which is filled).
+            MarkKind kind = TerminalMarks.kindOf(hint);
+            ActionMarks.cell(g, x - 1, y - 1, 18, kind);
+            ActionMarks.badge(g, font, x - 1, y - 1, 18, 18, TerminalMarks.badgeOf(type, hint), kind);
         }
     }
 
@@ -273,22 +351,6 @@ public final class TerminalSolver {
 
     private static String titleOf(Screen screen) {
         return screen == null || screen.getTitle() == null ? ""
-                : screen.getTitle().getString().replaceAll("§.", "").trim();
-    }
-
-    /** 2px accent outline hugging a 16px slot (same as ExperimentationTable's). */
-    static void outline(GuiGraphicsExtractor g, int x, int y, int color) {
-        g.fill(x - 1, y - 1, x + 17, y + 1, color);
-        g.fill(x - 1, y + 15, x + 17, y + 17, color);
-        g.fill(x - 1, y - 1, x + 1, y + 17, color);
-        g.fill(x + 15, y - 1, x + 17, y + 17, color);
-    }
-
-    /** The same ring at 1px, for a mark that must be seen but not acted on. */
-    static void thinOutline(GuiGraphicsExtractor g, int x, int y, int color) {
-        g.fill(x, y, x + 16, y + 1, color);
-        g.fill(x, y + 15, x + 16, y + 16, color);
-        g.fill(x, y, x + 1, y + 16, color);
-        g.fill(x + 15, y, x + 16, y + 16, color);
+                : FORMATTING.matcher(screen.getTitle().getString()).replaceAll("").trim();
     }
 }

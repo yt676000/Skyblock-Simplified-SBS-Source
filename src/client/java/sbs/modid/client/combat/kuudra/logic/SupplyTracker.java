@@ -75,6 +75,7 @@ public final class SupplyTracker {
     /** Party chat, with the rank prefix that may or may not be there: "Party > [MVP+] Bob: text". */
     private static final Pattern PARTY_LINE =
             Pattern.compile("^Party\\s*>\\s*(?:\\[[^]]*]\\s*)?(\\w{2,16})\\s*:\\s*(.+)$");
+    private static final Pattern NON_ALNUM_RUN = Pattern.compile("[^a-z0-9]+");
 
     private static final String SELF_PICKUP = "You retrieved some of Elle's supplies from the Lava!";
     private static final String SELF_SLIPPED = "You moved and the Chest slipped out of your hands!";
@@ -479,9 +480,9 @@ public final class SupplyTracker {
         if (!party.matches()) {
             return;
         }
-        String body = party.group(2)
-                .toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9]+", " ")
+        String body = NON_ALNUM_RUN.matcher(party.group(2)
+                .toLowerCase(Locale.ROOT))
+                .replaceAll(" ")
                 .trim();
         Matcher call = NO_PRE_CALL.matcher(body);
         while (call.find()) {

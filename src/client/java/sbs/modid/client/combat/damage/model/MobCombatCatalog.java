@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Combat stats per SkyBlock mob for the Damage Overlay: max HP (fallback) and <b>Defense</b>, keyed
@@ -38,6 +39,7 @@ public final class MobCombatCatalog {
 
     /** Normalized name -> its level variants (unordered; lookup picks the closest level). */
     private static final Map<String, List<Variant>> BY_NAME = new HashMap<>();
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
     static {
         register();
@@ -48,7 +50,7 @@ public final class MobCombatCatalog {
 
     /** "Minos Inquisitor" / "minos  inquisitor" -> "minos inquisitor" (the lookup key). */
     public static String key(String name) {
-        return name == null ? "" : name.toLowerCase(Locale.ROOT).trim().replaceAll("\\s+", " ");
+        return name == null ? "" : WHITESPACE.matcher(name.toLowerCase(Locale.ROOT).trim()).replaceAll(" ");
     }
 
     /**

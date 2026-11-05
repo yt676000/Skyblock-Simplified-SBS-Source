@@ -141,6 +141,25 @@ public final class DianaGuard {
         timed(hook, input, started);
     }
 
+    /**
+     * {@link #run} with the body's argument passed in rather than captured, so a per-frame caller
+     * can hand a method reference and allocate no lambda.
+     */
+    public static <A> void run(Hook hook, Object input, java.util.function.Consumer<A> body, A arg) {
+        if (disabled) {
+            return;
+        }
+        DianaRecent.record(hook, input);
+        long started = System.nanoTime();
+        try {
+            body.accept(arg);
+        } catch (RuntimeException | LinkageError | StackOverflowError thrown) {
+            trip(hook, input, thrown);
+            return;
+        }
+        timed(hook, input, started);
+    }
+
     /** {@link #run} for a hook that answers: {@code fallback} while disabled or when it throws. */
     public static <T> T call(Hook hook, Object input, Supplier<T> body, T fallback) {
         if (disabled) {

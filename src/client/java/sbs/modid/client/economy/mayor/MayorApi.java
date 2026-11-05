@@ -8,6 +8,12 @@
 
 package sbs.modid.client.economy.mayor;
 
+import sbs.modid.client.core.api.ApiFailure;
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+import sbs.modid.client.core.net.validation.ValidationException;
+
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -106,10 +112,11 @@ public final class MayorApi {
                 callback.done(null, answered.getMessage());
             } catch (Exception unreachable) {
                 String legacy = PriceApi.legacyBase();
-                if (legacy.equals(primary)) {
-                    SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Mayor] Request failed: {}",
-                            unreachable.toString());
-                    callback.done(null, "Connection failed");
+                // A refusal (consent or licence) is the same on every endpoint; only a failed
+                // connection is worth the legacy retry.
+                if (legacy.equals(primary) || ApiFailure.of(unreachable) != ApiFailure.OFFLINE) {
+                    ApiFailure.log("[SBS][Mayor]", "Request", unreachable);
+                    callback.done(null, ApiFailure.message(unreachable));
                     return;
                 }
                 try {
@@ -117,8 +124,8 @@ public final class MayorApi {
                 } catch (ApiException answeredLegacy) {
                     callback.done(null, answeredLegacy.getMessage());
                 } catch (Exception e) {
-                    SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Mayor] Request failed: {}", e.toString());
-                    callback.done(null, "Connection failed");
+                    ApiFailure.log("[SBS][Mayor]", "Request", e);
+                    callback.done(null, ApiFailure.message(e));
                 }
             }
         });
@@ -135,7 +142,7 @@ public final class MayorApi {
             builder.header("X-Api-Token", token.trim());
         }
         HttpResponse<byte[]> response = sbs.modid.client.core.api.SbsApi.send(
-                ConsentScope.LICENCE_VALIDATION, http, builder.build(),
+                ConsentScope.LICENCE_VALIDATION, MessageTypes.MAYOR, builder.build(),
                 HttpResponse.BodyHandlers.ofByteArray());
         String text = inflate(response);
         int status = response.statusCode();
@@ -151,7 +158,12 @@ public final class MayorApi {
         if (status != 200) {
             throw new ApiException("HTTP " + status);
         }
-        Response result = gson.fromJson(text, Response.class);
+        Response result;
+        try {
+            result = MessageSchemas.parse(MessageTypes.MAYOR, text, Response.class);
+        } catch (ValidationException invalid) {
+            throw new ApiException(ValidationException.USER_MESSAGE);
+        }
         if (result == null) {
             throw new ApiException("Empty response");
         }
@@ -166,16 +178,7 @@ public final class MayorApi {
 
     /** Inflates a gzip body (by header or magic bytes); small responses arrive uncompressed. */
     private static String inflate(HttpResponse<byte[]> response) throws Exception {
-        byte[] raw = response.body();
-        boolean gzip = response.headers().firstValue("Content-Encoding")
-                .map(value -> value.toLowerCase(java.util.Locale.ROOT).contains("gzip")).orElse(false)
-                || (raw.length > 2 && (raw[0] & 0xFF) == 0x1F && (raw[1] & 0xFF) == 0x8B);
-        if (!gzip) {
-            return new String(raw, StandardCharsets.UTF_8);
-        }
-        try (GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(raw))) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
+        return SecureHttp.inflateText(response, MessageTypes.MAYOR);
     }
 
     // ------------------------------------------------------------------

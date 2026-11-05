@@ -1,0 +1,7 @@
+{
+  "_note": "Solved F7/M7 Arrow Align layouts, captured in our own runs only. Each entry is a '[SBS][ArrowAlign] CAPTURE' log line pasted as-is. rows: top row first, columns left to right facing the wall; '.' no frame, '#' frame without an arrow, '0'-'7' arrow rotation. Empty until the first capture; bump dataVersion on every change.",
+  "schemaVersion": 1,
+  "dataVersion": 1,
+  "generatedAt": "2026-10-07",
+  "layouts": []
+}

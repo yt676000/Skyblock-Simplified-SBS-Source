@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Where SkyBlock's NPCs stand: the lookup table behind the Recipe Viewer's NPC locator and the NPC
@@ -42,6 +43,10 @@ public final class SkyblockNpcs {
     /** One catalogued NPC: display name, its island, the zone within it, and its coordinates. */
     public record Npc(String name, String island, String area, double x, double y, double z) {
     }
+
+    private static final Pattern NPC_TAG = Pattern.compile("(?i)\\(npc\\)");
+    private static final Pattern STARS = Pattern.compile("[✪✦⚚➊➋➌➍➎★]+");
+    private static final Pattern FORMATTING = Pattern.compile("(?i)§.");
 
     /** Keyed by {@link #key}(name); several NPCs can share a name (Romero, Elle, Pam, ...). */
     private static final Map<String, List<Npc>> BY_NAME = new LinkedHashMap<>();
@@ -690,8 +695,8 @@ public final class SkyblockNpcs {
     /** The clean NPC name a display name resolves to (colours, the "(NPC)" tag and stars removed). */
     public static String cleanName(String displayName) {
         String clean = strip(displayName);
-        clean = clean.replaceAll("(?i)\\(npc\\)", "");
-        clean = clean.replaceAll("[✪✦⚚➊➋➌➍➎★]+", "");
+        clean = NPC_TAG.matcher(clean).replaceAll("");
+        clean = STARS.matcher(clean).replaceAll("");
         return clean.trim();
     }
 
@@ -702,6 +707,6 @@ public final class SkyblockNpcs {
 
     /** Removes §-colour codes. */
     private static String strip(String text) {
-        return text == null ? "" : text.replaceAll("(?i)§.", "");
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("");
     }
 }

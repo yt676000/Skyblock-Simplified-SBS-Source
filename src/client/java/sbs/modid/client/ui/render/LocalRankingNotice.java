@@ -54,10 +54,17 @@ public final class LocalRankingNotice {
         // No recorded cause means nothing failed — the player picked Local on the switch. That is a
         // different sentence from every failure case: there is nothing to fix and nothing to wait
         // for, so it points at the switch instead of at a token or a connection.
+        if (failure != null && !failure.isError()) {
+            // No licence (or the feature turned off): the ordinary state of a free player, so a
+            // plain note in the muted colour - no warning sign, nothing to fix.
+            out.addAll(RowText.wrap(font, failure.headline(), width, FailureStyle.code(failure)));
+            return out;
+        }
         String headline = failure == null
                 ? "Local mode — weaker and less accurate. Switch to Server for the full ranking."
                 : failure.headline();
-        out.addAll(RowText.wrap(font, "⚠ " + headline, width, "§e"));
+        out.addAll(RowText.wrap(font, "⚠ " + headline, width,
+                failure == null ? "§e" : FailureStyle.code(failure)));
         return out;
     }
 
@@ -92,7 +99,8 @@ public final class LocalRankingNotice {
         }
         int lineY = y;
         for (String line : lines) {
-            g.text(font, Component.literal(line), x, lineY, SBSTheme.WARN);
+            g.text(font, Component.literal(line), x, lineY,
+                    failure == null ? SBSTheme.WARN : FailureStyle.colour(failure));
             lineY += font.lineHeight + 1;
         }
         return lineY - y + 2;

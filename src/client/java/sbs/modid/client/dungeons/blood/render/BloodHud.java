@@ -23,6 +23,7 @@ import sbs.modid.client.ui.theme.SBSTheme;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * The blood-room card: the countdown until the mobs are worth swinging at, the clear clock, how many
@@ -36,6 +37,7 @@ public final class BloodHud {
     private static final int MIN_W = 132;
     private static final int WAIT_COLOR = 0xFFFF5555;
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     private BloodHud() {
     }
@@ -148,6 +150,6 @@ public final class BloodHud {
     }
 
     private static String strip(String text) {
-        return text.replaceAll(SECTION_SIGN + ".", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 }

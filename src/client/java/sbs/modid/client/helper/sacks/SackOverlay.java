@@ -181,6 +181,9 @@ public final class SackOverlay {
         long sum = 0;
         int misses = 0;
         for (SackContents.Row item : SackContents.read(screen)) {
+            // The draft reminder learns the sack's draft count from the same read.
+            sbs.modid.client.dungeons.puzzle.logic.ArchitectDraftReminder.getInstance()
+                    .observeSack(item.id(), item.stored());
             // An amount we could not read is not an empty row - hiding it would hide exactly the
             // items a mis-parsed sack is failing on. Only a confirmed zero is hidden.
             if (hide && item.known() && item.stored() == 0) {

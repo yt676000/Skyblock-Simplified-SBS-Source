@@ -16,7 +16,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.location.SkyBlockLocation;
@@ -42,6 +43,8 @@ import java.util.List;
  * walls" is the natural behaviour and hiding behind terrain is the option that costs a raycast.
  */
 public final class FairySoulRenderer {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     /**
      * Souls the client's own scanner catalogued, as opposed to the curated file's: a fixed cyan,
@@ -98,7 +101,7 @@ public final class FairySoulRenderer {
 
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
 
         FairySoul routed = FairySoulRouting.getInstance().currentTarget();
@@ -139,7 +142,7 @@ public final class FairySoulRenderer {
     }
 
     /** The marker cube. The uncollected ones breathe; collected ones sit still and dim. */
-    private static void drawMarker(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawMarker(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                    Vec3 centre, int color, boolean active, double breath) {
         double half = MARKER_HALF + (active ? 0.10 * breath + 0.05 : 0.04 * breath);
         WorldRender.boxEdges(g, viewProjection, camPos,
@@ -148,13 +151,13 @@ public final class FairySoulRenderer {
                 color, active ? 3 : 2);
     }
 
-    private static void drawLabel(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawLabel(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                   Font font, FairySoul soul, Vec3 centre, double distance,
                                   boolean collected, boolean active,
                                   SBSConfig.FairySoulSettings cfg) {
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos,
-                centre.add(0, 0.8, 0), g.guiWidth(), g.guiHeight());
-        if (screen == null) {
+        int[] screen = SCREEN;
+        if (!WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                centre.x, centre.y + 0.8, centre.z, g.guiWidth(), g.guiHeight(), screen)) {
             return;
         }
         StringBuilder label = new StringBuilder();

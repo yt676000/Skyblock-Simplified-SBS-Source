@@ -57,13 +57,11 @@ public final class HidingRule {
     private HidingRule() {
     }
 
+    /** Level not known: the player is never hidden for it (fail open). */
+    public static final int UNKNOWN_LEVEL = -1;
+
     public static boolean mayHide(Candidate candidate, Settings settings) {
-        if (candidate.self() || !candidate.inTabList()) {
-            return false;
-        }
-        if ((settings.keepParty() && candidate.partyMember())
-                || (settings.keepDungeonTeam() && candidate.dungeonTeam())
-                || (settings.keepTrusted() && candidate.trusted())) {
+        if (kept(candidate, settings)) {
             return false;
         }
         if (settings.everywhere()) {
@@ -75,6 +73,29 @@ public final class HidingRule {
         }
         double npcRadius = Math.max(0, settings.npcRadius());
         return settings.nearNpcs() && candidate.npcDistanceSq() <= npcRadius * npcRadius;
+    }
+
+    /**
+     * Hide Low-Level Players: a real player whose SkyBlock level is known and below
+     * {@code minLevel}, with the same exceptions as {@link #mayHide}, and never the player under
+     * your crosshair. An unknown level ({@link #UNKNOWN_LEVEL}) is never hidden.
+     */
+    public static boolean mayHideBelowLevel(Candidate candidate, Settings settings, int level, int minLevel,
+                                            boolean crosshairTarget) {
+        return !crosshairTarget && !kept(candidate, settings) && isBelow(level, minLevel);
+    }
+
+    /** Whether a known level is below the minimum; an unknown one never is. */
+    public static boolean isBelow(int level, int minLevel) {
+        return level >= 0 && level < minLevel;
+    }
+
+    /** Never yourself, never an NPC, never an exception whose switch is on. */
+    private static boolean kept(Candidate candidate, Settings settings) {
+        return candidate.self() || !candidate.inTabList()
+                || (settings.keepParty() && candidate.partyMember())
+                || (settings.keepDungeonTeam() && candidate.dungeonTeam())
+                || (settings.keepTrusted() && candidate.trusted());
     }
 
     /**

@@ -193,6 +193,13 @@ public final class Waypoint {
     public static final String SOURCE_CH_MAP = "chmap";
 
     /**
+     * {@link #source} value for the M7 relic markers: each relic's spawn during the dragon phase, and
+     * the target of the one the player is carrying. Published with {@link #routable} {@code false} -
+     * the boss arena is not a place for a walking route.
+     */
+    public static final String SOURCE_M7_RELICS = "m7_relics";
+
+    /**
      * Whether a walking route to this waypoint is possible at all. {@code true} for everything the
      * player places by hand; the NPC module sets it {@code false} for a marker on another island of
      * the same coordinate space - visible on the horizon thanks to remembered terrain, but reached
@@ -332,6 +339,9 @@ public final class Waypoint {
         return scale;
     }
 
+    /** The renderer's per-marker cache; transient, so Gson neither writes nor reads it. */
+    transient MarkerRenderCache renderCache;
+
     /** Gson needs a no-arg constructor. */
     public Waypoint() {
     }
@@ -392,6 +402,11 @@ public final class Waypoint {
     /** Whether this is a Crystal Hollows structure marker (found or shared this lobby). */
     public boolean isHollowsStructure() {
         return SOURCE_HOLLOWS.equals(source);
+    }
+
+    /** Whether the M7 relic markers placed this waypoint. */
+    public boolean isM7Relic() {
+        return SOURCE_M7_RELICS.equals(source);
     }
 
     /** Whether this is the Jungle Temple cheese spot. */

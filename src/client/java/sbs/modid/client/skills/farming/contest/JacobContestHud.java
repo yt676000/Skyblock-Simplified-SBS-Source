@@ -42,6 +42,19 @@ public final class JacobContestHud {
     private static final int ICON = 16;
     private static final int ROW = 10;
 
+    /** The card's text and size, built when its key moves and only drawn per frame. */
+    private record Model(String title, List<String> lines, int width, int height) {
+    }
+
+    /**
+     * The card as last built. Rebuilt only on a new tracker reading, the projection toggle, or the
+     * one-second clock the time-left line reads. Render thread only.
+     */
+    private static Model model;
+    private static int builtTracker = -1;
+    private static long builtSecond = -1;
+    private static boolean builtProjection;
+
     private JacobContestHud() {
     }
 
@@ -59,6 +72,43 @@ public final class JacobContestHud {
             return;
         }
         Font font = Minecraft.getInstance().font;
+        int version = tracker.version();
+        long second = System.currentTimeMillis() / 1000L;
+        if (model == null || version != builtTracker || second != builtSecond
+                || cfg.contestProjection != builtProjection) {
+            builtTracker = version;
+            builtSecond = second;
+            builtProjection = cfg.contestProjection;
+            model = build(font, tracker, s, crop, cfg);
+        }
+        Model m = model;
+        String title = m.title();
+        int w = m.width();
+        int h = m.height();
+        HudElement.Bounds b = HudElement.JACOB_CONTEST.defaultBounds(g.guiWidth(), g.guiHeight());
+        int x = Math.round(b.x());
+        int y = Math.round(b.y());
+        HudLayout.measure(HudElement.JACOB_CONTEST, x, y, w, h);
+        HudLayout.begin(g, HudElement.JACOB_CONTEST);
+        g.fill(x, y, x + w, y + h, SBSTheme.HUD_CARD_BG);
+        g.outline(x, y, w, h, SBSTheme.HUD_CARD_BORDER);
+        if (crop != null) {
+            ItemStack icon = SkyBlockItemIcons.getInstance().icon(crop.bazaarId(), null, 1);
+            if (!icon.isEmpty()) {
+                g.item(icon, x + PAD, y + PAD);
+            }
+        }
+        g.text(font, title, x + PAD + ICON + 4, y + PAD + (ICON - font.lineHeight) / 2, SBSTheme.ACCENT, true);
+        int cy = y + PAD + ICON + 2;
+        for (String line : m.lines()) {
+            g.text(font, line, x + PAD, cy, SBSTheme.TEXT, false);
+            cy += ROW;
+        }
+        HudLayout.end(g);
+    }
+
+    private static Model build(Font font, JacobContestTracker tracker, Standing s, CropType crop,
+                               SBSConfig.FarmingSettings cfg) {
         String title = crop == null ? "Jacob's Contest" : crop.displayName() + " Contest";
         List<String> lines = new ArrayList<>();
         int left = tracker.secondsLeft();
@@ -86,29 +136,11 @@ public final class JacobContestHud {
             w = Math.max(w, PAD * 2 + font.width(line));
         }
         int h = PAD * 2 + ICON + 2 + ROW * lines.size();
-        HudElement.Bounds b = HudElement.JACOB_CONTEST.defaultBounds(g.guiWidth(), g.guiHeight());
-        int x = Math.round(b.x());
-        int y = Math.round(b.y());
-        HudLayout.measure(HudElement.JACOB_CONTEST, x, y, w, h);
-        HudLayout.begin(g, HudElement.JACOB_CONTEST);
-        g.fill(x, y, x + w, y + h, SBSTheme.HUD_CARD_BG);
-        g.outline(x, y, w, h, SBSTheme.HUD_CARD_BORDER);
-        if (crop != null) {
-            ItemStack icon = SkyBlockItemIcons.getInstance().icon(crop.bazaarId(), null, 1);
-            if (!icon.isEmpty()) {
-                g.item(icon, x + PAD, y + PAD);
-            }
-        }
-        g.text(font, title, x + PAD + ICON + 4, y + PAD + (ICON - font.lineHeight) / 2, SBSTheme.ACCENT, true);
-        int cy = y + PAD + ICON + 2;
-        for (String line : lines) {
-            g.text(font, line, x + PAD, cy, SBSTheme.TEXT, false);
-            cy += ROW;
-        }
-        HudLayout.end(g);
+        return new Model(title, List.copyOf(lines), w, h);
     }
 
     static String clock(int seconds) {
-        return (seconds / 60) + "m " + String.format("%02d", seconds % 60) + "s";
+        int s = seconds % 60;
+        return (seconds / 60) + "m " + (s < 10 ? "0" : "") + s + "s";
     }
 }

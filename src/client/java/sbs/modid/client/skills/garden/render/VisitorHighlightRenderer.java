@@ -22,7 +22,8 @@ import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
@@ -59,6 +60,8 @@ import java.util.Set;
  * which is what settles the question from a play session's log.
  */
 public final class VisitorHighlightRenderer {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     private static final long SCAN_MS = 250L;
     private static final int DEFAULT_RGB = 0xFFB300;
@@ -101,7 +104,7 @@ public final class VisitorHighlightRenderer {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
         Integer custom = OverlayColor.parseHex(cfg.visitorHighlightColorHex);
         int valuableRgb = custom != null ? custom & 0xFFFFFF : DEFAULT_RGB;
@@ -209,11 +212,12 @@ public final class VisitorHighlightRenderer {
         return name.charAt(0) + name.substring(1).toLowerCase(java.util.Locale.ROOT);
     }
 
-    private static void label(GuiGraphicsExtractor g, Font font, Matrix4f viewProjection, Vec3 camPos,
+    private static void label(GuiGraphicsExtractor g, Font font, Matrix4fc viewProjection, Vec3 camPos,
                               AABB box, String text, int rgb) {
-        Vec3 top = new Vec3((box.minX + box.maxX) / 2, box.maxY + 0.9, (box.minZ + box.maxZ) / 2);
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos, top, g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                (box.minX + box.maxX) / 2, box.maxY + 0.9, (box.minZ + box.maxZ) / 2,
+                g.guiWidth(), g.guiHeight(), screen)) {
             g.centeredText(font, Component.literal(text), screen[0], screen[1], 0xFF000000 | rgb);
         }
     }

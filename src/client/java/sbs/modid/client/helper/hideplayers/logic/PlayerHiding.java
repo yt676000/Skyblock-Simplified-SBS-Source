@@ -8,15 +8,22 @@
 
 package sbs.modid.client.helper.hideplayers.logic;
 
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import sbs.modid.client.combat.slayer.logic.SlayerTracker;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.core.entity.EntityIndex;
+import sbs.modid.client.core.entity.EntityKind;
+import sbs.modid.client.core.entity.NameClass;
+import sbs.modid.client.core.entity.Tracked;
 import sbs.modid.client.core.location.SkyBlockLocation;
 import sbs.modid.client.dungeons.run.model.DungeonTeamClasses;
 import sbs.modid.client.helper.npc.SkyblockNpcs;
@@ -56,12 +63,27 @@ import java.util.UUID;
  * not real players, in case the catalogue lacks one or it has moved. Clicks are untouched: a hidden
  * player still takes the click exactly as vanilla, never redirected to the NPC behind (that would be
  * click manipulation). The optional hint only says so on screen.
+ *
+ * <p><b>Hide Low-Level Players</b> runs in the same pass under its own switch: a real player whose
+ * SkyBlock level ({@link PlayerLevels}, in memory only) is known and below the minimum is hidden,
+ * with the same exceptions, and never the player under your crosshair.
  */
 public final class PlayerHiding {
 
     private static volatile Set<UUID> hidden = Set.of();
     /** Whether the crosshair points through a hidden player at an NPC (the "step aside" hint). */
     private static volatile boolean hintShown;
+    /** Entity ids of the pet stands not to draw. Client thread only: filled in the tick, read in render. */
+    private static final IntOpenHashSet hiddenPets = new IntOpenHashSet();
+    /** Lower-cased names of the Trusted players seen this tick, for their pets. */
+    private static final Set<String> trustedNames = new HashSet<>();
+
+    // The NPC scan's change key and its last result.
+    private static boolean npcKeyValid;
+    private static long npcKeyBlock;
+    private static int npcKeyPlayerRevision;
+    private static ClientLevel npcKeyLevel;
+    private static List<Vec3> npcCache = List.of();
 
     private PlayerHiding() {
     }
@@ -72,6 +94,9 @@ public final class PlayerHiding {
 
     /** Render check, per entity per frame: nothing but a type test and a set lookup. */
     public static boolean skipRender(Entity entity) {
+        if (entity instanceof ArmorStand) {
+            return !hiddenPets.isEmpty() && hiddenPets.contains(entity.getId());
+        }
         Set<UUID> current = hidden;
         return !current.isEmpty() && entity instanceof Player && current.contains(entity.getUUID());
     }
@@ -81,15 +106,21 @@ public final class PlayerHiding {
         SBSConfig.HidePlayersSettings cfg = cfg();
         ClientLevel level = minecraft.level;
         ClientPacketListener connection = minecraft.getConnection();
-        if (!cfg.enabled || !cfg.hiding || level == null || minecraft.player == null || connection == null
-                || !HidingRule.activeHere(inCombatArea(), cfg.hideInCombat)) {
+        // Two independent switches share this pass: the card's own hiding, and Hide Low-Level Players.
+        boolean nearby = cfg.enabled;
+        boolean lowLevel = cfg.lowLevelEnabled && cfg.lowLevelWorld;
+        if (!(nearby || lowLevel) || !cfg.hiding || level == null || minecraft.player == null
+                || connection == null || !HidingRule.activeHere(inCombatArea(), cfg.hideInCombat)) {
             hidden = Set.of();
             hintShown = false;
+            hiddenPets.clear();
+            npcKeyValid = false;
             return;
         }
-        HidingRule.Settings settings = new HidingRule.Settings(cfg.everywhere, cfg.radius, cfg.keepParty,
-                cfg.keepDungeonTeam, cfg.keepTrusted, cfg.nearMe, cfg.nearNpcs, cfg.npcRadius);
-        List<Vec3> npcs = cfg.nearNpcs ? npcsNear(minecraft, level) : List.of();
+        HidingRule.Settings settings = PlayerLevels.settings(cfg);
+        Entity crosshair = minecraft.crosshairPickEntity;
+        List<Vec3> npcs = nearby && cfg.nearNpcs ? npcsNear(minecraft, level) : List.of();
+        trustedNames.clear();
         Set<String> dungeonTeam = cfg.keepDungeonTeam ? DungeonTeamClasses.runRoster() : Set.of();
         PartyTracker party = PartyTracker.getInstance();
         PlayerNotesStore notes = PlayerNotesStore.getInstance();
@@ -99,23 +130,96 @@ public final class PlayerHiding {
             String name = player.getGameProfile().name();
             HidingRule.Candidate candidate = new HidingRule.Candidate(
                     self,
-                    !self && sbs.modid.client.core.player.RealPlayers.isRealPlayer(player),
+                    !self && sbs.modid.client.core.player.RealPlayers.hasPlayerListEntry(player),
                     cfg.keepParty && party.isMember(name),
                     cfg.keepDungeonTeam && dungeonTeam.contains(name.toLowerCase(Locale.ROOT)),
                     cfg.keepTrusted && notes.markerTag(player.getUUID(), name) == NoteTag.TRUSTED,
                     player.distanceToSqr(minecraft.player),
                     nearestSq(player.position(), npcs));
-            if (HidingRule.mayHide(candidate, settings)) {
+            if (candidate.trusted() && hidePetsActive(cfg)) {
+                trustedNames.add(name.toLowerCase(Locale.ROOT));
+            }
+            if ((nearby && HidingRule.mayHide(candidate, settings))
+                    || (lowLevel && HidingRule.mayHideBelowLevel(candidate, settings, PlayerLevels.level(name),
+                            cfg.minLevel, player == crosshair))) {
                 next.add(player.getUUID());
             }
         }
         hidden = next.isEmpty() ? Set.of() : next;
-        hintShown = cfg.nearNpcs && cfg.npcHint && !next.isEmpty() && !npcs.isEmpty()
+        hintShown = nearby && cfg.nearNpcs && cfg.npcHint && !next.isEmpty() && !npcs.isEmpty()
                 && hiddenPlayerInTheWay(minecraft, level, next, npcs);
+        if (nearby) {
+            hidePets(minecraft, cfg, dungeonTeam, party);
+        } else {
+            hiddenPets.clear();
+        }
     }
 
-    /** NPC positions within {@link HidingRule#NPC_ACTIVE_RANGE} of you: catalogue plus live entities. */
+    /**
+     * Other players' pets: the {@link NameClass#PET} name stands in the {@link EntityIndex} stand
+     * bucket whose owner is not you, your party, your dungeon team or a Trusted player, and that
+     * your crosshair is not on. The owner is parsed once per name change ({@link Tracked#petOwner}),
+     * so an unchanged stand costs a class check and a few string compares.
+     *
+     * <p>Only the name stand for now: telling a pet's body stand (and cosmetics) apart from every
+     * other headed stand needs the EntityProbe capture first.
+     */
+    /**
+     * The one switch for pet hiding: the setting, and only in the development environment until the
+     * pet body and cosmetic stands are classified - a shared config (ConfigShare) can carry
+     * {@code hidePets = true} into a normal build.
+     */
+    private static boolean hidePetsActive(SBSConfig.HidePlayersSettings cfg) {
+        return cfg.hidePets && FabricLoader.getInstance().isDevelopmentEnvironment();
+    }
+
+    private static void hidePets(Minecraft minecraft, SBSConfig.HidePlayersSettings cfg, Set<String> dungeonTeam,
+                                 PartyTracker party) {
+        hiddenPets.clear();
+        if (!hidePetsActive(cfg)) {
+            return;
+        }
+        String self = minecraft.player.getGameProfile().name();
+        Entity target = minecraft.crosshairPickEntity;
+        List<Tracked> stands = EntityIndex.bucket(EntityKind.ARMOR_STAND);
+        for (int i = 0, n = stands.size(); i < n; i++) {
+            Tracked stand = stands.get(i);
+            if (stand.nameClass() != NameClass.PET || stand.entity == target) {
+                continue;
+            }
+            String owner = stand.petOwner();
+            if (owner == null || owner.equalsIgnoreCase(self)
+                    || (cfg.keepParty && party.isMember(owner))
+                    || (cfg.keepDungeonTeam && dungeonTeam.contains(owner))
+                    || trustedNames.contains(owner)) {
+                continue;
+            }
+            hiddenPets.add(stand.entity.getId());
+        }
+    }
+
+    /**
+     * NPC positions within {@link HidingRule#NPC_ACTIVE_RANGE} of you: catalogue plus live entities.
+     * Recomputed only when you moved to another block, the level changed or a player-shaped entity
+     * loaded or unloaded (the bucket revision, so a join and a leave in one tick still count);
+     * otherwise the last list is returned as is.
+     */
     private static List<Vec3> npcsNear(Minecraft minecraft, ClientLevel level) {
+        long block = minecraft.player.blockPosition().asLong();
+        int playerRevision = EntityIndex.revision(EntityKind.PLAYER);
+        if (npcKeyValid && block == npcKeyBlock && playerRevision == npcKeyPlayerRevision
+                && level == npcKeyLevel) {
+            return npcCache;
+        }
+        npcKeyValid = true;
+        npcKeyBlock = block;
+        npcKeyPlayerRevision = playerRevision;
+        npcKeyLevel = level;
+        npcCache = scanNpcs(minecraft, level);
+        return npcCache;
+    }
+
+    private static List<Vec3> scanNpcs(Minecraft minecraft, ClientLevel level) {
         Vec3 me = minecraft.player.position();
         double range = HidingRule.NPC_ACTIVE_RANGE;
         List<Vec3> out = new ArrayList<>();
@@ -128,7 +232,7 @@ public final class PlayerHiding {
         }
         for (Player entity : level.players()) {
             if (entity != minecraft.player && entity.distanceToSqr(minecraft.player) <= range * range
-                    && !sbs.modid.client.core.player.RealPlayers.isRealPlayer(entity)) {
+                    && !sbs.modid.client.core.player.RealPlayers.hasPlayerListEntry(entity)) {
                 out.add(entity.position());
             }
         }
@@ -195,7 +299,7 @@ public final class PlayerHiding {
     /** The toggle key (from {@code KeybindDispatch}). */
     public static void onKeyPressed(int code) {
         SBSConfig.HidePlayersSettings cfg = cfg();
-        if (cfg.toggleKey == 0 || code != cfg.toggleKey || !cfg.enabled) {
+        if (cfg.toggleKey == 0 || code != cfg.toggleKey || !(cfg.enabled || cfg.lowLevelEnabled)) {
             return;
         }
         cfg.hiding = !cfg.hiding;

@@ -14,7 +14,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.render.WorldRender;
 import sbs.modid.client.dungeons.floorthree.logic.GuardianHpTracker;
@@ -26,6 +27,7 @@ import sbs.modid.client.ui.theme.SBSTheme;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * The guardian health readout: a card listing the ones still up, weakest first, and - when the world
@@ -40,11 +42,14 @@ import java.util.List;
  * and a name is only drawn when the tag turns out to say something other than the obvious.
  */
 public final class GuardianHpHud {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     private static final int PAD = 6;
     private static final int LINE_GAP = 3;
     private static final int MIN_W = 138;
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     private static final int COLOR_HIGH = 0xFF7CFF6A;
     private static final int COLOR_MID = 0xFFFFC24A;
@@ -80,12 +85,13 @@ public final class GuardianHpHud {
                                     List<GuardianHpTracker.GuardianInfo> guardians) {
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
         for (GuardianHpTracker.GuardianInfo guardian : guardians) {
-            int[] screen = WorldRender.projectToScreen(viewProjection, camPos, guardian.anchor(),
-                    g.guiWidth(), g.guiHeight());
-            if (screen == null) {
+            Vec3 anchor = guardian.anchor();
+            int[] screen = SCREEN;
+            if (!WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                    anchor.x, anchor.y, anchor.z, g.guiWidth(), g.guiHeight(), screen)) {
                 continue;
             }
             int color = color(guardian.fraction());
@@ -138,6 +144,6 @@ public final class GuardianHpHud {
     }
 
     private static String strip(String text) {
-        return text.replaceAll(SECTION_SIGN + ".", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 }

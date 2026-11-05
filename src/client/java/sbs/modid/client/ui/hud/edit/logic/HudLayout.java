@@ -50,8 +50,19 @@ public final class HudLayout {
      * {@link HudElement#defaultBounds}). Overlays whose real size is content-derived report it via
      * {@link #measure}, so the editor box matches what renders instead of a static default guess.
      * Runtime only; an element that has not rendered simply falls back to its default bounds.
+     *
+     * <p>Every structure here is a flat array indexed by {@link HudElement#ordinal()} rather than a
+     * map keyed by id: all of it is touched only from the render thread (the HUD, the editor screen
+     * and its input handlers, and the commands that reach the editor all run there), and a card
+     * reports its rectangle every frame, so a map entry and a fresh array per call added up.
      */
-    private static final Map<String, float[]> measured = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final float[] measured = new float[HudElement.values().length * 4];
+
+    /**
+     * Bumped whenever an element's {@link #measured} rectangle actually changes; {@code 0} means it has
+     * never measured itself. {@link HudGrowth} keys its cached correction on this.
+     */
+    private static final int[] measureVersion = new int[HudElement.values().length];
 
     /**
      * The HUD frame each element last drew in, for {@link #isVisible}. A frame counter rather than a
@@ -59,7 +70,20 @@ public final class HudLayout {
      * "nothing is visible" a second after opening any menu, while the counter simply freezes and keeps
      * answering with what the last frame of actual play looked like - which is the honest answer.
      */
-    private static final Map<String, long[]> drawnFrame = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long[] drawnFrame = new long[HudElement.values().length];
+
+    static {
+        // Frame 0 is a real counter value; "never drawn" must not compare equal to it.
+        java.util.Arrays.fill(drawnFrame, Long.MIN_VALUE);
+    }
+
+    /**
+     * {@link #get} per element, resolved once from the store's string-keyed map. A slot is cleared
+     * whenever the map can have gained or lost that element's entry - the store loading or adopting
+     * a legacy layout, {@link #resetAll}, {@link #getOrCreate}. Edits to an existing transform need
+     * no invalidation: the cached reference is the same live object the editor mutates.
+     */
+    private static final HudTransform[] transforms = new HudTransform[HudElement.values().length];
 
     private static volatile long hudFrame;
 
@@ -110,8 +134,7 @@ public final class HudLayout {
         if (isHidden(element)) {
             return false;
         }
-        long[] stamp = drawnFrame.get(element.id());
-        return stamp != null && stamp[0] == hudFrame;
+        return drawnFrame[element.ordinal()] == hudFrame;
     }
 
     /**
@@ -120,7 +143,27 @@ public final class HudLayout {
      * size. Cheap and safe to call every frame from inside the element's own render.
      */
     public static void measure(HudElement element, float x, float y, float w, float h) {
-        measured.put(element.id(), new float[] {x, y, w, h});
+        int o = element.ordinal();
+        int i = o * 4;
+        if (measureVersion[o] != 0 && measured[i] == x && measured[i + 1] == y
+                && measured[i + 2] == w && measured[i + 3] == h) {
+            return;
+        }
+        measured[i] = x;
+        measured[i + 1] = y;
+        measured[i + 2] = w;
+        measured[i + 3] = h;
+        measureVersion[o]++;
+    }
+
+    /** See {@link #measureVersion}. */
+    static int measureVersion(HudElement element) {
+        return measureVersion[element.ordinal()];
+    }
+
+    /** One component ({@code 0..3} = x, y, w, h) of the measured rectangle; only valid once measured. */
+    static float measured(HudElement element, int component) {
+        return measured[element.ordinal() * 4 + component];
     }
 
     private static Map<String, HudTransform> map() {
@@ -129,13 +172,25 @@ public final class HudLayout {
 
     /** Read-only transform for an element (identity if unset) – safe to call every frame. */
     public static HudTransform get(HudElement element) {
-        HudTransform t = map().get(element.id());
-        return t != null ? t : IDENTITY;
+        HudTransform t = transforms[element.ordinal()];
+        if (t == null) {
+            HudTransform stored = map().get(element.id());
+            t = stored != null ? stored : IDENTITY;
+            transforms[element.ordinal()] = t;
+        }
+        return t;
     }
 
     /** Mutable transform for an element, inserting a fresh identity entry if needed (editor only). */
     public static HudTransform getOrCreate(HudElement element) {
-        return map().computeIfAbsent(element.id(), k -> new HudTransform());
+        HudTransform t = map().computeIfAbsent(element.id(), k -> new HudTransform());
+        transforms[element.ordinal()] = t;
+        return t;
+    }
+
+    /** Drops every cached {@link #get}; the store calls this whenever its map is loaded or refilled. */
+    static void invalidateTransforms() {
+        java.util.Arrays.fill(transforms, null);
     }
 
     /** When true, every card is hidden at once (cinematic freecam's clean screen); set by its owner. */
@@ -162,6 +217,7 @@ public final class HudLayout {
     /** Restores every element to its default position and scale. */
     public static void resetAll() {
         map().clear();
+        invalidateTransforms();
     }
 
     /**
@@ -171,8 +227,11 @@ public final class HudLayout {
      */
     static HudElement.Bounds localBounds(HudElement element, int guiWidth, int guiHeight) {
         HudElement.Bounds def = element.defaultBounds(guiWidth, guiHeight);
-        float[] m = measured.get(element.id());
-        return m == null ? def : new HudElement.Bounds(m[0], m[1], m[2], m[3]);
+        if (measureVersion[element.ordinal()] == 0) {
+            return def;
+        }
+        int i = element.ordinal() * 4;
+        return new HudElement.Bounds(measured[i], measured[i + 1], measured[i + 2], measured[i + 3]);
     }
 
     /**
@@ -209,9 +268,7 @@ public final class HudLayout {
      */
     public static void begin(GuiGraphicsExtractor g, HudElement element) {
         if (countingFrame) {
-            // Reusing the array instead of boxing a fresh Long keeps this allocation-free on a path
-            // that runs for every element, every frame.
-            drawnFrame.computeIfAbsent(element.id(), k -> new long[1])[0] = hudFrame;
+            drawnFrame[element.ordinal()] = hudFrame;
         }
         HudTransform t = get(element);
         HudElement.Bounds b = element.defaultBounds(g.guiWidth(), g.guiHeight());

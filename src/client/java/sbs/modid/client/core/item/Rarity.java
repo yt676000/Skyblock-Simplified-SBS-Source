@@ -89,11 +89,19 @@ public enum Rarity {
         return color;
     }
 
-    /** Detects an item's rarity from its lore, falling back to the colour of its name. */
+    /**
+     * Detects an item's rarity from its lore, falling back to the colour of its name. Served from
+     * the shared {@link ItemAnalysis} (which validates against lore, name and custom-data changes),
+     * since this runs per slot per frame.
+     */
     public static Rarity detect(ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return null;
         }
+        return ItemAnalysis.of(stack).rarity();
+    }
+
+    static Rarity detectUncached(ItemStack stack) {
         ItemLore lore = stack.get(DataComponents.LORE);
         if (lore != null) {
             // The rarity is on the last lore line; scan bottom-up so the lines an auction or menu

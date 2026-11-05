@@ -8,6 +8,10 @@
 
 package sbs.modid.client.economy.recipe.logic;
 
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+
 import sbs.modid.client.economy.recipe.model.ItemRef;
 import com.google.gson.Gson;
 import net.minecraft.client.Minecraft;
@@ -114,6 +118,7 @@ public final class SkyBlockItemCatalog {
         Map<String, Entry> combined = new java.util.HashMap<>(this.repoExtra);
         combined.putAll(entries);
         this.repoExtra = Map.copyOf(combined);
+        sbs.modid.client.economy.prices.PriceVersion.bump();
         invalidateViews();
         SkyblockSimplifiedSBS.LOGGER.info("[SBS][Items] +{} supplemental catalogue entries ({} total).",
                 entries.size(), combined.size());
@@ -338,11 +343,11 @@ public final class SkyBlockItemCatalog {
             Path path = cachePath();
             if (Files.exists(path)
                     && System.currentTimeMillis() - Files.getLastModifiedTime(path).toMillis() < MAX_AGE_MS) {
-                try (Reader reader = Files.newBufferedReader(path)) {
-                    if (publish(parse(GSON.fromJson(reader, Response.class))) && hasTextureData()) {
-                        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Items] Loaded {} item(s) from disk cache.", byId.size());
-                        return;
-                    }
+                if (Files.size(path) <= MessageSchemas.maxBytes(MessageTypes.HYPIXEL_ITEMS)
+                        && publish(parse(Files.readString(path, java.nio.charset.StandardCharsets.UTF_8)))
+                        && hasTextureData()) {
+                    SkyblockSimplifiedSBS.LOGGER.info("[SBS][Items] Loaded {} item(s) from disk cache.", byId.size());
+                    return;
                 }
                 // A cache written before the texture fields were read (or by a source that strips
                 // them) leaves every modern item without its model - refresh once instead of
@@ -395,14 +400,13 @@ public final class SkyBlockItemCatalog {
     /** The official keyless endpoint; {@code null} when it is unreachable or answers non-200. */
     private String fetchDirect() {
         try {
-            HttpClient http = HttpClient.newBuilder().connectTimeout(TIMEOUT)
-                    .followRedirects(HttpClient.Redirect.NORMAL).build();
             HttpRequest request = HttpRequest.newBuilder(URI.create(HYPIXEL_URL))
                     .timeout(Duration.ofSeconds(60))
                     .header("User-Agent", "SkyblockSimplifiedSBS")
                     .GET()
                     .build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = SecureHttp.send(MessageTypes.HYPIXEL_ITEMS, request,
+                    HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Items] Hypixel items endpoint returned status {}.",
                         response.statusCode());
@@ -421,20 +425,25 @@ public final class SkyBlockItemCatalog {
             return null;
         }
         try {
-            HttpClient http = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
             HttpRequest request = sbs.modid.client.core.api.SbsApi.withLicence(
                             HttpRequest.newBuilder(URI.create(sbs.modid.client.core.api.SbsApi.base() + PATH))
                                     .timeout(TIMEOUT))
                     .GET()
                     .build();
             HttpResponse<String> response = sbs.modid.client.core.api.SbsApi.send(
-                    ConsentScope.LICENCE_VALIDATION, http, request, HttpResponse.BodyHandlers.ofString());
+                    ConsentScope.LICENCE_VALIDATION, MessageTypes.HYPIXEL_ITEMS, request,
+                    HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Items] Items proxy returned status {}.", response.statusCode());
                 return null;
             }
             return response.body();
         } catch (Exception e) {
+            if (sbs.modid.client.core.api.ApiFailure.of(e) != sbs.modid.client.core.api.ApiFailure.OFFLINE) {
+                // Refused (consent or licence), not a connection error; the bundled catalogue serves.
+                sbs.modid.client.core.api.ApiFailure.logBackground("[SBS][Items]", "Items proxy request", e);
+                return null;
+            }
             SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Items] Items proxy request failed: {}", e.toString());
             return null;
         }
@@ -447,7 +456,12 @@ public final class SkyBlockItemCatalog {
 
     /** {@link #parse(Response)} over a raw response body. */
     static Parsed parse(String body) {
-        return parse(GSON.fromJson(body, Response.class));
+        try {
+            // Network bodies and the cached file both pass the relayed-items schema first.
+            return parse(GSON.fromJson(MessageSchemas.parse(MessageTypes.HYPIXEL_ITEMS, body), Response.class));
+        } catch (sbs.modid.client.core.net.validation.ValidationException invalid) {
+            return null;
+        }
     }
 
     /**
@@ -498,6 +512,7 @@ public final class SkyBlockItemCatalog {
             return false;
         }
         this.byId = parsed.byId();
+        sbs.modid.client.economy.prices.PriceVersion.bump();
         invalidateViews();
         if (!parsed.museum().isEmpty()) {
             sbs.modid.client.helper.museum.model.MuseumCatalog.publish(

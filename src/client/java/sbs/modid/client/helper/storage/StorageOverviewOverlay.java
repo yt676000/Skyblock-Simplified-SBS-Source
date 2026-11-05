@@ -21,9 +21,6 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import sbs.modid.client.core.config.ConfigManager;
-import sbs.modid.client.core.item.Rarity;
-import sbs.modid.client.helper.rarity.RarityOverlay;
-import sbs.modid.client.helper.rarity.RarityOverlayMode;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.screen.SBSMainScreen;
 import sbs.modid.client.ui.theme.SBSTheme;
@@ -64,14 +61,14 @@ public final class StorageOverviewOverlay {
     private static final StorageOverviewOverlay INSTANCE = new StorageOverviewOverlay();
 
     /** Item cell size inside a page card, and the live player-inventory cell size (~12% larger). */
-    private static final int MINI = 18;
+    private static final int MINI = StoragePageCard.MINI;
     private static final int CELL = 20;
-    private static final int GRID_COLS = 9;
+    private static final int GRID_COLS = StoragePageCard.GRID_COLS;
     private static final int CARD_COLS = 3;      // page cards across
-    private static final int CARD_ROWS = 6;      // item rows a card can hold (largest page)
-    private static final int TITLE_H = 13;
-    private static final int CARD_W = GRID_COLS * MINI + 6;
-    private static final int CARD_H = TITLE_H + CARD_ROWS * MINI + 4;
+    private static final int CARD_ROWS = StoragePageCard.MAX_ROWS;
+    private static final int TITLE_H = StoragePageCard.TITLE_H;
+    private static final int CARD_W = StoragePageCard.CARD_W;
+    private static final int CARD_H = StoragePageCard.height(CARD_ROWS);
     private static final int GAP = 6;
     private static final int SEARCH_H = 16;
 
@@ -638,26 +635,12 @@ public final class StorageOverviewOverlay {
         boolean isActive = card.active();
         int[] cells = card.cells();
         boolean titleHovered = mouseX >= x && mouseX < x + CARD_W && mouseY >= y && mouseY < y + TITLE_H;
-        SciFiRender.roundedRectWithBorder(g, x - 1, y - 1, CARD_W + 2, cardH + 2, SBSTheme.CORNER_RADIUS,
-                SBSTheme.CARD_BG, isActive ? 0xFFFFE24B : SBSTheme.CARD_BORDER);
-        if (isActive) {
-            // Yellow frame in place - the active page is highlighted, never relocated.
-            SciFiRender.roundedRectWithBorder(g, x - 2, y - 2, CARD_W + 4, cardH + 4,
-                    SBSTheme.CORNER_RADIUS, 0x00000000, 0xFFFFE24B);
-        }
         // The page's value sits right-aligned on the title row; the name is trimmed to make room.
-        var value = showValue() ? pageValue(card.page()) : null;
-        String valueText = value == null || !value.any() ? "" : value.label();
-        int valueW = valueText.isEmpty() ? 0 : font.width(valueText) + 4;
         // While searching the title carries the hit count - that IS the answer to "where is my stuff".
-        String title = trim(font, label, CARD_W - 6 - valueW - (cells == null ? 0 : font.width(" 00")));
-        g.text(font, Component.literal((isActive ? "§e" : titleHovered ? "§b" : "§f") + title
-                        + (cells == null ? "" : " §7" + cells.length)),
-                x + 2, y + 2, SBSTheme.ACCENT_BRIGHT);
-        if (!valueText.isEmpty()) {
-            g.text(font, Component.literal("§6" + valueText), x + CARD_W - 2 - font.width(valueText), y + 2,
-                    SBSTheme.TEXT);
-        }
+        var value = showValue() ? pageValue(card.page()) : null;
+        StoragePageCard.frame(g, font, x, y, cardH, isActive ? "§e" : titleHovered ? "§b" : "§f", label,
+                cells == null ? "" : " §7" + cells.length,
+                value == null || !value.any() ? "" : value.label(), isActive);
         // The active page is already open - re-sending its command would just reload the menu
         // under the cursor, so only the other cards are click-to-open. The hit rect is clamped to
         // the visible scroll band: the scissor clips the pixels, this clips the click.
@@ -731,7 +714,7 @@ public final class StorageOverviewOverlay {
             liveSlots.add(slot);
         }
         if (stack != null && !stack.isEmpty()) {
-            drawRarity(g, stack, x, y);
+            StoragePageCard.drawRarity(g, stack, x, y);
             g.item(stack, x, y);
             if (stack.getCount() > 1) {
                 g.itemDecorations(font, stack, x, y);
@@ -745,32 +728,11 @@ public final class StorageOverviewOverlay {
 
     private void drawMini(GuiGraphicsExtractor g, Font font, ItemStack stack, int x, int y,
                           int clipTop, int clipBottom, String where, int mouseX, int mouseY) {
-        drawRarity(g, stack, x, y);
-        g.item(stack, x, y);
-        if (stack.getCount() > 1) {
-            g.itemDecorations(font, stack, x, y);
-        }
+        StoragePageCard.item(g, font, stack, x, y);
         dimIfFiltered(g, stack, x, y);
         if (mouseX >= x && mouseX < x + MINI && mouseY >= y && mouseY < y + MINI
                 && mouseY >= clipTop && mouseY <= clipBottom) {
             pendingTooltip = tooltip(stack, where);
-        }
-    }
-
-    /**
-     * The item-rarity tint under one cell's item, honouring the same Overlays setting the real slots
-     * use. The workspace draws its own item grid instead of vanilla's slots, so the container-slot
-     * mixin never sees these cells – without this the rarity colours simply stopped at the edge of
-     * the workspace, which reads as the feature being broken rather than as a different surface.
-     */
-    private static void drawRarity(GuiGraphicsExtractor g, ItemStack stack, int x, int y) {
-        RarityOverlayMode mode = ConfigManager.getInstance().get().itemOverlay.rarityMode;
-        if (mode == RarityOverlayMode.OFF) {
-            return;
-        }
-        Rarity rarity = Rarity.detect(stack);
-        if (rarity != null) {
-            RarityOverlay.draw(g, x, y, 16, rarity, mode);
         }
     }
 
@@ -809,7 +771,7 @@ public final class StorageOverviewOverlay {
             liveRects.add(new int[]{cx, cy, CELL, CELL});
             liveSlots.add(containerSlots + j);
             if (stack != null && !stack.isEmpty()) {
-                drawRarity(g, stack, cx + 1, cy + 1);
+                StoragePageCard.drawRarity(g, stack, cx + 1, cy + 1);
                 g.item(stack, cx + 1, cy + 1);
                 if (stack.getCount() > 1) {
                     g.itemDecorations(font, stack, cx + 1, cy + 1);
@@ -955,7 +917,7 @@ public final class StorageOverviewOverlay {
     }
 
     private static boolean showValue() {
-        return ConfigManager.getInstance().get().storageSearch.showStorageValue;
+        return StoragePageCard.showValue();
     }
 
     /** A page's value from the cache; {@code null} for a page never opened (contents unknown). */
@@ -996,9 +958,18 @@ public final class StorageOverviewOverlay {
     }
 
     private boolean matchesQuery(ItemStack stack) {
-        return query.isEmpty() || StorageIndex.strip(stack.getHoverName().getString())
-                .toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT));
+        if (query.isEmpty()) {
+            return true;
+        }
+        if (!query.equals(lowerQuerySource)) {   // lower-cased once per edit, not per cell per frame
+            lowerQuerySource = query;
+            lowerQuery = query.toLowerCase(Locale.ROOT);
+        }
+        return StorageSearchText.of(stack).contains(lowerQuery);   // name + enchantments, cached
     }
+
+    private String lowerQuerySource = "";
+    private String lowerQuery = "";
 
     private static boolean hit(int[] r, double mx, double my) {
         return mx >= r[0] && mx < r[0] + r[2] && my >= r[1] && my < r[1] + r[3];

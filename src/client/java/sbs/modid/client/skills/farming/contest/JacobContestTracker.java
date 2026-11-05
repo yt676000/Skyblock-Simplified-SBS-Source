@@ -56,6 +56,12 @@ public final class JacobContestTracker {
     private Bracket bestBracket;
     private boolean lastMinuteAlerted;
 
+    /**
+     * Bumped whenever something the contest card shows changes: a sidebar reading (and with it the
+     * rate), the Anita crop, or the contest ending. The card rebuilds on it and its 1 s clock.
+     */
+    private volatile int version;
+
     private JacobContestTracker() {
     }
 
@@ -68,6 +74,11 @@ public final class JacobContestTracker {
     }
 
     // ------------------------------------------------------------------ reads (render thread)
+
+    /** Moves whenever the card's inputs change; see {@link #version}. */
+    public int version() {
+        return version;
+    }
 
     public boolean active() {
         return active;
@@ -114,6 +125,7 @@ public final class JacobContestTracker {
         CropType anita = JacobContestParser.anitaCrop(plain);
         if (anita != null) {
             anitaCrop = anita;
+            version++;
             SkyblockSimplifiedSBS.LOGGER.info("[SBS][Jacob] Anita line: crop {} (+{} fortune)",
                     anita.displayName(), JacobContestParser.anitaFortune(plain));
             return;
@@ -150,6 +162,7 @@ public final class JacobContestTracker {
         active = true;
         standing = read;
         rate.add(now, read.collected());
+        version++;
         // The probe logs only where a contest can actually be seen on the sidebar: a learned contest
         // day alone would otherwise log a dungeon's sidebar for twenty minutes.
         if (read.contest() || now - startSeenAt < CONTEST_MS || SkyBlockLocation.onIsland("The Garden")) {
@@ -202,5 +215,6 @@ public final class JacobContestTracker {
         lastMinuteAlerted = false;
         lastProbe = "";
         rate.clear();
+        version++;
     }
 }

@@ -24,6 +24,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import sbs.modid.client.core.dev.PacketThreadCheck;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.build.logic.BuildLibrary;
 import sbs.modid.client.helper.build.command.BuildCommandTree;
@@ -59,6 +60,7 @@ public class ClientCommandsMixin {
 
     @Inject(method = "handleCommands", at = @At("TAIL"))
     private void skyblockSimplified$registerClientCommands(ClientboundCommandsPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("ClientCommandsMixin.registerClientCommands");
         LiteralArgumentBuilder<SharedSuggestionProvider> sbs =
                 LiteralArgumentBuilder.<SharedSuggestionProvider>literal("sbs").executes(context -> 0);
         // PUBLIC entries only: developer and hidden commands never reach the suggestion tree.

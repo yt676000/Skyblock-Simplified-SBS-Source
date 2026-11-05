@@ -1,0 +1,297 @@
+{
+  "schemaVersion": 1,
+  "dataVersion": 1,
+  "generatedAt": "2026-10-08",
+  "note": "Heart of the Forest layout from the maintainer's Layout Recorder captures of the menu (play instance, 2026-10-08), tiers 1-8. Positions are (tier, column) with column = menu slot % 9; maxLevel from the 'Level x/N' lore line (1 when the perk has none). The perk id is the name lower-cased with non-alphanumerics as '_'; only ids seen in the profile API are CONFIRMED, the rest ESTIMATED.",
+  "maxTier": 8,
+  "perks": [
+    {
+      "id": "sweep",
+      "name": "Sweep",
+      "tier": 1,
+      "column": 4,
+      "maxLevel": 50,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "damage_boost",
+      "name": "Damage Boost",
+      "tier": 2,
+      "column": 2,
+      "maxLevel": 1,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "luck_of_the_forest",
+      "name": "Luck of the Forest",
+      "tier": 2,
+      "column": 3,
+      "maxLevel": 40,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "foraging_fortune",
+      "name": "Foraging Fortune",
+      "tier": 2,
+      "column": 4,
+      "maxLevel": 50,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "collector",
+      "name": "Collector",
+      "tier": 2,
+      "column": 5,
+      "maxLevel": 50,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "axe_toss",
+      "name": "Axe Toss",
+      "tier": 2,
+      "column": 6,
+      "maxLevel": 1,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "deep_waters",
+      "name": "Deep Waters",
+      "tier": 3,
+      "column": 2,
+      "maxLevel": 50,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "hunters_luck",
+      "name": "Hunter's Luck",
+      "tier": 3,
+      "column": 4,
+      "maxLevel": 50,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "galateas_might",
+      "name": "Galatea's Might",
+      "tier": 3,
+      "column": 6,
+      "maxLevel": 50,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "lottery",
+      "name": "Lottery",
+      "tier": 4,
+      "column": 1,
+      "maxLevel": 1,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "foraging_madness",
+      "name": "Foraging Madness",
+      "tier": 4,
+      "column": 2,
+      "maxLevel": 1,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "iron_lungs",
+      "name": "Iron Lungs",
+      "tier": 4,
+      "column": 3,
+      "maxLevel": 50,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "250_gifts",
+      "name": "250 Gifts",
+      "tier": 4,
+      "column": 4,
+      "maxLevel": 40,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "daily_wishes",
+      "name": "Daily Wishes",
+      "tier": 4,
+      "column": 5,
+      "maxLevel": 100,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "early_bird",
+      "name": "Early Bird",
+      "tier": 4,
+      "column": 6,
+      "maxLevel": 1,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "precision_cutting",
+      "name": "Precision Cutting",
+      "tier": 4,
+      "column": 7,
+      "maxLevel": 1,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "tree_whisperer",
+      "name": "Tree Whisperer",
+      "tier": 5,
+      "column": 2,
+      "maxLevel": 1,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "center_of_the_forest",
+      "name": "Center of the Forest",
+      "tier": 5,
+      "column": 4,
+      "maxLevel": 1,
+      "idCertainty": "CONFIRMED"
+    },
+    {
+      "id": "free_trial",
+      "name": "Free Trial",
+      "tier": 5,
+      "column": 6,
+      "maxLevel": 1,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "homing_axe",
+      "name": "Homing Axe",
+      "tier": 6,
+      "column": 1,
+      "maxLevel": 1,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "forest_fisher",
+      "name": "Forest Fisher",
+      "tier": 6,
+      "column": 2,
+      "maxLevel": 40,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "strength_boost",
+      "name": "Strength Boost",
+      "tier": 6,
+      "column": 3,
+      "maxLevel": 50,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "starlyn_supreme",
+      "name": "Starlyn Supreme",
+      "tier": 6,
+      "column": 4,
+      "maxLevel": 100,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "speed_boost",
+      "name": "Speed Boost",
+      "tier": 6,
+      "column": 5,
+      "maxLevel": 50,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "efficient_forager",
+      "name": "Efficient Forager",
+      "tier": 6,
+      "column": 6,
+      "maxLevel": 100,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "maniac_slicer",
+      "name": "Maniac Slicer",
+      "tier": 6,
+      "column": 7,
+      "maxLevel": 1,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "half_empty",
+      "name": "Half Empty",
+      "tier": 7,
+      "column": 2,
+      "maxLevel": 25,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "ricochet",
+      "name": "Ricochet",
+      "tier": 7,
+      "column": 4,
+      "maxLevel": 10,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "half_full",
+      "name": "Half Full",
+      "tier": 7,
+      "column": 6,
+      "maxLevel": 25,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "monster_hunter",
+      "name": "Monster Hunter",
+      "tier": 8,
+      "column": 1,
+      "maxLevel": 1,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "forest_speed",
+      "name": "Forest Speed",
+      "tier": 8,
+      "column": 2,
+      "maxLevel": 50,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "essence_fortune",
+      "name": "Essence Fortune",
+      "tier": 8,
+      "column": 3,
+      "maxLevel": 50,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "timber",
+      "name": "Timber",
+      "tier": 8,
+      "column": 4,
+      "maxLevel": 10,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "two_for_one",
+      "name": "Two-for-one",
+      "tier": 8,
+      "column": 5,
+      "maxLevel": 100,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "forest_strength",
+      "name": "Forest Strength",
+      "tier": 8,
+      "column": 6,
+      "maxLevel": 50,
+      "idCertainty": "ESTIMATED"
+    },
+    {
+      "id": "beekeeper",
+      "name": "Beekeeper",
+      "tier": 8,
+      "column": 7,
+      "maxLevel": 1,
+      "idCertainty": "ESTIMATED"
+    }
+  ]
+}

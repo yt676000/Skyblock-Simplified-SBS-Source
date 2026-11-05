@@ -49,6 +49,20 @@ public final class SoundControl {
     /** Whether the compiled state came from an enabled config - saves re-reading the flag. */
     private static boolean active;
     private static boolean whitelist;
+    private static boolean limitSpam;
+
+    /** Client thread only - the sound engine's {@code play} runs there. */
+    private static final SoundSpamLimiter LIMITER = new SoundSpamLimiter();
+
+    /**
+     * Sounds the spam limit never touches: note blocks are what every SBS alert and many Hypixel
+     * cues (Diana's echo harp included) are made of, and the rest are short gameplay feedback a
+     * player must not lose to a burst. Matched on the path, so no allocation.
+     */
+    private static final String[] NEVER_LIMITED_PREFIXES = {
+            "block.note_block.", "entity.experience_orb.pickup", "entity.player.levelup",
+            "ui.", "entity.ender_dragon.growl", "entity.wither.spawn",
+    };
 
     private SoundControl() {
     }
@@ -67,6 +81,9 @@ public final class SoundControl {
         SBSConfig.SoundSettings cfg = ConfigManager.getInstance().get().sounds;
         active = cfg.enabled;
         whitelist = cfg.whitelistMode;
+        limitSpam = cfg.limitSpam;
+        LIMITER.clear();
+        LIMITER.configure(cfg.spamMaxSounds, cfg.spamWindowTicks, cfg.spamRadius);
 
         Set<Identifier> compiledListed = new HashSet<>();
         if (cfg.listed != null) {
@@ -119,6 +136,31 @@ public final class SoundControl {
         }
         Float factor = volumes.get(id);
         return factor == null ? 1.0f : factor;
+    }
+
+    /**
+     * Whether an otherwise allowed sound is one copy too many of a burst. Never true while the limit
+     * is off, for a never-limited sound, or while a {@link SoundListeners} feature is subscribed:
+     * those hear every sound through a separate hook that a cancel here could cut off, and they must
+     * not lose the copies they count.
+     */
+    public static boolean spamLimited(Identifier id, double x, double y, double z) {
+        ensureCompiled();
+        if (!active || !limitSpam || SoundListeners.ACTIVE) {
+            return false;
+        }
+        String path = id.getPath();
+        for (String prefix : NEVER_LIMITED_PREFIXES) {
+            if (path.startsWith(prefix)) {
+                return false;
+            }
+        }
+        return !LIMITER.allow(id, x, y, z, System.nanoTime());
+    }
+
+    /** Forgets the spam limit's recorded starts. Main thread, from {@code WorldTransitions}. */
+    public static void onWorldChange() {
+        LIMITER.clear();
     }
 
     /** Whether the module is on at all - lets the mixin skip its work entirely while it is off. */

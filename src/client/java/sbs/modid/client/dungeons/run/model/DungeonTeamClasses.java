@@ -12,9 +12,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.player.PlayerSkin;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.dungeons.run.logic.DungeonScoreboard;
+import sbs.modid.client.dungeons.run.logic.DungeonStateManager;
 
+import sbs.modid.client.core.scoreboard.ScoreboardSnapshots;
+import sbs.modid.client.core.tab.TabWidgets;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -49,8 +53,8 @@ public final class DungeonTeamClasses {
             Pattern.compile("\\[([ABTHM])\\]\\s+([A-Za-z0-9_]{1,16})");
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
-    private static final long REFRESH_MS = 1000;
 
     // Class colours (user spec): A red, B orange, T green, H purple, M blue.
     public static final int COLOR_ARCHER = 0xFFFF5555;
@@ -63,7 +67,18 @@ public final class DungeonTeamClasses {
     private static volatile Map<String, Character> byName = Map.of();
     /** Per-run latch: first class seen per player, held for the whole run (class can't change). */
     private static final Map<String, Character> latched = new ConcurrentHashMap<>();
-    private static volatile long lastRefreshAt;
+    /**
+     * Class initial per name exactly as callers pass it ({@code 0} = none), filled on first lookup and
+     * replaced on every refresh. Callers ask with the same few names every frame, so the lower-casing
+     * and prefix scan run once per name per refresh instead of once per call.
+     */
+    private static volatile Map<String, Character> resolved = new ConcurrentHashMap<>();
+    /**
+     * Tab entry per IGN, under both the profile's own spelling and its lower-cased form (the run
+     * roster is lower-cased). Replaced wholesale on refresh. Holds the {@link PlayerInfo}, not its
+     * skin, so a skin that finishes downloading shows on the next frame.
+     */
+    private static volatile Map<String, PlayerInfo> infoByName = Map.of();
     private static volatile boolean loggedSelf;
 
     private DungeonTeamClasses() {
@@ -71,7 +86,6 @@ public final class DungeonTeamClasses {
 
     /** Whether any dungeon classes are known right now (live parse OR the per-run latch). */
     public static boolean hasClasses() {
-        refresh();
         return !byName.isEmpty() || !latched.isEmpty();
     }
 
@@ -82,7 +96,6 @@ public final class DungeonTeamClasses {
      * name unnamed ones.
      */
     public static java.util.Set<String> runRoster() {
-        refresh();
         return latched.isEmpty() ? java.util.Set.of() : java.util.Set.copyOf(latched.keySet());
     }
 
@@ -95,14 +108,33 @@ public final class DungeonTeamClasses {
         if (playerName == null || playerName.isEmpty()) {
             return 0;
         }
-        refresh();
-        String lower = playerName.toLowerCase(Locale.ROOT);
-        Character live = lookup(byName, lower);
-        if (live != null) {
-            return live;
+        Map<String, Character> cache = resolved;
+        Character known = cache.get(playerName);
+        if (known == null) {
+            String lower = playerName.toLowerCase(Locale.ROOT);
+            Character live = lookup(byName, lower);
+            Character held = live != null ? live : lookup(latched, lower);
+            known = held != null ? held : Character.valueOf((char) 0);
+            cache.put(playerName, known);
         }
-        Character held = lookup(latched, lower);
-        return held != null ? held : 0;
+        return known;
+    }
+
+    /**
+     * A player's skin from the tab list by IGN, in any letter case (marker names can be the
+     * lower-cased roster names), or {@code null} when no tab entry matches. Read from the table
+     * {@link #refresh()} builds, so no per-call scan of the tab list.
+     */
+    public static PlayerSkin skinOf(String playerName) {
+        if (playerName == null || playerName.isEmpty()) {
+            return null;
+        }
+        Map<String, PlayerInfo> table = infoByName;
+        PlayerInfo info = table.get(playerName);
+        if (info == null) {
+            info = table.get(playerName.toLowerCase(Locale.ROOT));   // mixed-case query only
+        }
+        return info != null ? info.getSkin() : null;
     }
 
     /** Exact then prefix (≥6 chars, for truncated names) lookup in a name → class table. */
@@ -131,12 +163,94 @@ public final class DungeonTeamClasses {
         };
     }
 
-    private static void refresh() {
-        long now = System.currentTimeMillis();
-        if (now - lastRefreshAt < REFRESH_MS) {
+    /**
+     * Re-parses on the client tick when the tab list, the tab's player entries, the sidebar, the
+     * connection or the in-dungeon state changed, or a caller asked for it - never from the map
+     * renderer, which only reads the published tables.
+     *
+     * <p>The player-entry revision is its own key because {@link TabWidgets#revision()} deliberately
+     * ignores entries without a display name; a class tag landing on such an entry would otherwise
+     * never trigger a re-parse.
+     */
+    public static void onClientTick() {
+        RefreshKey key = new RefreshKey(TabWidgets.revision(), playerListRevision,
+                ScoreboardSnapshots.current().revision(), Minecraft.getInstance().getConnection(),
+                DungeonStateManager.getInstance().inDungeon());
+        String requested = refreshRequest;
+        String reason = key.changedFrom(seen);
+        if (reason == null && requested == null) {
             return;
         }
-        lastRefreshAt = now;
+        refreshRequest = null;
+        seen = key;
+        lastRefreshReason = reason != null ? reason : requested;
+        refresh();
+        refreshCount++;
+    }
+
+    /** Called (client thread) after a player-info add/update/remove packet. */
+    public static void markPlayersChanged() {
+        playerListRevision++;
+    }
+
+    /** Asks for one re-parse on the next client tick (e.g. a Spirit Leap menu just opened). */
+    public static void requestRefresh(String reason) {
+        refreshRequest = reason;
+    }
+
+    /** Why the last re-parse ran, for the leap-menu probe log. */
+    public static String lastRefreshReason() {
+        return lastRefreshReason;
+    }
+
+    /** Goes up by one after every re-parse (lets the leap-menu probe re-log once classes land). */
+    public static int refreshCount() {
+        return refreshCount;
+    }
+
+    /** Size of the live parse table (probe log). */
+    public static int liveCount() {
+        return byName.size();
+    }
+
+    /** Size of the per-run latch (probe log). */
+    public static int latchedCount() {
+        return latched.size();
+    }
+
+    /** Everything a re-parse depends on. Pure, so the change test is unit-testable. */
+    public record RefreshKey(int tab, int players, int sidebar, Object connection, boolean inDungeon) {
+        /** The first input that differs from {@code before} (null = first run), or null if none. */
+        public String changedFrom(RefreshKey before) {
+            if (before == null) {
+                return "first";
+            }
+            if (tab != before.tab) {
+                return "tab";
+            }
+            if (players != before.players) {
+                return "players";
+            }
+            if (sidebar != before.sidebar) {
+                return "sidebar";
+            }
+            if (connection != before.connection) {
+                return "connection";
+            }
+            if (inDungeon != before.inDungeon) {
+                return "inDungeon";
+            }
+            return null;
+        }
+    }
+
+    private static RefreshKey seen;
+    private static volatile int playerListRevision;
+    private static volatile String refreshRequest;
+    private static volatile String lastRefreshReason = "none";
+    private static volatile int refreshCount;
+
+    private static void refresh() {
 
         Map<String, Character> parsed = new HashMap<>();
         parseTabList(parsed);   // primary: "[212] Name (Tank 50)" - carries the local player too
@@ -149,22 +263,30 @@ public final class DungeonTeamClasses {
         byName = parsed.isEmpty() ? Map.of() : Map.copyOf(parsed);
 
         // Latch for the run, or drop it once the run is over.
-        if (DungeonScoreboard.isInCatacombs()) {
+        if (DungeonStateManager.getInstance().inDungeon()) {
             parsed.forEach(latched::putIfAbsent);   // first class seen per player wins (can't change)
             logSelfClassOnce();
         } else if (!latched.isEmpty()) {
             latched.clear();
             loggedSelf = false;
         }
+        resolved = new ConcurrentHashMap<>();   // after the latch update - lookups read both tables
     }
 
     /** Reads every tab entry's styled name for the "(Class level)" tag Hypixel writes in dungeons. */
     private static void parseTabList(Map<String, Character> out) {
         ClientPacketListener connection = Minecraft.getInstance().getConnection();
         if (connection == null) {
+            infoByName = Map.of();
             return;
         }
+        Map<String, PlayerInfo> infos = new HashMap<>();
         for (PlayerInfo info : connection.getOnlinePlayers()) {
+            String profileName = info.getProfile() != null ? info.getProfile().name() : null;
+            if (profileName != null && !profileName.isEmpty()) {
+                infos.putIfAbsent(profileName, info);
+                infos.putIfAbsent(profileName.toLowerCase(Locale.ROOT), info);
+            }
             Component display = info.getTabListDisplayName();
             if (display == null) {
                 continue;   // an unstyled entry carries no class tag
@@ -176,6 +298,7 @@ public final class DungeonTeamClasses {
                         Character.toUpperCase(matcher.group(2).charAt(0)));
             }
         }
+        infoByName = infos;
     }
 
     /** One-shot log per run confirming the local player's own latched class (drives their tank range). */
@@ -197,6 +320,6 @@ public final class DungeonTeamClasses {
     }
 
     private static String strip(String text) {
-        return text == null ? "" : text.replaceAll(SECTION_SIGN + ".", "");
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("");
     }
 }

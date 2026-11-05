@@ -53,6 +53,12 @@ public final class BitsShop {
 
     private static final char SECTION_SIGN = (char) 0x00A7;
 
+    /** A § and whatever follows it - stripped before the lore is pattern-matched. */
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
+
+    /** Thousands separators inside a matched bit cost. */
+    private static final Pattern SEPARATORS = Pattern.compile("[,.]");
+
     /** How many priced offers a menu needs before it is treated as a shop page. */
     private static final int PAGE_THRESHOLD = 2;
 
@@ -88,7 +94,7 @@ public final class BitsShop {
 
     /** Strips Hypixel's colour codes so the lore can be pattern-matched. */
     private static String plain(String text) {
-        return text == null ? "" : text.replaceAll(SECTION_SIGN + ".", "");
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("");
     }
 
     /**
@@ -109,7 +115,7 @@ public final class BitsShop {
             Matcher matcher = BITS.matcher(plain(line.getString()));
             if (matcher.find()) {
                 try {
-                    long bits = Long.parseLong(matcher.group(1).replaceAll("[,.]", ""));
+                    long bits = Long.parseLong(SEPARATORS.matcher(matcher.group(1)).replaceAll(""));
                     if (bits > 0) {
                         return bits;
                     }

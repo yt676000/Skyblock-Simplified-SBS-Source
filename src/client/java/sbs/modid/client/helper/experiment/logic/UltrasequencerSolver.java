@@ -105,12 +105,24 @@ final class UltrasequencerSolver {
         return 0xFF000000 | (g << 8);
     }
 
-    boolean allowsClick(int index) {
-        return model.allowsClick(index);
+    boolean allowsClick(int index, long now) {
+        return model.allowsClick(index, now);
     }
 
     void onClick(int index) {
         model.onClick(index);
+    }
+
+    void configureGuard(int vetoLimit, long staleMs) {
+        model.configureGuard(vetoLimit, staleMs);
+    }
+
+    boolean guardPaused() {
+        return model.guardPaused();
+    }
+
+    String guardDebug(long now) {
+        return model.guardDebug(now);
     }
 
     String debug() {

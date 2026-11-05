@@ -12,21 +12,35 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import sbs.modid.client.core.item.ItemAnalysis;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.economy.recipe.logic.EnchantedForm;
+import sbs.modid.client.economy.recipe.logic.RecipeLookup;
+import sbs.modid.client.economy.recipe.logic.RecipeRegistry;
+import sbs.modid.client.economy.recipe.logic.SkyBlockItemCatalog;
+import sbs.modid.client.economy.recipe.model.ItemRef;
 import sbs.modid.client.economy.recipe.ui.RecipeViewerScreen;
 import sbs.modid.client.economy.recipe.logic.SearchHighlightState;
 
 /**
- * Recipe Viewer lookup key: pressing <b>R</b> while hovering an item in any container opens the
- * Recipe Viewer pre-searched with that item, so recipes can be inspected from
+ * Recipe Viewer lookup keys. Pressing the lookup key (default <b>R</b>) while hovering an item in any container opens the
+ * Recipe Viewer directly on that item's recipes (Shift: its usages), resolved by SkyBlock id so
+ * reforges and stars never matter; items without a recipe fall back to a search on the cleaned
+ * name. Recipes can be inspected from
  * inventories, chests, the Bazaar, the Auction House – anywhere items are shown.
+ *
+ * <p>The enchanted-form key (unbound by default) opens the recipe of the hovered item's compacted
+ * form instead - Wheat → Enchanted Wheat ({@link EnchantedForm}).
  *
  * <p>Guards: the module must be enabled, a real item must be hovered, and no text field may be
  * focused (so typing an 'r' into an anvil / search box is never hijacked).
@@ -34,20 +48,18 @@ import sbs.modid.client.economy.recipe.logic.SearchHighlightState;
 @Mixin(AbstractContainerScreen.class)
 public abstract class RecipeLookupKeyMixin {
 
-    /** GLFW key code for R. */
-    private static final int KEY_R = 82;
-
-    private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
-
     @Shadow
     protected Slot hoveredSlot;
 
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
     private void skyblockSimplified$recipeLookup(KeyEvent event, CallbackInfoReturnable<Boolean> cir) {
-        if (event.key() != KEY_R) {
+        SBSConfig.RecipeViewerSettings settings = ConfigManager.getInstance().get().recipeViewer;
+        boolean lookup = settings.lookupKey > 0 && event.key() == settings.lookupKey;
+        boolean enchanted = settings.enchantedFormKey > 0 && event.key() == settings.enchantedFormKey;
+        if (!lookup && !enchanted) {
             return;
         }
-        if (!ConfigManager.getInstance().get().recipeViewer.enabled) {
+        if (!settings.enabled) {
             return;
         }
         AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
@@ -63,8 +75,55 @@ public abstract class RecipeLookupKeyMixin {
         if (stack == null || stack.isEmpty()) {
             return;
         }
-        String name = stack.getHoverName().getString().replaceAll(SECTION_SIGN + ".", "").trim();
-        Minecraft.getInstance().setScreenAndShow(new RecipeViewerScreen(name));
+        char hotkeyChar = RecipeLookup.hotkeyChar(event.key());
+        RecipeViewerScreen screen = lookup
+                ? lookupScreen(stack, event.hasShiftDown(), hotkeyChar)
+                : enchantedFormScreen(stack, hotkeyChar);
+        Minecraft.getInstance().setScreenAndShow(screen);
         cir.setReturnValue(true);
+    }
+
+    @Unique
+    private static RecipeViewerScreen lookupScreen(ItemStack stack, boolean usages, char hotkeyChar) {
+        // usages = Shift: like the overlay's right-click
+        RecipeRegistry registry = RecipeRegistry.getInstance();
+        String id = RecipeLookup.directId(ItemAnalysis.of(stack).id(),
+                lookup -> !(usages ? registry.usagesFor(lookup) : registry.recipesFor(lookup)).isEmpty());
+        SkyBlockItemCatalog catalog = SkyBlockItemCatalog.getInstance();
+        String name = RecipeLookup.cleanName(stack.getHoverName().getString(),
+                known -> catalog.byName(known) != null);
+        if (id == null) {
+            return RecipeViewerScreen.forHotkey(name, hotkeyChar);
+        }
+        return RecipeViewerScreen.forHotkey(refOf(id, name), usages, hotkeyChar);
+    }
+
+    /**
+     * The enchanted form's recipe; without one, the item's usages and a short action-bar note -
+     * other compactions of the same item are among those usages.
+     */
+    @Unique
+    private static RecipeViewerScreen enchantedFormScreen(ItemStack stack, char hotkeyChar) {
+        String id = ItemAnalysis.of(stack).id();
+        String name = RecipeLookup.cleanName(stack.getHoverName().getString(),
+                known -> SkyBlockItemCatalog.getInstance().byName(known) != null);
+        if (id == null || id.isEmpty()) {
+            return RecipeViewerScreen.forHotkey(name, hotkeyChar);
+        }
+        ItemRef form = EnchantedForm.best(id, RecipeRegistry.getInstance().usagesFor(id));
+        if (form != null) {
+            return RecipeViewerScreen.forHotkey(refOf(form.lookupId(), form.name), false, hotkeyChar);
+        }
+        if (Minecraft.getInstance().player != null) {
+            Minecraft.getInstance().player.sendOverlayMessage(
+                    Component.literal("No enchanted form for " + name));
+        }
+        return RecipeViewerScreen.forHotkey(refOf(id, name), true, hotkeyChar);
+    }
+
+    @Unique
+    private static ItemRef refOf(String id, String name) {
+        SkyBlockItemCatalog.Entry entry = SkyBlockItemCatalog.getInstance().byId(id);
+        return entry != null ? entry.toRef() : new ItemRef(id, null, name, 1);
     }
 }

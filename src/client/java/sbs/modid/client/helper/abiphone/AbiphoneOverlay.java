@@ -24,6 +24,7 @@ import sbs.modid.client.core.mixin.AbstractContainerScreenAccessor;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Renders every Abiphone menu as a fancy phone: a dark rounded body with a bezel, a status bar
@@ -55,6 +56,7 @@ public final class AbiphoneOverlay {
     private static final int CORNER = 10;    // phone body corner radius
 
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm");
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     private AbiphoneOverlay() {
     }
@@ -161,6 +163,6 @@ public final class AbiphoneOverlay {
     }
 
     private static String titleOf(AbstractContainerScreen<?> screen) {
-        return screen.getTitle() == null ? "" : screen.getTitle().getString().replaceAll("§.", "").trim();
+        return screen.getTitle() == null ? "" : FORMATTING.matcher(screen.getTitle().getString()).replaceAll("").trim();
     }
 }

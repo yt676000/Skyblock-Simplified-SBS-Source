@@ -14,41 +14,55 @@ import net.minecraft.world.item.ItemStack;
 import sbs.modid.client.core.api.GuiStateManager;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.item.SkyblockItem;
+import sbs.modid.client.core.item.TooltipLines;
 import sbs.modid.client.core.util.NumberDisplay;
 import sbs.modid.client.core.util.PlainText;
 import sbs.modid.client.economy.npcshop.logic.NpcFlips;
+import sbs.modid.client.economy.npcshop.logic.NpcShopCatalog;
+import sbs.modid.client.economy.prices.PriceVersion;
 import sbs.modid.client.ui.render.MenuFrame;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * "NPC flip: +1,234 each" on an offer in the shop that sells it, appended from
  * {@code PriceTooltipMixin}'s one handler. Returns the list untouched unless the open menu is a shop
- * with a learned, profitable offer for this item.
+ * with a learned, profitable offer for this item. Built once per stack, price version, config
+ * revision and shop-catalogue generation (the open menu is covered: the cache clears on every
+ * screen change).
  */
 public final class NpcFlipTooltip {
+
+    private static final TooltipLines CACHE = new TooltipLines(NpcFlipTooltip::build);
 
     private NpcFlipTooltip() {
     }
 
     public static List<Component> decorate(List<Component> lines, ItemStack stack) {
         if (!ConfigManager.getInstance().get().bazaar.npcFlips || stack == null || stack.isEmpty()
-                || !(GuiStateManager.getInstance().getCurrentScreen() instanceof AbstractContainerScreen<?> screen)) {
+                || !(GuiStateManager.getInstance().getCurrentScreen() instanceof AbstractContainerScreen<?>)) {
             return lines;
+        }
+        long key = TooltipLines.key(PriceVersion.get(), ConfigManager.getInstance().revision(),
+                NpcShopCatalog.getInstance().generation());
+        return TooltipLines.append(lines, CACHE.get(stack, key));
+    }
+
+    private static List<Component> build(ItemStack stack) {
+        if (!(GuiStateManager.getInstance().getCurrentScreen() instanceof AbstractContainerScreen<?> screen)) {
+            return List.of();
         }
         String npc = PlainText.strip(MenuFrame.of(screen).title()).trim();
         NpcFlips.Flip flip = NpcFlips.flipFor(npc, SkyblockItem.id(stack));
         if (flip == null) {
-            return lines;
+            return List.of();
         }
         boolean offer = ConfigManager.getInstance().get().bazaar.npcFlipSellSide == 1;
-        List<Component> out = new ArrayList<>(lines);
-        out.add(Component.literal("NPC flip: +" + NumberDisplay.format(Math.floor(flip.profitPerUnit()))
-                + " each (" + (offer ? "Bazaar sell offer" : "Bazaar insta-sell") + " after tax)")
-                .withColor(0x55FF55));
-        out.add(Component.literal("Sells ~" + NumberDisplay.format((double) flip.weekVolume()) + " a week")
-                .withColor(0xAAAAAA));
-        return out;
+        return List.of(
+                Component.literal("NPC flip: +" + NumberDisplay.format(Math.floor(flip.profitPerUnit()))
+                        + " each (" + (offer ? "Bazaar sell offer" : "Bazaar insta-sell") + " after tax)")
+                        .withColor(0x55FF55),
+                Component.literal("Sells ~" + NumberDisplay.format((double) flip.weekVolume()) + " a week")
+                        .withColor(0xAAAAAA));
     }
 }

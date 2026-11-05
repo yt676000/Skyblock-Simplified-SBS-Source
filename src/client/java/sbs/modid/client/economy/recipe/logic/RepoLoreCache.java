@@ -8,6 +8,10 @@
 
 package sbs.modid.client.economy.recipe.logic;
 
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -101,10 +105,11 @@ public final class RepoLoreCache {
             String file = URLEncoder.encode(id + ".json", StandardCharsets.UTF_8).replace("+", "%20");
             HttpRequest request = HttpRequest.newBuilder(URI.create(RAW + file))
                     .timeout(TIMEOUT).header("User-Agent", "SkyblockSimplifiedSBS").GET().build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = SecureHttp.send(MessageTypes.REPO_ITEM, request,
+                    HttpResponse.BodyHandlers.ofString());
             List<String> lore = EMPTY;
             if (response.statusCode() == 200) {
-                JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+                JsonObject json = MessageSchemas.parse(MessageTypes.REPO_ITEM, response.body()).getAsJsonObject();
                 if (json.has("lore") && json.get("lore").isJsonArray()) {
                     JsonArray arr = json.getAsJsonArray("lore");
                     List<String> lines = new ArrayList<>(arr.size());

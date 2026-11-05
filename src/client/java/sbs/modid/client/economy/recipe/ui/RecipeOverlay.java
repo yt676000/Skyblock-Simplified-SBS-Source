@@ -8,6 +8,8 @@
 
 package sbs.modid.client.economy.recipe.ui;
 
+import sbs.modid.client.core.net.UrlGuard;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -779,7 +781,7 @@ public final class RecipeOverlay {
      */
     private static void openWikiWindow(AbstractContainerScreen<?> screen, String url, String title) {
         if (!sbs.modid.client.economy.pricehistory.ui.PriceBrowserManager.getInstance().openNewUrl(url, title)) {
-            ConfirmLinkScreen.confirmLinkNow(screen, url);
+            UrlGuard.openAfterClick(screen, url);
         }
     }
 

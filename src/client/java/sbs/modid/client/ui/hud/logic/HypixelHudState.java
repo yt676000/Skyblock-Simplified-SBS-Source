@@ -35,6 +35,7 @@ public final class HypixelHudState {
     private static final HypixelHudState INSTANCE = new HypixelHudState();
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING_CODE = Pattern.compile(SECTION_SIGN + ".");
     /** The classic mana pencil ✎ – still accepted alongside the current custom-font glyph. */
     private static final String LEGACY_MANA_SYMBOL = String.valueOf((char) 0x270E);
 
@@ -191,6 +192,104 @@ public final class HypixelHudState {
         return vitalityMax > 0 && (System.currentTimeMillis() - lastVitalityUpdate) < FRESHNESS_MS;
     }
 
+    public void parseActionBar(String raw) {
+        if (raw == null) {
+            return;
+        }
+        // Hypixel resends the same bar several times a second; only a changed string is re-parsed.
+        // Everything time-based is still applied per call, from now, never from the cache.
+        ActionBar bar = actionBarCache.get(raw);
+        long now = System.currentTimeMillis();
+        lastActionBar = bar.text();
+
+        // Tac Timer: confirms a Gorilla Tactics use from its mana-cost text. Returns at once
+        // unless the Tactical Insertion was clicked in the last few seconds.
+        sbs.modid.client.combat.abilitytimers.logic.TacTimerTracker.getInstance().onActionBar(bar.text());
+
+        // Metal Detector: the treasure distance rides the same bar. Here rather than in a second
+        // mixin - this is the mod's one action-bar hook and it stays that way.
+        sbs.modid.client.skills.mining.metaldetector.logic.MetalDetectorTracker.getInstance()
+                .onActionBar(bar.text());
+
+        // The notice replaces the stats - it is what tells the mana bar its numbers are stale.
+        if (bar.notEnoughMana()) {
+            noteNotEnoughMana(false);
+        }
+        if (bar.manaValid()) {
+            manaCurrent = bar.manaCurrent();
+            manaMax = bar.manaMax();
+            lastManaUpdate = now;
+        }
+        if (bar.overflowValid()) {
+            overflowMana = bar.overflow();
+            lastOverflowUpdate = now;
+        }
+        if (bar.vitalityValid()) {
+            vitalityCurrent = bar.vitalityCurrent();
+            vitalityMax = bar.vitalityMax();
+            lastVitalityUpdate = now;
+        }
+
+        boolean enabled = ConfigManager.getInstance().get().hypixelGui.vitalityBar.rendersBar();
+        if (enabled && manaMax > 0 && now - lastVitalityLog > 5_000L) {
+            lastVitalityLog = now;
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Vitality] ratios={} bar='{}'",
+                    bar.ratioCount(), dumpCodepoints(raw));
+        }
+
+        // Skill XP gains ("+40 Combat (312,540/1,000,000)") feed the live pet-XP counter and the
+        // Skill Progress overlay. The progress part is optional - Hypixel omits it once a skill is
+        // maxed, and the player can turn it off - so the pet counter never depends on it.
+        if (bar.skill() != null) {
+            PetTracker.getInstance().onSkillXp(bar.skill(), bar.skillAmount());
+            // "which skill is earning right now", recorded from the same branch the pet counter
+            // uses - so it keeps answering for a maxed skill, where the progress part is gone.
+            SkillTracker.getInstance().onSkillPayout(bar.skill(), bar.skillAmount());
+            if (bar.skillProgressValid()) {
+                SkillTracker.getInstance().onSkillXp(bar.skill(), bar.skillAmount(),
+                        bar.skillCurrent(), bar.skillRequired());
+            }
+        }
+    }
+
+    private final ActionBarCache actionBarCache = new ActionBarCache();
+
+    /** The last parse, keyed by the raw string ({@code equals}, not component identity). */
+    static final class ActionBarCache {
+        private String lastRaw;
+        private ActionBar last;
+        private int parses;
+
+        ActionBar get(String raw) {
+            ActionBar cached = last;
+            if (cached != null && raw.equals(lastRaw)) {
+                return cached;
+            }
+            parses++;
+            cached = parse(raw);
+            last = cached;
+            lastRaw = raw;
+            return cached;
+        }
+
+        /** How many times {@link #get} actually parsed (tests). */
+        int parses() {
+            return parses;
+        }
+    }
+
+    /**
+     * Everything one action-bar string says, with no timestamps and no side effects - safe to reuse
+     * for as long as the string is the same. A {@code *Valid} flag false means "leave that value".
+     */
+    record ActionBar(String text, boolean notEnoughMana, int ratioCount,
+                     boolean manaValid, int manaCurrent, int manaMax,
+                     boolean overflowValid, int overflow,
+                     boolean vitalityValid, int vitalityCurrent, int vitalityMax,
+                     String skill, double skillAmount,
+                     boolean skillProgressValid, double skillCurrent, double skillRequired) {
+    }
+
     /**
      * Parses a Hypixel action-bar line for the mana and overflow-mana segments; missing ones are
      * ignored. Structure-based (see {@link #STAT_RATIO}): with two or more symbol-ratios the last
@@ -198,24 +297,11 @@ public final class HypixelHudState {
      * when it carries the remembered / legacy mana glyph, so a mana-less bar ("health + drill
      * fuel") can never poison the mana values.
      */
-    public void parseActionBar(String raw) {
-        if (raw == null) {
-            return;
-        }
-        String text = raw.replaceAll(SECTION_SIGN + ".", "");
-        lastActionBar = text;
-        long now = System.currentTimeMillis();
+    static ActionBar parse(String raw) {
+        String text = FORMATTING_CODE.matcher(raw).replaceAll("");
 
-        // Metal Detector: the treasure distance rides the same bar. Here rather than in a second
-        // mixin - this is the mod's one action-bar hook and it stays that way.
-        sbs.modid.client.skills.mining.metaldetector.logic.MetalDetectorTracker.getInstance()
-                .onActionBar(text);
-
-        // The notice replaces the stats, so this has to be checked BEFORE the ratios are read (there
-        // are none to read) - it is what tells the mana bar its numbers are stale.
-        if (NOT_ENOUGH_MANA.matcher(text).find()) {
-            noteNotEnoughMana(false);
-        }
+        // Checked before the ratios: the notice replaces them.
+        boolean notEnough = NOT_ENOUGH_MANA.matcher(text).find();
 
         // Every "current/max<glyph>" ratio on the bar, in order (with its span), so mana and vitality
         // can be picked by glyph and the overflow bounded to the gap after mana.
@@ -244,11 +330,16 @@ public final class HypixelHudState {
                 }
             }
         }
+        boolean manaValid = false;
+        int manaCur = 0;
+        int manaMx = 0;
+        boolean overflowValid = false;
+        int overflow = 0;
         if (mana != null) {
             try {
-                manaCurrent = Integer.parseInt(mana.cur().replace(",", ""));
-                manaMax = Integer.parseInt(mana.max().replace(",", ""));
-                lastManaUpdate = now;
+                manaCur = Integer.parseInt(mana.cur().replace(",", ""));
+                manaMx = Integer.parseInt(mana.max().replace(",", ""));
+                manaValid = true;
             } catch (NumberFormatException ignored) {
                 // leave the previous values untouched
             }
@@ -262,78 +353,60 @@ public final class HypixelHudState {
                     break;
                 }
             }
-            Matcher overflow = OVERFLOW.matcher(text.substring(mana.end(), limit));
-            if (overflow.find()) {
+            Matcher m = OVERFLOW.matcher(text.substring(mana.end(), limit));
+            if (m.find()) {
                 try {
-                    overflowMana = Integer.parseInt(overflow.group(1).replace(",", ""));
-                    lastOverflowUpdate = now;
+                    overflow = Integer.parseInt(m.group(1).replace(",", ""));
+                    overflowValid = true;
                 } catch (NumberFormatException ignored) {
                     // leave the previous value untouched
                 }
             }
         }
 
-        parseVitality(raw, ratios, now);
-
-        // Skill XP gains ("+40 Combat (312,540/1,000,000)") feed the live pet-XP counter and the
-        // Skill Progress overlay. The progress part is optional - Hypixel omits it once a skill is
-        // maxed, and the player can turn it off - so the pet counter never depends on it.
-        Matcher skill = SKILL_XP.matcher(text);
-        if (skill.find()) {
-            try {
-                double amount = Double.parseDouble(skill.group(1).replace(",", ""));
-                PetTracker.getInstance().onSkillXp(skill.group(2), amount);
-                // "which skill is earning right now", recorded from the same branch the pet counter
-                // uses - so it keeps answering for a maxed skill, where the progress part is gone.
-                SkillTracker.getInstance().onSkillPayout(skill.group(2), amount);
-                if (skill.group(3) != null && skill.group(4) != null) {
-                    SkillTracker.getInstance().onSkillXp(skill.group(2), amount,
-                            Double.parseDouble(skill.group(3).replace(",", "")),
-                            Double.parseDouble(skill.group(4).replace(",", "")));
-                }
-            } catch (NumberFormatException ignored) {
-            }
-        }
-    }
-
-    /**
-     * Vitality is Hypixel's new "healing pool" stat, shown on the action bar as its own
-     * {@code current/max} ratio next to health and mana. The mana logic above keeps its
-     * health-first / mana-last contract, so vitality is read from a THIRD ratio: with three or more
-     * symbol-ratios, health is the first and mana the last, leaving the middle one as vitality.
-     *
-     * <p>Its exact glyph and slot are still settling on Hypixel's side, so a throttled
-     * {@code [SBS][Vitality]} log dumps the raw action bar (every non-ASCII glyph as its codepoint)
-     * whenever the vitality bar is switched on – enough to pin the format from a live client and,
-     * if the middle-ratio guess is off, move to an exact glyph match.
-     */
-    private void parseVitality(String raw, List<Ratio> ratios, long now) {
-        // Vitality = the ratio carrying the vitality glyph; no glyph match falls back to the old
-        // middle-ratio guess (health first, mana last on the pre-vitality layout).
+        // Vitality is Hypixel's "healing pool" stat: the ratio carrying the vitality glyph; no glyph
+        // match falls back to the old middle-ratio guess (health first, mana last). Its exact glyph
+        // and slot are still settling, so a throttled [SBS][Vitality] log dumps the raw bar while
+        // the vitality bar is on (see parseActionBar).
         Ratio vitality = pickByGlyph(ratios, VITALITY_GLYPH);
         if (vitality == null && ratios.size() >= 3) {
             vitality = ratios.get(1);
         }
+        boolean vitalityValid = false;
+        int vitCur = 0;
+        int vitMax = 0;
         if (vitality != null) {
             try {
-                int cur = Integer.parseInt(vitality.cur().replace(",", ""));
-                int max = Integer.parseInt(vitality.max().replace(",", ""));
-                if (max > 0) {
-                    vitalityCurrent = cur;
-                    vitalityMax = max;
-                    lastVitalityUpdate = now;
-                }
+                vitCur = Integer.parseInt(vitality.cur().replace(",", ""));
+                vitMax = Integer.parseInt(vitality.max().replace(",", ""));
+                vitalityValid = vitMax > 0;
             } catch (NumberFormatException ignored) {
                 // leave the previous values untouched
             }
         }
 
-        boolean enabled = ConfigManager.getInstance().get().hypixelGui.vitalityBar.rendersBar();
-        if (enabled && manaMax > 0 && now - lastVitalityLog > 5_000L) {
-            lastVitalityLog = now;
-            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Vitality] ratios={} bar='{}'",
-                    ratios.size(), dumpCodepoints(raw));
+        // Skill XP: amount and skill must parse; the progress part is optional.
+        String skillName = null;
+        double amount = 0;
+        boolean progressValid = false;
+        double current = 0;
+        double required = 0;
+        Matcher skill = SKILL_XP.matcher(text);
+        if (skill.find()) {
+            try {
+                amount = Double.parseDouble(skill.group(1).replace(",", ""));
+                skillName = skill.group(2);
+                if (skill.group(3) != null && skill.group(4) != null) {
+                    current = Double.parseDouble(skill.group(3).replace(",", ""));
+                    required = Double.parseDouble(skill.group(4).replace(",", ""));
+                    progressValid = true;
+                }
+            } catch (NumberFormatException ignored) {
+            }
         }
+        return new ActionBar(text, notEnough, ratios.size(), manaValid, manaCur, manaMx,
+                overflowValid, overflow, vitalityValid, vitCur, vitMax,
+                skillName, amount, progressValid, current, required);
     }
 
     /** One parsed "current/max<glyph>" segment and the character span it occupied on the bar. */

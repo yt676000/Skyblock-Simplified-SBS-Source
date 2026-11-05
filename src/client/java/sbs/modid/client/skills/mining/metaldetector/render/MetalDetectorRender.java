@@ -12,7 +12,8 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.render.WorldRender;
 import sbs.modid.client.skills.mining.metaldetector.logic.MetalDetectorSolver;
@@ -67,7 +68,7 @@ public final class MetalDetectorRender {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
 
         boolean sure = !fix.heightIsDerived() && fix.residual() <= SLOPPY_RESIDUAL;
         // Grows with the disagreement between readings: the box is the uncertainty, drawn.

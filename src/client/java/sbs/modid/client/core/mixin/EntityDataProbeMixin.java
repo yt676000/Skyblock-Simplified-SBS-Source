@@ -15,6 +15,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import sbs.modid.client.core.dev.PacketThreadCheck;
 import sbs.modid.client.core.dev.M7DragonProbe;
 
 /**
@@ -41,6 +42,7 @@ public class EntityDataProbeMixin {
 
     @Inject(method = "handleSetEntityData", at = @At("TAIL"))
     private void skyblockSimplified$probeEntityData(ClientboundSetEntityDataPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("EntityDataProbeMixin.probeEntityData");
         if (M7DragonProbe.ARMED) {
             M7DragonProbe.getInstance().onEntityData(packet);
         }
@@ -48,6 +50,7 @@ public class EntityDataProbeMixin {
 
     @Inject(method = "handleAddEntity", at = @At("TAIL"))
     private void skyblockSimplified$probeAddEntity(ClientboundAddEntityPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("EntityDataProbeMixin.probeAddEntity");
         if (M7DragonProbe.ARMED) {
             M7DragonProbe.getInstance().onAddEntity(packet);
         }

@@ -28,7 +28,7 @@ public final class GearPage implements PvPage {
     private static final String[][] CONTAINERS = {
             {"inventory", "Inventory"}, {"ender_chest", "Ender Chest"},
             {"accessory_bag", "Accessory Bag"}, {"quiver", "Quiver"},
-            {"potion_bag", "Potion Bag"}, {"fishing_bag", "Fishing Bag"},
+            {"potion_bag", "Potion Bag"}, {"bait_sack", "Bait Sack"},
             {"vault", "Personal Vault"}};
 
     @Override
@@ -78,10 +78,11 @@ public final class GearPage implements PvPage {
                              int x, int y, int w) {
         y = PvDraw.heading(g, ctx.font, x, y, w, "Containers");
         for (String[] c : CONTAINERS) {
-            if (!invs.has(c[0]) || y + ctx.font.lineHeight > ctx.bottom()) {
+            String key = PvDraw.containerKey(invs, c[0]);
+            if (!invs.has(key) || y + ctx.font.lineHeight > ctx.bottom()) {
                 continue;
             }
-            JsonArray slots = invs.getAsJsonArray(c[0]);
+            JsonArray slots = invs.getAsJsonArray(key);
             y = PvDraw.keyValue(g, ctx.font, x, y, w, c[1], "§f" + filled(slots) + "§8/" + slots.size());
         }
         if (invs.has("backpacks")) {

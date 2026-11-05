@@ -149,8 +149,8 @@ public final class PartyCreateScreen extends Screen {
         rows.add((x, y, w, h) -> SciFiTextField.forIntRow(x, y, w, h, "Party Size", 2, 100,
                 () -> d.size, v -> d.size = v, ""));
         if (!dungeons) {
-            rows.add((x, y, w, h) -> SciFiTextField.forRow(x, y, w, h, "Note", "Note...", 200,
-                    () -> d.note, v -> d.note = v));
+            rows.add((x, y, w, h) -> licenceOnly(SciFiTextField.forRow(x, y, w, h, "Note", "Note...", 200,
+                    () -> d.note, v -> d.note = v)));
         }
         rows.add((x, y, w, h) -> SciFiTextField.forIntRow(x, y, w, h, "SB Lvl (0=off)", 0, 600,
                 () -> d.sbLevel, v -> d.sbLevel = v, ""));
@@ -188,8 +188,8 @@ public final class PartyCreateScreen extends Screen {
                         () -> d.mineshafts, v -> d.mineshafts = v, ""));
             }
             case "combat" -> {
-                rows.add((x, y, w, h) -> SciFiTextField.forRow(x, y, w, h, "Mob / Boss", "e.g. Zealot, Dragon...", 48,
-                        () -> d.mob, v -> d.mob = v));
+                rows.add((x, y, w, h) -> licenceOnly(SciFiTextField.forRow(x, y, w, h, "Mob / Boss",
+                        "e.g. Zealot, Dragon...", 48, () -> d.mob, v -> d.mob = v)));
                 rows.add((x, y, w, h) -> SciFiTextField.forIntRow(x, y, w, h, "Bestiary Milestone (0=off)", 0, 1000,
                         () -> d.bestiaryMilestone, v -> d.bestiaryMilestone = v, ""));
                 rows.add((x, y, w, h) -> SciFiTextField.forIntRow(x, y, w, h, "Eyes Placed (0=off)", 0, 100000,
@@ -273,7 +273,9 @@ public final class PartyCreateScreen extends Screen {
         JsonObject spec = new JsonObject();
         spec.addProperty("type", d.type);
         spec.addProperty("size", d.size);
-        spec.addProperty("note", d.note);
+        // Free text other players read: licence-only until there is moderation.
+        boolean freeText = PartyFinderApi.chatAllowed();
+        spec.addProperty("note", freeText ? d.note : "");
         JsonArray reqs = new JsonArray();
 
         if (d.sbLevel > 0) {
@@ -321,7 +323,7 @@ public final class PartyCreateScreen extends Screen {
                 }
             }
             case "combat" -> {
-                if (!d.mob.isBlank()) {
+                if (freeText && !d.mob.isBlank()) {
                     spec.addProperty("mob", d.mob.trim());
                 }
                 if (d.bestiaryMilestone > 0) {
@@ -401,6 +403,22 @@ public final class PartyCreateScreen extends Screen {
         return req;
     }
 
+    /** Shown in the note and mob fields for a player without a licence token. */
+    static final String LICENCE_ONLY_HINT = "Notes need a licence token (not a free token)";
+
+    /**
+     * Free text that other players read (note, mob) stays licence-only until there is moderation:
+     * for a free token the field is read-only, empty and says why.
+     */
+    private static SciFiTextField licenceOnly(SciFiTextField field) {
+        if (!PartyFinderApi.chatAllowed()) {
+            field.setValue("");
+            field.setEditable(false);
+            field.setHint(Component.literal(LICENCE_ONLY_HINT));
+        }
+        return field;
+    }
+
     private static JsonObject manual(String label) {
         JsonObject req = new JsonObject();
         req.addProperty("key", "manual:" + label);
@@ -409,7 +427,7 @@ public final class PartyCreateScreen extends Screen {
 
     private void onCreate() {
         if (!PartyFinderApi.ready()) {
-            status = "Need a world + licence token.";
+            status = "Need a world + Party Finder consent.";
             return;
         }
         status = "Creating...";

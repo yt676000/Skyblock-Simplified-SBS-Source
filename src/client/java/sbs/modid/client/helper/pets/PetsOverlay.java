@@ -58,6 +58,8 @@ public final class PetsOverlay {
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
     private static final Pattern PAGE = Pattern.compile("\\(([0-9]+)/([0-9]+)\\)");
+    private static final Pattern PAGE_COUNTER = Pattern.compile("\\([0-9]+/[0-9]+\\)");
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
     /** "[Lvl 100] Golden Dragon" – the level lives in the pet's own display name. */
     private static final Pattern PET_LEVEL = Pattern.compile("\\[Lvl\\s*([0-9]+)]");
 
@@ -141,7 +143,7 @@ public final class PetsOverlay {
      * Takes the title in any form - it strips, trims and lowercases what it is given.
      */
     public static boolean isPetsMenu(String title) {
-        return title.replaceAll("\\([0-9]+/[0-9]+\\)", "").trim()
+        return PAGE_COUNTER.matcher(title).replaceAll("").trim()
                 .toLowerCase(Locale.ROOT).startsWith("pets");
     }
 
@@ -423,11 +425,9 @@ public final class PetsOverlay {
         if (font.width(text) <= width) {
             return text;
         }
-        String cut = text;
-        while (!cut.isEmpty() && font.width(cut + "…") > width) {
-            cut = cut.substring(0, cut.length() - 1);
-        }
-        return cut + "…";
+        // One measured cut instead of trimming a character at a time: the longest prefix that still
+        // fits next to the ellipsis, exactly what the old loop converged on.
+        return font.plainSubstrByWidth(text, Math.max(0, width - font.width("…")), false) + "…";
     }
 
     // ------------------------------------------------------------------
@@ -538,7 +538,7 @@ public final class PetsOverlay {
     }
 
     private static String strip(String text) {
-        return text == null ? "" : text.replaceAll(SECTION_SIGN + ".", "");
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("");
     }
 
     private static int clamp(int value, int min, int max) {

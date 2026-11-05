@@ -25,6 +25,7 @@ import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.api.GuiStateManager;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.core.util.NumberParse;
 import sbs.modid.client.combat.mobhighlight.logic.MobHighlightTracker;
 
 import java.util.HashMap;
@@ -61,6 +62,7 @@ public final class BestiaryTracker {
     private static final Pattern KILLS = Pattern.compile("(?i)\\bkills?:?\\s*([0-9,]+)");
     /** A trailing tier marker on a mob item name ("Zombie 5" / "Zombie IX" -> "Zombie"). */
     private static final Pattern TRAILING_TIER = Pattern.compile("\\s+([IVXLC]+|\\d+)$");
+    private static final Pattern NON_ALNUM = Pattern.compile("[^A-Z0-9]");
 
     private static final char SECTION_SIGN = (char) 0x00A7;
     private static final long SCAN_INTERVAL_MS = 500;
@@ -90,6 +92,8 @@ public final class BestiaryTracker {
 
     private long lastScanAt;
     private long lastLogAt;
+    /** The pinned mob's lore as last logged, so the line is written once per change, not per scan. */
+    private String lastPinnedLore = "";
 
     private BestiaryTracker() {
     }
@@ -98,13 +102,59 @@ public final class BestiaryTracker {
         return INSTANCE;
     }
 
+    /**
+     * World leave: the tracked instances vanish with the world, and one seen moments before the hop
+     * would be counted as a kill. The live session counts are not world state and survive.
+     */
+    public void onWorldChange() {
+        nearby.clear();
+    }
+
     private static sbs.modid.client.core.config.SBSConfig.BestiarySettings cfg() {
         return ConfigManager.getInstance().get().bestiary;
     }
 
     /** Upper-cased, alphanumeric-only key so "Zombie", "zombie", "ZOMBIE" all match. */
     private static String normalize(String value) {
-        return value == null ? "" : value.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+        return value == null ? "" : NON_ALNUM.matcher(value.toUpperCase(Locale.ROOT)).replaceAll("");
+    }
+
+    /**
+     * {@code normalize(raw).equals(key)} without building the normalized copy - this runs per
+     * nametag stand per tick. Non-ASCII text takes the regex path, because
+     * {@code toUpperCase} can turn one such character into several letters ({@code ß} → {@code SS}).
+     */
+    static boolean normalizedEquals(String raw, String key) {
+        int j = 0;
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (c >= 0x80) {
+                return normalize(raw).equals(key);
+            }
+            if (c >= 'a' && c <= 'z') {
+                c -= 'a' - 'A';
+            }
+            if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+                if (j >= key.length() || key.charAt(j) != c) {
+                    return false;
+                }
+                j++;
+            }
+        }
+        return j == key.length();
+    }
+
+    private String pinRaw;
+    private String pinKey = "";
+
+    /** The normalized pinned mob, re-derived only when the config value changes. */
+    private String pinKey() {
+        String raw = cfg().pinnedMob;
+        if (!java.util.Objects.equals(raw, pinRaw)) {
+            pinRaw = raw;
+            pinKey = normalize(raw);
+        }
+        return pinKey;
     }
 
     // ------------------------------------------------------------------ menu scan
@@ -194,7 +244,7 @@ public final class BestiaryTracker {
      * nature (client-side proximity), but it self-corrects every time the Bestiary menu is re-opened.
      */
     private void detectKills(long now) {
-        String pin = normalize(cfg().pinnedMob);
+        String pin = pinKey();
         if (pin.isEmpty()) {
             nearby.clear();
             return;
@@ -212,7 +262,7 @@ public final class BestiaryTracker {
         for (ArmorStand stand : stands) {
             String name = stand.getCustomName() == null ? null
                     : MobHighlightTracker.mobNameInNametag(stand.getCustomName().getString());
-            if (name == null || !normalize(name).equals(pin)) {
+            if (name == null || !normalizedEquals(name, pin)) {
                 continue;
             }
             LivingEntity mob = MobHighlightTracker.mobBelow(level, stand);
@@ -259,17 +309,17 @@ public final class BestiaryTracker {
         long maxKills = -1;
         Matcher overall = OVERALL.matcher(lore);
         if (overall.find()) {
-            kills = parseNum(overall.group(1));
-            maxKills = parseNum(overall.group(2));
+            kills = parseNum(lore, overall.start(1), overall.end(1));
+            maxKills = parseNum(lore, overall.start(2), overall.end(2));
         } else {
             Matcher killsMatcher = KILLS.matcher(lore);
             if (killsMatcher.find()) {
-                kills = parseNum(killsMatcher.group(1));
+                kills = parseNum(lore, killsMatcher.start(1), killsMatcher.end(1));
             }
             // Fallback max: the largest denominator of any "x/y" progress pair on the item.
             Matcher pair = PAIR.matcher(lore);
             while (pair.find()) {
-                maxKills = Math.max(maxKills, parseNum(pair.group(2)));
+                maxKills = Math.max(maxKills, parseNum(lore, pair.start(2), pair.end(2)));
             }
         }
         if (kills < 0 && !maxed) {
@@ -278,6 +328,14 @@ public final class BestiaryTracker {
         String name = cleanName(strip(stack.getHoverName().getString()));
         if (name.isEmpty()) {
             return null;
+        }
+        // The pinned mob's whole lore and what was read from it, once per change: "kills to max"
+        // disagreed with the menu on 2026-10-18 and the lore shape is not on record.
+        if (!pinKey().isEmpty() && normalizedEquals(name, pinKey()) && !lore.equals(lastPinnedLore)) {
+            lastPinnedLore = lore;
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bestiary] pinned '{}' read kills={} max={} maxed={} via {} | lore: {}",
+                    name, kills, maxKills, maxed, overall.reset().find() ? "Overall Progress" : "fallback",
+                    lore.replace('\n', '|'));
         }
         return new Mob(name, Math.max(0, kills), maxKills, maxed);
     }
@@ -330,12 +388,9 @@ public final class BestiaryTracker {
         return out.toString();
     }
 
-    private static long parseNum(String raw) {
-        try {
-            return Long.parseLong(raw.replaceAll("[^0-9]", ""));
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+    /** The digits of {@code [start, end)} as one number, separators ignored (0 when none). */
+    private static long parseNum(String text, int start, int end) {
+        return NumberParse.parseDigits(text, start, end, 0);
     }
 
     private static String strip(String text) {

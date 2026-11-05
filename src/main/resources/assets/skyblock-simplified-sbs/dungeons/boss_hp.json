@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "dataVersion": 1,
+  "note": "Maximum health per Catacombs boss, used to estimate a number from the boss bar's progress. Each entry needs boss (BONZO, SCARF, PROFESSOR, THORN, LIVID, SADAN, MAXOR, STORM, GOLDOR, NECRON), master (true for Master Mode), maxHp, certainty (WIKI until watched in game, then CONFIRMED) and source (page and date). Empty on purpose: no wiki was reachable when this was written, and a boss without an entry is shown as a percentage rather than a guessed number.",
+  "bosses": []
+}

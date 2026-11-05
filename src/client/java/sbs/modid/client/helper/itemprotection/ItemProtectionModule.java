@@ -124,7 +124,7 @@ public final class ItemProtectionModule implements SbsModule {
                 .anchor("item_protection_confirm_seconds")
                 .describe("How long you have to repeat a refused action to confirm it. Default: 5s."));
 
-        rows.add(SettingRow.toggle("Deny Sound", () -> cfg().denySound,
+        rows.add(SettingRow.soundToggle("Deny Sound", () -> cfg().denySound,
                         () -> { cfg().denySound = !cfg().denySound; save(); })
                 .anchor("item_protection_sound")
                 .describe("A short note when an action on a protected item is refused."));

@@ -8,6 +8,12 @@
 
 package sbs.modid.client.economy.auctions.logic;
 
+import sbs.modid.client.core.api.ApiFailure;
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+import sbs.modid.client.core.net.validation.ValidationException;
+
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -100,6 +106,12 @@ public final class AppraiseApi {
             JsonObject body = new JsonObject();
             body.addProperty("item_id", itemId);
             body.add("attributes", attributes);
+            try {
+                MessageSchemas.checkOutgoing(MessageTypes.OUT_APPRAISE, body);
+            } catch (ValidationException invalid) {
+                callback.done(null, ValidationException.USER_MESSAGE);
+                return;
+            }
             String payload = gson.toJson(body);
 
             String primary = PriceApi.base();
@@ -109,10 +121,11 @@ public final class AppraiseApi {
                 callback.done(null, answered.getMessage());
             } catch (Exception unreachable) {
                 String legacy = PriceApi.legacyBase();
-                if (legacy.equals(primary)) {
-                    SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Appraise] Request failed: {}",
-                            unreachable.toString());
-                    callback.done(null, "Connection failed");
+                // A refusal (consent or licence) is the same on every endpoint; only a failed
+                // connection is worth the legacy retry.
+                if (legacy.equals(primary) || ApiFailure.of(unreachable) != ApiFailure.OFFLINE) {
+                    ApiFailure.log("[SBS][Appraise]", "Request", unreachable);
+                    callback.done(null, ApiFailure.message(unreachable));
                     return;
                 }
                 try {
@@ -120,8 +133,8 @@ public final class AppraiseApi {
                 } catch (ApiException answeredLegacy) {
                     callback.done(null, answeredLegacy.getMessage());
                 } catch (Exception e) {
-                    SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Appraise] Request failed: {}", e.toString());
-                    callback.done(null, "Connection failed");
+                    ApiFailure.log("[SBS][Appraise]", "Request", e);
+                    callback.done(null, ApiFailure.message(e));
                 }
             }
         });
@@ -140,7 +153,7 @@ public final class AppraiseApi {
             builder.header("X-Api-Token", token.trim());
         }
         HttpResponse<byte[]> response = sbs.modid.client.core.api.SbsApi.send(
-                ConsentScope.PROFILE_DATA, http, builder.build(),
+                ConsentScope.PROFILE_DATA, MessageTypes.APPRAISE, builder.build(),
                 HttpResponse.BodyHandlers.ofByteArray());
         String text = inflate(response);
         int status = response.statusCode();
@@ -153,7 +166,17 @@ public final class AppraiseApi {
         if (status != 200) {
             throw new ApiException("HTTP " + status);
         }
-        Response result = gson.fromJson(text, Response.class);
+        Response result;
+        try {
+            sbs.modid.client.core.net.validation.SbsReply reply =
+                    sbs.modid.client.core.net.validation.SbsReply.parse(MessageTypes.APPRAISE, text);
+            if (reply.isError()) {
+                throw new ApiException(reply.error());
+            }
+            result = MessageSchemas.map(MessageTypes.APPRAISE, reply.data(), Response.class);
+        } catch (ValidationException invalid) {
+            throw new ApiException(ValidationException.USER_MESSAGE);
+        }
         if (result == null) {
             throw new ApiException("Empty response");
         }
@@ -225,16 +248,7 @@ public final class AppraiseApi {
 
     /** Inflates a gzip body (by header or magic bytes); small responses arrive uncompressed. */
     private static String inflate(HttpResponse<byte[]> response) throws Exception {
-        byte[] raw = response.body();
-        boolean gzip = response.headers().firstValue("Content-Encoding")
-                .map(value -> value.toLowerCase(java.util.Locale.ROOT).contains("gzip")).orElse(false)
-                || (raw.length > 2 && (raw[0] & 0xFF) == 0x1F && (raw[1] & 0xFF) == 0x8B);
-        if (!gzip) {
-            return new String(raw, StandardCharsets.UTF_8);
-        }
-        try (GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(raw))) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
+        return SecureHttp.inflateText(response, MessageTypes.APPRAISE);
     }
 
     // ------------------------------------------------------------------

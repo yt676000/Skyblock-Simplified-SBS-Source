@@ -95,10 +95,16 @@ public final class PerfOverlay {
         List<Perf.Row> rows = Perf.rows();
         for (int i = 0; i < rows.size() && i < TOP; i++) {
             Perf.Row row = rows.get(i);
-            out.add(new String[] {row.name(), String.format(Locale.ROOT, "%.3f avg  %.3f p95  %.0f/s%s",
+            out.add(new String[] {row.name(), String.format(Locale.ROOT, "%.3f avg  %.3f p95  %.0f/s%s%s",
                     row.last5().avgMs(), row.last5().p95Ms(), row.last5().callsPerSec(),
-                    row.allocMbPerSec() > 0.05 ? String.format(Locale.ROOT, "  %.1f MB/s", row.allocMbPerSec()) : "")});
+                    row.allocMbPerSec() > 0.05 ? String.format(Locale.ROOT, "  %.1f MB/s", row.allocMbPerSec()) : "",
+                    // BOOKMARK(merge 2026-10-05): cache-counters version kept; tick-context-gates "gated/s" text dropped.
+                    PerfReport.skipText(row))});
             red.add(PerfReport.overTarget(row));
+        }
+        for (CacheCounter.Stats cache : Perf.counterStats()) {
+            out.add(new String[] {"cache " + cache.name(), PerfReport.cacheText(cache)});
+            red.add(cache.thrashing());
         }
         lines = out;
         over = red;

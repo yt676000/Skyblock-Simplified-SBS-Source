@@ -51,6 +51,9 @@ import java.util.regex.Pattern;
  */
 public final class HotmTreeReader {
 
+    private static final Pattern NON_ALNUM_RUN = Pattern.compile("[^a-z0-9]+");
+    private static final Pattern EDGE_UNDERSCORES = Pattern.compile("^_+|_+$");
+
     private static final HotmTreeReader INSTANCE = new HotmTreeReader();
 
     /** The menu's title. Matched loosely - the real one may carry a tier or a page counter. */
@@ -315,7 +318,7 @@ public final class HotmTreeReader {
     }
 
     private static String slug(String name) {
-        return name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_")
-                .replaceAll("^_+|_+$", "");
+        String slug = NON_ALNUM_RUN.matcher(name.toLowerCase(Locale.ROOT)).replaceAll("_");
+        return EDGE_UNDERSCORES.matcher(slug).replaceAll("");
     }
 }

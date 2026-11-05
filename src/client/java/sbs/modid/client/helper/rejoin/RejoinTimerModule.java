@@ -97,7 +97,7 @@ public final class RejoinTimerModule implements SbsModule {
                 SettingRow.rangeSlider("Wait Seconds", 5, 120, () -> cfg().seconds,
                         value -> { cfg().seconds = value; save(); }, "s")
                         .describe("How long the countdown waits before calling the rejoin safe."),
-                SettingRow.toggle("Ding When Ready", () -> cfg().sound,
+                SettingRow.soundToggle("Ding When Ready", () -> cfg().sound,
                         () -> { cfg().sound = !cfg().sound; save(); })
                         .describe("Plays a sound when the countdown reaches zero."),
                 SettingRow.toggle("Auto-Rejoin at Zero", () -> cfg().autoRejoin,

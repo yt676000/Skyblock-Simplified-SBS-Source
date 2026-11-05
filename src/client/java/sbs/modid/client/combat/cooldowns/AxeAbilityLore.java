@@ -36,6 +36,7 @@ public final class AxeAbilityLore {
     private static final Pattern COOLDOWN = Pattern.compile("(?i)^Cooldown:\\s*([0-9]+)s");
     /** The rarity + type line: "UNCOMMON AXE", "LEGENDARY AXE", "RARE DUNGEON AXE"... */
     private static final Pattern TYPE = Pattern.compile("^(?:[A-Z]+ )+([A-Z]+)$");
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     /** One ability block. {@code trigger} is empty for a passive one; {@code cooldown} is -1 when none. */
     public record Ability(String name, String trigger, int cooldownSeconds) {
@@ -83,6 +84,6 @@ public final class AxeAbilityLore {
     }
 
     private static String strip(String line) {
-        return line == null ? "" : line.replaceAll("§.", "").strip();
+        return line == null ? "" : FORMATTING.matcher(line).replaceAll("").strip();
     }
 }

@@ -11,6 +11,7 @@ package sbs.modid.client.helper.loadouts;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 /**
  * Keys and lookups for the pet heads harvested from the Pets menu - pure, so the rules are tested.
@@ -29,12 +30,15 @@ final class PetStackIndex {
 
     static final char SKIN_MARK = '✦';
 
+    private static final Pattern NON_NAME_CHARS = Pattern.compile("[^A-Za-z0-9' -]");
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+
     private PetStackIndex() {
     }
 
     /** Comparable pet name: the loadout overlay's rule (ASCII letters, digits, ' and -; lower case). */
     static String cleanName(String name) {
-        return name == null ? "" : name.replaceAll("[^A-Za-z0-9' -]", " ").replaceAll("\\s+", " ")
+        return name == null ? "" : WHITESPACE.matcher(NON_NAME_CHARS.matcher(name).replaceAll(" ")).replaceAll(" ")
                 .trim().toLowerCase(Locale.ROOT);
     }
 

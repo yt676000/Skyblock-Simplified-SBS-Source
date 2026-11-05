@@ -8,6 +8,7 @@
 
 package sbs.modid.client.skills.garden.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
@@ -140,7 +141,7 @@ public final class VisitorGuard {
         if (mc.player != null) {
             mc.player.sendOverlayMessage(Component.literal(
                     "§cRare reward! §7Hold §bCtrl+Shift§7 and click to refuse §e" + valuable));
-            mc.player.playSound(SoundEvents.NOTE_BLOCK_BASS.value(), 0.6f, 0.6f);
+            SbsSounds.play(SoundEvents.NOTE_BLOCK_BASS.value(), 0.6f, 0.6f);
         }
         sbs.modid.SkyblockSimplifiedSBS.LOGGER.info("[SBS][Visitor] refuse blocked - offer has {}", valuable);
     }

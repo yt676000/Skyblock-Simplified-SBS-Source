@@ -16,7 +16,8 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.render.OverlayColor;
@@ -45,6 +46,8 @@ import java.util.List;
  * a highlight that flickers off in the open reads as broken rather than as occluded.
  */
 public final class FloorDropHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     /** Fallback when the configured hex is unparseable, so a half-typed colour never blanks a box. */
     private static final int FALLBACK_RGB = 0xFFFFFF;
@@ -68,7 +71,7 @@ public final class FloorDropHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
 
         Integer custom = OverlayColor.parseHex(cfg.colorHex);
         int color = 0xFF000000 | (custom == null ? FALLBACK_RGB : custom);
@@ -131,7 +134,7 @@ public final class FloorDropHighlight {
      * <p>The distance is measured from the <i>player</i> rather than from the camera, because that
      * is the number the player means - in third person the camera stands several blocks behind them.
      */
-    private static void label(GuiGraphicsExtractor g, Minecraft minecraft, Matrix4f viewProjection,
+    private static void label(GuiGraphicsExtractor g, Minecraft minecraft, Matrix4fc viewProjection,
                               Vec3 camPos, AABB box, FloorDropTracker.Sighting sighting,
                               Vec3 playerPos, SBSConfig.FloorDropSettings cfg, int color) {
         StringBuilder text = new StringBuilder(sighting.name());
@@ -141,10 +144,9 @@ public final class FloorDropHighlight {
         if (cfg.showDistance) {
             text.append(" §7").append(Math.round(playerPos.distanceTo(box.getCenter()))).append('m');
         }
-        Vec3 top = new Vec3(box.getCenter().x, box.maxY + 0.4, box.getCenter().z);
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos, top,
-                g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                box.getCenter().x, box.maxY + 0.4, box.getCenter().z, g.guiWidth(), g.guiHeight(), screen)) {
             g.centeredText(minecraft.font, Component.literal(text.toString()),
                     screen[0], screen[1], color);
         }

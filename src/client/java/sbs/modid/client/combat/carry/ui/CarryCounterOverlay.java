@@ -18,6 +18,7 @@ import sbs.modid.client.core.config.SBSConfig.CarryCounterSettings;
 import sbs.modid.client.core.config.SBSConfig.CarryCounterSettings.Carry;
 import sbs.modid.client.ui.hud.render.HudCard;
 import sbs.modid.client.ui.render.SciFiRender;
+import sbs.modid.client.core.render.DigitWidths;
 import sbs.modid.client.ui.theme.SBSTheme;
 import sbs.modid.client.ui.hud.edit.model.HudElement;
 import sbs.modid.client.ui.hud.edit.logic.HudLayout;
@@ -66,7 +67,7 @@ public final class CarryCounterOverlay {
         int contentW = font.width(header);
         for (Carry c : carries) {
             int rowW = MARK_W + font.width(c.player) + COL_GAP + font.width(labelOf(c))
-                    + COL_GAP + font.width(countText(c));
+                    + COL_GAP + DigitWidths.width(font, countText(c));
             contentW = Math.max(contentW, rowW);
         }
         int width = PAD * 2 + contentW;
@@ -88,7 +89,7 @@ public final class CarryCounterOverlay {
         }
         g.text(font, Component.literal(header), ix, iy, SBSTheme.ACCENT_BRIGHT);
         String totalText = String.valueOf(total);
-        g.text(font, Component.literal(totalText), right - font.width(totalText), iy, SBSTheme.TEXT_MUTED);
+        g.text(font, Component.literal(totalText), right - DigitWidths.width(font, totalText), iy, SBSTheme.TEXT_MUTED);
 
         int ly = iy + font.lineHeight + LINE_GAP;
         for (Carry c : carries) {
@@ -103,7 +104,7 @@ public final class CarryCounterOverlay {
 
             // Count hard right (green), boss label just left of it (muted).
             String count = countText(c);
-            int countX = right - font.width(count);
+            int countX = right - DigitWidths.width(font, count);
             g.text(font, Component.literal(count), countX, ly, COUNT_COLOR);
 
             String label = labelOf(c);

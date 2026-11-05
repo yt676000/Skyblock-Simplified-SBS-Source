@@ -88,7 +88,7 @@ public final class PetsListPage implements PvPage {
         SciFiRender.roundedRectWithBorder(g, x, y, w, h, SBSTheme.CORNER_RADIUS,
                 isSelected || hovered ? SBSTheme.CARD_BG_HOVER : SBSTheme.CARD_BG,
                 isSelected ? SBSTheme.ACCENT_BRIGHT : SBSTheme.CARD_BORDER);
-        g.item(PvDraw.petIcon(PvDraw.str(pet, "type")), x + 2, y + 1);
+        g.item(PvDraw.petIcon(PvDraw.str(pet, "type"), PvDraw.str(pet, "skin")), x + 2, y + 1);
 
         String color = PvDraw.TIER_COLOR.getOrDefault(PvDraw.str(pet, "tier"), "§f");
         int textY = y + (h - ctx.font.lineHeight) / 2;
@@ -109,7 +109,8 @@ public final class PetsListPage implements PvPage {
             rx -= PvDraw.CELL;
             g.item(SkyBlockItemIcons.getInstance().icon(PvDraw.str(pet, "item"), null, 1), rx, y + 1);
         }
-        String name = color + PvDraw.pretty(PvDraw.str(pet, "type"));
+        String skin = PvDraw.petSkinName(PvDraw.str(pet, "type"), PvDraw.str(pet, "skin"));
+        String name = color + PvDraw.pretty(PvDraw.str(pet, "type")) + (skin.isEmpty() ? "" : " §d✦ " + skin);
         int nameSpace = rx - 4 - tx;
         if (nameSpace > 8) {
             g.text(ctx.font, Component.literal(PvDraw.trim(ctx.font, name, nameSpace)), tx, textY,
@@ -121,6 +122,9 @@ public final class PetsListPage implements PvPage {
             tip.add(Component.literal(color + PvDraw.pretty(PvDraw.str(pet, "type"))));
             tip.add(Component.literal("§7Tier §f" + PvDraw.pretty(PvDraw.str(pet, "tier"))));
             tip.add(Component.literal("§7Level §f" + pet.get("level").getAsInt()));
+            if (!skin.isEmpty()) {
+                tip.add(Component.literal("§7Skin §d" + skin));
+            }
             if (held) {
                 tip.add(Component.literal("§7Held §f" + PvDraw.pretty(PvDraw.str(pet, "item"))));
             }
@@ -139,7 +143,7 @@ public final class PetsListPage implements PvPage {
         int iconY = ctx.y + 8;
         SciFiRender.roundedRectWithBorder(g, cx - 12, iconY, 24, 24, 3,
                 SBSTheme.CARD_BG_DISABLED, SBSTheme.CARD_BORDER);
-        g.item(PvDraw.petIcon(PvDraw.str(pet, "type")), cx - 8, iconY + 4);
+        g.item(PvDraw.petIcon(PvDraw.str(pet, "type"), PvDraw.str(pet, "skin")), cx - 8, iconY + 4);
         int y = iconY + 30;
         g.centeredText(ctx.font, Component.literal(color + PvDraw.pretty(PvDraw.str(pet, "type"))),
                 cx, y, SBSTheme.TEXT);
@@ -147,6 +151,10 @@ public final class PetsListPage implements PvPage {
         g.centeredText(ctx.font, Component.literal(color + tier), cx, y, SBSTheme.TEXT);
         y += ctx.font.lineHeight + 5;
         y = PvDraw.line(g, ctx.font, x + 8, y, "§7Level §f" + pet.get("level").getAsInt());
+        String skinName = PvDraw.petSkinName(PvDraw.str(pet, "type"), PvDraw.str(pet, "skin"));
+        if (!skinName.isEmpty()) {
+            y = PvDraw.line(g, ctx.font, x + 8, y, "§7Skin §d" + skinName);
+        }
         boolean active = pet.has("active") && pet.get("active").getAsBoolean();
         y = PvDraw.line(g, ctx.font, x + 8, y, "§7Active: " + (active ? "§ayes" : "§8no"));
         y = PvDraw.heading(g, ctx.font, x + 8, y + 4, w - 16, "Held Item");

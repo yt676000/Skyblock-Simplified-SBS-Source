@@ -11,6 +11,7 @@ package sbs.modid.client.core.config;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.alert.AlertChannel;
 import sbs.modid.client.core.alert.AlertChannels;
+import sbs.modid.client.core.async.SbsExecutors;
 import sbs.modid.client.core.util.NumberTextFormat;
 import sbs.modid.client.helper.visual.model.WindowButtonStyle;
 import sbs.modid.client.helper.visual.render.Chroma;
@@ -18,7 +19,6 @@ import sbs.modid.client.ui.hud.edit.logic.HudLayoutStore;
 
 import java.io.IOException;
 import java.io.Reader;
-import java.io.Writer;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
@@ -45,6 +45,28 @@ public final class ConfigManager {
 
     private SBSConfig config;
 
+    /**
+     * Bumped whenever the in-memory config may have changed: every save, load, reload, profile
+     * switch and reset. Lets a reader cache something derived from the config and recompute it only
+     * when this moves, instead of re-reading the settings per frame. Relies on the existing contract
+     * that every mutation is followed by {@link #save()}.
+     */
+    private volatile int revision;
+
+    /**
+     * {@link #save()} only marks this; the write follows once a burst of changes (a slider drag)
+     * has settled. The JSON and its target file are captured on the client thread, the write runs on
+     * {@link SbsExecutors#io()}.
+     */
+    private final DebouncedSave<Pending> pending = new DebouncedSave<>(
+            () -> new Pending(configPath(), SBSFiles.GSON.toJson(get())),
+            p -> writeText(p.path(), p.json()),
+            SbsExecutors.io());
+
+    /** One serialized config, ready to write off-thread. */
+    private record Pending(Path path, String json) {
+    }
+
     private ConfigManager() {
     }
 
@@ -59,8 +81,14 @@ public final class ConfigManager {
     public SBSConfig get() {
         if (config == null) {
             config = load();
+            revision++;
         }
         return config;
+    }
+
+    /** See {@link #revision}; compare for change, never for order. */
+    public int revision() {
+        return revision;
     }
 
     /**
@@ -72,7 +100,10 @@ public final class ConfigManager {
      * noticed.
      */
     public void reload() {
+        // The file was replaced on purpose; a deferred write of the old settings must not undo that.
+        pending.discard();
         config = null;
+        revision++;
     }
 
     /** The file the active profile is stored in – the base config for Default, else its own file. */
@@ -100,10 +131,12 @@ public final class ConfigManager {
             return false;
         }
         if (config != null) {
+            pending.discard();
             writeToDisk(config);
         }
         profiles.setActive(target);
         config = null;
+        revision++;
         SkyblockSimplifiedSBS.LOGGER.info("[SBS] Switched to config profile '{}'", target);
         return true;
     }
@@ -129,6 +162,10 @@ public final class ConfigManager {
                         migrateChromaSpeed(loaded);
                         migrateHighlightNames(loaded);
                         migrateDianaHud(loaded);
+                        migrateChatSpamFilters(loaded);
+                        if (loaded.dungeons != null) {
+                            sbs.modid.client.dungeons.puzzle.logic.PuzzleSettings.migrateSilverfish(loaded.dungeons);
+                        }
                         // Last, and after the migrations: it may only turn something on once the
                         // field it is turning on has finished being upgraded.
                         adoptShippedDefaults(loaded);
@@ -261,6 +298,34 @@ public final class ConfigManager {
         }
         LicenceToken.getInstance().adoptLegacy(config.licence.legacyToken);
         config.licence.legacyToken = null;
+    }
+
+    /**
+     * Moves Better Chat's three standalone spam booleans into the preset map under their old ids.
+     * Only a {@code true} carries over - {@code false} is what a missing key means anyway - and the
+     * boxed fields are nulled so the next write drops them from config.json.
+     */
+    @SuppressWarnings("deprecation")
+    static void migrateChatSpamFilters(SBSConfig config) {
+        SBSConfig.BetterChatSettings chat = config.betterChat;
+        if (chat == null) {
+            return;
+        }
+        if (chat.spamFilters == null) {
+            chat.spamFilters = new java.util.LinkedHashMap<>();
+        }
+        adoptSpamFlag(chat, chat.hideCommandsTooFast, "commandsTooFast");
+        adoptSpamFlag(chat, chat.hideNotEnoughMana, "notEnoughMana");
+        adoptSpamFlag(chat, chat.hideBlocksInTheWay, "blocksInTheWay");
+        chat.hideCommandsTooFast = null;
+        chat.hideNotEnoughMana = null;
+        chat.hideBlocksInTheWay = null;
+    }
+
+    private static void adoptSpamFlag(SBSConfig.BetterChatSettings chat, Boolean flag, String id) {
+        if (Boolean.TRUE.equals(flag)) {
+            chat.spamFilters.putIfAbsent(id, sbs.modid.client.social.chat.model.SpamFilterMode.HIDE);
+        }
     }
 
     /**
@@ -647,9 +712,25 @@ public final class ConfigManager {
         }
     }
 
-    /** Persists the current in-memory config to disk. */
+    /**
+     * Persists the current in-memory config to disk - debounced: the write happens
+     * {@link DebouncedSave#DELAY_MS} after the last call, off the client thread, or at the next
+     * {@link #flush()} (screen change, game stop), whichever comes first.
+     */
     public void save() {
-        writeToDisk(get());
+        revision++;
+        get();
+        pending.request(System.currentTimeMillis());
+    }
+
+    /** Client tick: writes a settled change. One comparison when nothing is pending. */
+    public void tick() {
+        pending.tick(System.currentTimeMillis());
+    }
+
+    /** Writes a pending change now, on this thread. */
+    public void flush() {
+        pending.flush();
     }
 
     /**
@@ -663,7 +744,9 @@ public final class ConfigManager {
      * would be a far worse surprise than one that left a saved layout behind.
      */
     public void resetToDefaults() {
+        pending.discard();
         config = new SBSConfig();
+        revision++;
         writeToDisk(config);
         SkyblockSimplifiedSBS.LOGGER.info("[SBS] Reset all settings in profile '{}' to defaults",
                 ConfigProfiles.getInstance().active());
@@ -698,6 +781,7 @@ public final class ConfigManager {
                 changed += disableIn(group, true);
             }
         }
+        revision++;
         writeToDisk(target);
         SkyblockSimplifiedSBS.LOGGER.info("[SBS] Disabled {} feature toggle(s)", changed);
         return changed;
@@ -751,12 +835,13 @@ public final class ConfigManager {
     }
 
     private void writeToDisk(SBSConfig data) {
-        Path path = configPath();
+        writeText(configPath(), SBSFiles.GSON.toJson(data));
+    }
+
+    private static void writeText(Path path, String json) {
         try {
             Files.createDirectories(path.getParent());
-            try (Writer writer = Files.newBufferedWriter(path)) {
-                SBSFiles.GSON.toJson(data, writer);
-            }
+            Files.writeString(path, json);
         } catch (IOException e) {
             SkyblockSimplifiedSBS.LOGGER.error("[SBS] Failed to write config", e);
         }

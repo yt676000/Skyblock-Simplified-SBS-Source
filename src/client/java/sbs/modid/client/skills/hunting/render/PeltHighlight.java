@@ -14,14 +14,15 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.render.WorldRender;
 import sbs.modid.client.skills.hunting.logic.PeltTracker;
+import sbs.modid.client.skills.hunting.logic.TrevorLocator;
 
 import java.util.Locale;
 
@@ -34,9 +35,12 @@ import java.util.Locale;
  * {@link PeltTracker}'s tick cache.
  */
 public final class PeltHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
+
 
     /** How far from Trevor the cooldown line is worth drawing - it is a "standing at him" readout. */
-    private static final double TREVOR_RANGE = 24.0;
+    private static final double TREVOR_RANGE = TrevorLocator.RANGE;
 
     /** Trevor's nametag floats about this far above his feet; the cooldown goes just under it. */
     private static final double NAME_HEIGHT = 2.1;
@@ -69,7 +73,7 @@ public final class PeltHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
 
         if (cfg.trapperCooldown) {
             drawTrevorCooldown(g, minecraft, viewProjection, camPos);
@@ -105,8 +109,11 @@ public final class PeltHighlight {
      * marked with a {@code ~} instead of being shown as if it were measured.
      */
     private static void drawTrevorCooldown(GuiGraphicsExtractor g, Minecraft minecraft,
-                                           Matrix4f viewProjection, Vec3 camPos) {
-        Entity trevor = findTrevor(minecraft, camPos);
+                                           Matrix4fc viewProjection, Vec3 camPos) {
+        Entity trevor = TrevorLocator.trevor(minecraft.level);
+        if (trevor != null && trevor.position().distanceToSqr(camPos) >= TREVOR_RANGE * TREVOR_RANGE) {
+            trevor = null;
+        }
         if (trevor == null) {
             return;
         }
@@ -141,10 +148,10 @@ public final class PeltHighlight {
             }
         }
 
-        Vec3 above = trevor.position().add(0, NAME_HEIGHT, 0);
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos, above,
-                g.guiWidth(), g.guiHeight());
-        if (screen == null) {
+        Vec3 feet = trevor.position();
+        int[] screen = SCREEN;
+        if (!WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                feet.x, feet.y + NAME_HEIGHT, feet.z, g.guiWidth(), g.guiHeight(), screen)) {
             return;
         }
         Font font = minecraft.font;
@@ -152,42 +159,14 @@ public final class PeltHighlight {
                 screen[1] + font.lineHeight + 1, color);
     }
 
-    /**
-     * The nearest entity whose name is Trevor's. Hypixel NPCs are player entities carrying their own
-     * display name, but the tag also turns up on a separate stand on some builds - so both are
-     * accepted and the nearest wins.
-     */
-    private static Entity findTrevor(Minecraft minecraft, Vec3 camPos) {
-        if (minecraft.level == null) {
-            return null;
-        }
-        Entity best = null;
-        double bestDistance = TREVOR_RANGE * TREVOR_RANGE;
-        for (Entity entity : minecraft.level.entitiesForRendering()) {
-            Component name = entity.getCustomName() != null ? entity.getCustomName()
-                    : (entity instanceof Player ? entity.getName() : null);
-            if (name == null) {
-                continue;
-            }
-            if (!name.getString().replaceAll("§.", "").toLowerCase(Locale.ROOT).contains("trevor")) {
-                continue;
-            }
-            double distance = entity.position().distanceToSqr(camPos);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                best = entity;
-            }
-        }
-        return best;
-    }
-
     /** The tier and species above the box - and a hint while the animal itself is faded out. */
-    private static void label(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void label(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                               AABB box, PeltTracker.Target target, int color) {
         String text = target.mob() == null ? target.label() + " (hidden)" : target.label();
-        Vec3 top = new Vec3((box.minX + box.maxX) / 2, box.maxY + 0.5, (box.minZ + box.maxZ) / 2);
-        int[] screen = WorldRender.projectToScreen(vp, camPos, top, g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                (box.minX + box.maxX) / 2, box.maxY + 0.5, (box.minZ + box.maxZ) / 2,
+                g.guiWidth(), g.guiHeight(), screen)) {
             g.centeredText(font, Component.literal(text), screen[0], screen[1], color);
         }
     }

@@ -10,6 +10,8 @@
     "MouseSensitivityMixin",
     "MouseTurnMixin",
     "KeepMousePositionMixin",
+    "KeepMouseCloseMixin",
+    "KeepMouseScreenMixin",
     "AutoSprintMixin",
     "InspectorMouseMixin",
     "InspectorKeyMixin",
@@ -21,7 +23,9 @@
     "FreecamTurnMixin",
     "FreecamClickMixin",
     "FreecamInteractionGuardMixin",
-    "FreecamPacketGuardMixin"
+    "FreecamPacketGuardMixin",
+    "GyroCastMixin",
+    "LightsLeverGuardMixin"
   ],
   "injectors": {
     "defaultRequire": 1

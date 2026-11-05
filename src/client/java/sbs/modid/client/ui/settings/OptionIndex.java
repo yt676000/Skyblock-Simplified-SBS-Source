@@ -203,7 +203,10 @@ public final class OptionIndex {
                     continue;
                 }
                 for (String alias : row.aliases()) {
-                    aliases.putIfAbsent(moduleId + ":" + alias, optionId);
+                    // An alias that already names a module is a row that moved here from that
+                    // module; anything else is an old id inside this one.
+                    String key = alias.indexOf(':') >= 0 ? alias : moduleId + ":" + alias;
+                    aliases.putIfAbsent(key, optionId);
                 }
             }
         }

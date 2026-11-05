@@ -110,7 +110,6 @@ ext.handRolledScrollbars = [
 	'skills/fishing/render/FishingHud.java'          : 3,
 	'social/chat/ui/IrcNamesScreen.java'             : 3,
 	// The Player Viewer's shared draw helper - one entry covering every page that calls it.
-	'social/playerviewer/ui/PvDraw.java'             : 3,
 	// These two do handle their own drags, so they work; they are still a second and third copy
 	// of the same maths and belong on the shared one.
 	'ui/component/ProfileSelector.java'              : 7,
@@ -187,6 +186,50 @@ tasks.register('uiControlCheck') {
 }
 
 tasks.named('check') { dependsOn 'uiControlCheck' }
+
+// Every sound the mod plays itself goes through core/audio/SbsSounds, which owns the "SBS Sounds"
+// master switch (off by default). A direct play call anywhere else would bypass it. The Sound
+// Manager's preview plays the game's own sounds and is exempt; so is SbsAudio, whose vanilla
+// fallback is only reached through SbsSounds.tone. Comment lines are not uses.
+tasks.register('sbsSoundCheck') {
+	group = 'verification'
+	description = 'Fails on a sound played outside core/audio/SbsSounds.'
+	def root = file('src/client/java/sbs/modid/client')
+	def allowed = ['core/audio/SbsSounds.java', 'core/audio/SbsAudio.java']
+	def allowedDirs = ['helper/sound/']
+	def patterns = ['SimpleSoundInstance', 'getSoundManager().play', 'playLocalSound', '.playSound(',
+			'SbsAudio.play(']
+	inputs.dir root
+	outputs.upToDateWhen { false }
+	doLast {
+		def offenders = []
+		root.eachFileRecurse { f ->
+			if (!f.name.endsWith('.java')) {
+				return
+			}
+			def rel = root.toPath().relativize(f.toPath()).toString().replace('\\', '/')
+			if (rel in allowed || allowedDirs.any { rel.startsWith(it) }) {
+				return
+			}
+			f.readLines().eachWithIndex { line, i ->
+				def code = line.trim()
+				if (code.startsWith('*') || code.startsWith('//') || code.startsWith('/*')) {
+					return
+				}
+				if (patterns.any { code.contains(it) }) {
+					offenders << "  ${rel}:${i + 1}: ${code}"
+				}
+			}
+		}
+		if (offenders) {
+			throw new GradleException(
+				"Sounds the mod plays itself go through core/audio/SbsSounds (play / tone), so the\n" +
+				"\"SBS Sounds\" master switch covers them:\n" + offenders.join('\n'))
+		}
+	}
+}
+
+tasks.named('check') { dependsOn 'sbsSoundCheck' }
 
 // Developer mode may only ADD debug output; it is never the reason a player feature works. Every use
 // outside core/dev/ says why it is dev-only, on the line or the line above: "// DEV-ONLY: reason".

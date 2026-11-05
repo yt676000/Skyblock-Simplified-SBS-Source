@@ -17,6 +17,7 @@ import net.minecraft.core.particles.ParticleTypes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
@@ -70,7 +71,8 @@ public class ParticleCleanupMixin {
         if (type == ParticleTypes.EXPLOSION || type == ParticleTypes.EXPLOSION_EMITTER) {
             ExplosionMode mode = visuals.explosion;
             if (mode == ExplosionMode.OFF
-                    || (mode == ExplosionMode.HALF && ThreadLocalRandom.current().nextDouble() < EXPLOSION_THIN_SKIP)) {
+                    || (mode == ExplosionMode.HALF && ThreadLocalRandom.current().nextDouble() < EXPLOSION_THIN_SKIP)
+                    || !sbs.modid.client.helper.particles.ParticleLimiter.admit(type)) {
                 cir.setReturnValue(null);
             }
             return;
@@ -78,7 +80,20 @@ public class ParticleCleanupMixin {
 
         if (type == ParticleTypes.ENTITY_EFFECT && visuals.potionParticles == PotionParticleMode.ON) {
             cir.setReturnValue(null); // On = hide completely
+            return;
         }
+
+        // Limit particle spam: per-type token bucket, last so only particles that would otherwise
+        // spawn spend a token. One config read while the option is off.
+        if (!sbs.modid.client.helper.particles.ParticleLimiter.admit(type)) {
+            cir.setReturnValue(null);
+        }
+    }
+
+    /** Refills the spam limiter's buckets once per client tick (the engine ticks with the client). */
+    @Inject(method = "tick", at = @At("HEAD"))
+    private void skyblockSimplified$refillParticleBudget(CallbackInfo ci) {
+        sbs.modid.client.helper.particles.ParticleLimiter.onTick();
     }
 
     /** After creation, force see-through alpha on ambient potion particles (kept, not cancelled). */

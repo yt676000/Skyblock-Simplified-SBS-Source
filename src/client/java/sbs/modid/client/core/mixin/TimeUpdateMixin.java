@@ -14,6 +14,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import sbs.modid.client.core.dev.PacketThreadCheck;
 import sbs.modid.client.helper.timers.ServerWorldTime;
 import sbs.modid.client.ui.hud.logic.ServerStatsTracker;
 
@@ -34,6 +35,7 @@ public class TimeUpdateMixin {
 
     @Inject(method = "handleSetTime", at = @At("TAIL"))
     private void skyblockSimplified$trackTimeUpdate(ClientboundSetTimePacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("TimeUpdateMixin.trackTimeUpdate");
         ServerStatsTracker.getInstance().onTimeUpdate();
         ServerWorldTime.onTimeUpdate(packet);
     }

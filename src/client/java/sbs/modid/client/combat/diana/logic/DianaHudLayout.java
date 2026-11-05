@@ -80,6 +80,8 @@ public final class DianaHudLayout {
     private static List<String> cachedTracker;
     private static List<String> cachedCreatures;
     private static Layout cached;
+    private static Layout cachedLegacy;
+    private static int cachedLegacyBits;
 
     private DianaHudLayout() {
     }
@@ -177,7 +179,14 @@ public final class DianaHudLayout {
     public static Layout current(SBSConfig.DianaSettings cfg) {
         SBSConfig.DianaAppearanceSettings appearance = cfg.appearance;
         if (appearance == null || appearance.trackerLines == null && appearance.creatureLines == null) {
-            return resolve(cfg);
+            // The legacy toggles: four boxed Booleans (null = absent), two bits each are the whole key.
+            int legacy = tri(cfg.chainsHud) | tri(cfg.sessionHud) << 2
+                    | tri(cfg.creatureHealthHud) << 4 | tri(cfg.shurikenWarning) << 6;
+            if (cachedLegacy == null || legacy != cachedLegacyBits) {
+                cachedLegacyBits = legacy;
+                cachedLegacy = resolve(cfg);
+            }
+            return cachedLegacy;
         }
         if (cached == null || appearance.trackerLines != cachedTracker
                 || appearance.creatureLines != cachedCreatures) {
@@ -186,6 +195,10 @@ public final class DianaHudLayout {
             cached = resolve(cfg);
         }
         return cached;
+    }
+
+    private static int tri(Boolean value) {
+        return value == null ? 0 : value ? 1 : 2;
     }
 
     /** Stores {@code layout}, always as new lists - see {@link #current}. */

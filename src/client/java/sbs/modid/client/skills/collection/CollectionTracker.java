@@ -63,6 +63,7 @@ public final class CollectionTracker {
             Pattern.compile("(?i)(?:total )?collected:?\\s*([\\d,]+)");
     /** A trailing roman-numeral tier on a menu item name ("Wheat III" -> "Wheat"). */
     private static final Pattern TRAILING_TIER = Pattern.compile("\\s+[IVXLC]+$");
+    private static final Pattern NON_DIGITS = Pattern.compile("[^0-9]");
 
     private static final char SECTION_SIGN = (char) 0x00A7;
     private static final long SCAN_INTERVAL_MS = 500;
@@ -366,7 +367,7 @@ public final class CollectionTracker {
 
     private static long parseCount(String raw) {
         try {
-            return Long.parseLong(raw.replaceAll("[^0-9]", ""));
+            return Long.parseLong(NON_DIGITS.matcher(raw).replaceAll(""));
         } catch (NumberFormatException e) {
             return 0;
         }

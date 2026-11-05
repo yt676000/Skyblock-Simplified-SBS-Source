@@ -8,6 +8,7 @@
 
 package sbs.modid.client.social.chat.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.multiplayer.chat.GuiMessage;
@@ -19,6 +20,8 @@ import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig.BetterChatSettings;
 import sbs.modid.client.core.mixin.ChatComponentAccessor;
 import sbs.modid.client.core.util.ChatDisplayRewrites;
+import sbs.modid.client.social.chat.model.ChatSpamPreset;
+import sbs.modid.client.social.chat.model.SpamFilterMode;
 
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -140,6 +143,12 @@ public final class BetterChat {
             return true;
         }
 
+        // 0d. Hide Low-Level Players: a public line from a player below the chosen SkyBlock level.
+        //     Its own switch, not Better Chat's; the parsers have already read the line.
+        if (sbs.modid.client.helper.hideplayers.logic.PlayerLevels.shouldHideChat(content)) {
+            return true;
+        }
+
         // 1. The display rewrites (text rules, redaction, number format, SBS badge). They run here,
         //    below the parsers, and NOT as their own hooks on the public add methods - see
         //    ChatDisplayRewrites for what that cost. Unconditional: they are separate features and
@@ -154,12 +163,14 @@ public final class BetterChat {
             String text = strip(display.getString());
 
             // 2. Filters – hide outright. Parsers already ran, so hiding costs no tracking.
-            if (isFiltered(text, cfg)) {
+            //    A spam preset set to Compact is not hidden but forced through the compactor below.
+            SpamFilterMode spam = spamMode(text, cfg);
+            if (spam == SpamFilterMode.HIDE || isFiltered(text, cfg)) {
                 return true;
             }
 
             // 3. Compactor – an earlier copy of this line is removed and this one carries its count.
-            int repeats = cfg.compactor ? takeEarlierCopy(chat, text) : 0;
+            int repeats = cfg.compactor || spam == SpamFilterMode.COMPACT ? takeEarlierCopy(chat, text) : 0;
 
             // 4. Style the copy for display (timestamp + mention highlight + the repeat counter).
             display = applyTimestamp(display, cfg);
@@ -175,7 +186,7 @@ public final class BetterChat {
         if (mention && cfg.mentionSound) {
             var player = Minecraft.getInstance().player;
             if (player != null) {
-                player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 0.7f, 1.8f);
+                SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 0.7f, 1.8f);
             }
         }
 
@@ -239,17 +250,30 @@ public final class BetterChat {
 
     // ------------------------------------------------------------------ filters
 
+    /**
+     * The mode of the spam preset that recognises {@code text}, counting the line when it acts. Free
+     * while every preset is off: no pattern runs then.
+     */
+    private static SpamFilterMode spamMode(String text, BetterChatSettings cfg) {
+        if (cfg.spamFilters == null
+                || !cfg.spamFilters.containsValue(SpamFilterMode.HIDE)
+                && !cfg.spamFilters.containsValue(SpamFilterMode.COMPACT)) {
+            return SpamFilterMode.OFF;
+        }
+        ChatSpamPreset preset = ChatSpamPreset.match(text);
+        if (preset == null) {
+            return SpamFilterMode.OFF;
+        }
+        SpamFilterMode mode = cfg.spamMode(preset);
+        if (mode != SpamFilterMode.OFF) {
+            preset.countHidden();
+        }
+        return mode;
+    }
+
+    /** The free-text "Hide Containing" list. */
     private static boolean isFiltered(String text, BetterChatSettings cfg) {
         String lower = text.toLowerCase(Locale.ROOT);
-        if (cfg.hideCommandsTooFast && lower.contains("sending commands too fast")) {
-            return true;
-        }
-        if (cfg.hideNotEnoughMana && lower.contains("not enough mana")) {
-            return true;
-        }
-        if (cfg.hideBlocksInTheWay && lower.contains("blocks in the way")) {
-            return true;
-        }
         if (cfg.hideContaining != null && !cfg.hideContaining.isBlank()) {
             for (String needle : cfg.hideContaining.split(",")) {
                 String trimmed = needle.trim().toLowerCase(Locale.ROOT);

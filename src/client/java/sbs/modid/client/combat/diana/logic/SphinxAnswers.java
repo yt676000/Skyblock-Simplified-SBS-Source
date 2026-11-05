@@ -94,6 +94,8 @@ public final class SphinxAnswers {
      * how it fed itself (see the class note).
      */
     private static final Pattern ANSWER = Pattern.compile("^([ABC])\\)\\s+(.+?)\\s*$");
+    private static final Pattern NON_WORD_CHARS = Pattern.compile("[^a-z0-9 ]");
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
     /** The tag the verdict lines are capped under in {@link SBSChat#send(String, Component)}. */
     private static final String CHAT_FEATURE = "Sphinx";
@@ -413,6 +415,6 @@ public final class SphinxAnswers {
         if (text == null) {
             return "";
         }
-        return text.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9 ]", "").replaceAll("\\s+", " ").trim();
+        return WHITESPACE.matcher(NON_WORD_CHARS.matcher(text.toLowerCase(Locale.ROOT)).replaceAll("")).replaceAll(" ").trim();
     }
 }

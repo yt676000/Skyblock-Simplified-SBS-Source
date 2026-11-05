@@ -36,7 +36,13 @@ public final class ConsumableHud {
     private static final int PAD = 5;
     private static final long REBUILD_MS = 250L;
 
-    private static List<String[]> rows = List.of();
+    /** A row's two texts and the time's width, resolved at rebuild so a frame only draws. */
+    private record Row(Component label, Component time, int labelWidth, int timeWidth) {
+    }
+
+    private static final Component HEADER = Component.literal("Consumables");
+
+    private static List<Row> rows = List.of();
     private static long builtAt;
 
     private ConsumableHud() {
@@ -51,21 +57,21 @@ public final class ConsumableHud {
         long now = System.currentTimeMillis();
         if (now - builtAt >= REBUILD_MS) {
             builtAt = now;
-            rows = build(cfg.consumablesHideAboveHours);
+            rows = build(cfg.consumablesHideAboveHours, Minecraft.getInstance().font);
         }
         if (rows.isEmpty()) {
             return;
         }
         Font font = Minecraft.getInstance().font;
         int lineH = font.lineHeight + 2;
-        String header = "Consumables";
         int labelW = 0;
         int timeW = 0;
-        for (String[] row : rows) {
-            labelW = Math.max(labelW, font.width(row[0]));
-            timeW = Math.max(timeW, font.width(row[1]));
+        for (int i = 0, n = rows.size(); i < n; i++) {
+            Row row = rows.get(i);
+            labelW = Math.max(labelW, row.labelWidth());
+            timeW = Math.max(timeW, row.timeWidth());
         }
-        int width = Math.max(Math.max(110, font.width(header) + PAD * 2), labelW + 8 + timeW + PAD * 2);
+        int width = Math.max(Math.max(110, font.width(HEADER) + PAD * 2), labelW + 8 + timeW + PAD * 2);
         int height = PAD * 2 + lineH * (1 + rows.size()) - 2;
 
         HudElement.Bounds b = HudElement.CONSUMABLE_TIMERS.defaultBounds(g.guiWidth(), g.guiHeight());
@@ -75,27 +81,29 @@ public final class ConsumableHud {
 
         HudLayout.begin(g, HudElement.CONSUMABLE_TIMERS);
         HudCard.draw(g, x, y, width, height);
-        g.text(font, Component.literal(header), x + PAD, y + PAD, SBSTheme.ACCENT_BRIGHT);
+        g.text(font, HEADER, x + PAD, y + PAD, SBSTheme.ACCENT_BRIGHT);
         int iy = y + PAD + lineH;
         int right = x + width - PAD;
-        for (String[] row : rows) {
-            g.text(font, Component.literal(row[0]), x + PAD, iy, SBSTheme.TEXT);
-            g.text(font, Component.literal(row[1]), right - font.width(row[1]), iy, SBSTheme.TEXT_MUTED);
+        for (int i = 0, n = rows.size(); i < n; i++) {
+            Row row = rows.get(i);
+            g.text(font, row.label(), x + PAD, iy, SBSTheme.TEXT);
+            g.text(font, row.time(), right - row.timeWidth(), iy, SBSTheme.TEXT_MUTED);
             iy += lineH;
         }
         HudLayout.end(g);
     }
 
-    private static List<String[]> build(int hideAboveHours) {
+    private static List<Row> build(int hideAboveHours, Font font) {
         long hideAbove = hideAboveHours > 0 ? hideAboveHours * 3_600_000L : Long.MAX_VALUE;
-        List<String[]> out = new ArrayList<>();
+        List<Row> out = new ArrayList<>();
         for (ConsumableStore.Row row : ConsumableStore.getInstance().rows()) {
             if (row.remainingMs() > hideAbove) {
                 continue;
             }
             String time = (row.paused() ? "‖ " : "") + (row.estimated() && row.remainingMs() >= 0 ? "~" : "")
                     + DurationFormat.remaining(row.remainingMs());
-            out.add(new String[] {row.label(), time});
+            out.add(new Row(Component.literal(row.label()), Component.literal(time),
+                    font.width(row.label()), font.width(time)));
         }
         return out;
     }

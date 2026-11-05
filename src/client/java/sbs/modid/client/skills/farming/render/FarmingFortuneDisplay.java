@@ -11,7 +11,6 @@ package sbs.modid.client.skills.farming.render;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.skills.farming.model.CropType;
@@ -53,6 +52,15 @@ public final class FarmingFortuneDisplay {
     /** "Melon Fortune: +80", "☘ Wheat Fortune: +30" – the crop-specific contribution. */
     private static final Pattern CROP_FORTUNE = Pattern.compile(
             "(?i)([A-Za-z ]+?)\\s+fortune:?\\s*\\+?\\s*([\\d,.]+)");
+
+    /**
+     * The card as last built, or {@code null} when it had no rows. Rebuilt when the held stack is a
+     * different one or on a one-second clock - the tab fortune is a tab-list reading refreshed once
+     * a second and with no change signal of its own, so the clock is its key. Render thread only.
+     */
+    private HudCard.Snapshot card;
+    private ItemStack builtFor;
+    private long builtSecond = -1;
 
     private FarmingFortuneDisplay() {
     }
@@ -118,10 +126,44 @@ public final class FarmingFortuneDisplay {
         if (!FarmingItems.isFarmingTool(held)) {
             return;
         }
+        long second = System.currentTimeMillis() / 1000L;
+        if (held != builtFor || second != builtSecond) {
+            builtFor = held;
+            builtSecond = second;
+            card = build(held);
+        }
+        HudCard.Snapshot current = card;
+        if (current == null) {
+            return;
+        }
+
+        Font font = Minecraft.getInstance().font;
+        int lineH = font.lineHeight + 2;
+        int pad = 5;
+        HudElement.Bounds b = HudElement.FARMING_FORTUNE.defaultBounds(g.guiWidth(), g.guiHeight());
+        int x = Math.round(b.x());
+        int y = Math.round(b.y());
+        HudLayout.measure(HudElement.FARMING_FORTUNE, x, y, current.width(), current.height());
+
+        HudLayout.begin(g, HudElement.FARMING_FORTUNE);
+        HudCard.draw(g, x, y, current.width(), current.height());
+
+        int ix = x + pad;
+        int right = x + current.width() - pad;
+        int iy = y + pad;
+        for (HudCard.Line line : current.rows()) {
+            HudCard.drawLine(g, font, line, ix, right, iy);
+            iy += lineH;
+        }
+        HudLayout.end(g);
+    }
+
+    /** The card's rows for the held tool, header first, or {@code null} when there is nothing to show. */
+    private static HudCard.Snapshot build(ItemStack held) {
         ToolFortune tool = read(held);
         double tabFortune = sbs.modid.client.skills.garden.logic.FarmingTracker.getInstance().fortuneValue();
 
-        List<String[]> rows = new ArrayList<>(4);
+        List<String[]> rows = new ArrayList<>(5);
         double effective = -1;
         if (tabFortune >= 0) {
             effective = tabFortune + Math.max(0, tool.cropSpecific());
@@ -140,7 +182,7 @@ public final class FarmingFortuneDisplay {
             rows.add(new String[]{"Drops", String.format(Locale.ROOT, "x%.2f", 1 + effective / 100.0)});
         }
         if (rows.isEmpty()) {
-            return;
+            return null;
         }
 
         Font font = Minecraft.getInstance().font;
@@ -154,25 +196,12 @@ public final class FarmingFortuneDisplay {
         int width = Math.max(124, contentW + pad * 2);
         int height = pad * 2 + lineH * (1 + rows.size()) - 2;
 
-        HudElement.Bounds b = HudElement.FARMING_FORTUNE.defaultBounds(g.guiWidth(), g.guiHeight());
-        int x = Math.round(b.x());
-        int y = Math.round(b.y());
-        HudLayout.measure(HudElement.FARMING_FORTUNE, x, y, width, height);
-
-        HudLayout.begin(g, HudElement.FARMING_FORTUNE);
-        HudCard.draw(g, x, y, width, height);
-
-        int ix = x + pad;
-        int right = x + width - pad;
-        int iy = y + pad;
-        g.text(font, Component.literal(header), ix, iy, SBSTheme.ACCENT_BRIGHT);
-        iy += lineH;
+        List<HudCard.Line> lines = new ArrayList<>(rows.size() + 1);
+        lines.add(HudCard.Line.of(font, header, SBSTheme.ACCENT_BRIGHT));
         for (String[] row : rows) {
-            g.text(font, Component.literal(row[0]), ix, iy, SBSTheme.TEXT_MUTED);
-            g.text(font, Component.literal(row[1]), right - font.width(row[1]), iy,
-                    row[0].equals("Effective") ? 0xFF57D977 : SBSTheme.TEXT);
-            iy += lineH;
+            lines.add(HudCard.Line.of(font, row[0], SBSTheme.TEXT_MUTED, row[1],
+                    row[0].equals("Effective") ? 0xFF57D977 : SBSTheme.TEXT));
         }
-        HudLayout.end(g);
+        return new HudCard.Snapshot(List.copyOf(lines), width, height, null);
     }
 }

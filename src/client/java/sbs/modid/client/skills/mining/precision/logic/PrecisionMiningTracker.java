@@ -110,16 +110,24 @@ public final class PrecisionMiningTracker {
         if (now - armedAt < ARM_CACHE_MS) {
             return armed;
         }
+        return arm(now, cfg().enabled && SkillIslands.onMiningIsland(), ServerWorldTime.serverName());
+    }
+
+    /**
+     * {@link #armed()} past its cache, with the inputs passed in so the tests reach it. A {@code null}
+     * server is a lobby not known yet (joining, before the tab list or the location API names it):
+     * the old lobby's state is dropped once and the tracker stays disarmed until a name arrives.
+     */
+    boolean arm(long now, boolean on, String server) {
         armedAt = now;
-        boolean on = cfg().enabled && SkillIslands.onMiningIsland();
-        String server = ServerWorldTime.serverName();
-        if (!on || !server.equals(lobby)) {
+        String known = server == null ? "" : server;
+        if (!on || !known.equals(lobby)) {
             finishBlock(on ? "lobby changed" : "left the mining islands");
-            lobby = server;
+            lobby = known;
             shapeLines = 0;
             summaries.clear();
         }
-        armed = on;
+        armed = on && server != null;
         return armed;
     }
 
@@ -187,6 +195,23 @@ public final class PrecisionMiningTracker {
         String type = typeId(packet.getParticle());
         logShape(packet, type, block, dx, dy, dz);
         target.onParticle(type, packet.getCount(), packet.getX(), packet.getY(), packet.getZ(), now);
+    }
+
+    /**
+     * Whether {@code packet} is near the block being mined inside the particle window - the gate
+     * {@link #onParticlePacket} applies, without logging or feeding the target. Asked by the limiter.
+     */
+    public boolean claimsPacket(ClientboundLevelParticlesPacket packet) {
+        PrecisionTarget.MinedBlock block = target.block();
+        if (packet == null || block == null
+                || System.currentTimeMillis() - lastDestroyAt > PARTICLE_WINDOW_MS) {
+            return false;
+        }
+        double dx = packet.getX() - (block.x() + 0.5);
+        double dy = packet.getY() - (block.y() + 0.5);
+        double dz = packet.getZ() - (block.z() + 0.5);
+        double reach = PrecisionSignals.PROBE_RADIUS;
+        return dx * dx + dy * dy + dz * dz <= reach * reach;
     }
 
     /** World change, server hop: the block and the target belong to the old instance. */

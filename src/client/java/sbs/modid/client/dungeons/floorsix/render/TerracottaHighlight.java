@@ -15,7 +15,8 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.render.WorldRender;
 import sbs.modid.client.dungeons.floorsix.logic.TerracottaTracker;
@@ -33,6 +34,8 @@ import java.util.Locale;
  * would read as belonging to nothing.
  */
 public final class TerracottaHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     private static final int COLOR_FAR = 0xFFFF5555;   // red - not yet
     private static final int COLOR_SOON = 0xFFFFC24A;  // amber - get there
@@ -61,7 +64,7 @@ public final class TerracottaHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
 
         for (TerracottaTracker.Respawn spot : spots) {
@@ -71,10 +74,10 @@ public final class TerracottaHighlight {
             WorldRender.boxEdges(g, viewProjection, camPos,
                     block.getX(), block.getY(), block.getZ(),
                     block.getX() + 1.0, block.getY() + 1.0, block.getZ() + 1.0, color, 2);
-            Vec3 above = Vec3.upFromBottomCenterOf(block, LABEL_HEIGHT);
-            int[] screen = WorldRender.projectToScreen(viewProjection, camPos, above,
-                    g.guiWidth(), g.guiHeight());
-            if (screen != null) {
+            int[] screen = SCREEN;
+            if (WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                    block.getX() + 0.5, block.getY() + LABEL_HEIGHT, block.getZ() + 0.5,
+                    g.guiWidth(), g.guiHeight(), screen)) {
                 g.centeredText(font, Component.literal(label(left)), screen[0], screen[1], color);
             }
         }

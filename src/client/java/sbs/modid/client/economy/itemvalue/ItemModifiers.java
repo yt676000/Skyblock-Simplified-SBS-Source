@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Reads everything of value that is applied to a SkyBlock item from its {@code ExtraAttributes}:
@@ -66,6 +67,9 @@ public final class ItemModifiers {
             return enchantKey != null;
         }
     }
+
+    /** Word separators in an id: underscores and whitespace. */
+    private static final Pattern WORD_SEPARATORS = Pattern.compile("[_\\s]+");
 
     /** Reforges applied via reforge stones: modifier name → the stone's item id. */
     private static final Map<String, String> REFORGE_STONES = new HashMap<>();
@@ -423,8 +427,8 @@ public final class ItemModifiers {
     }
 
     /** "ultimate_chimera" / "IMPLOSION_SCROLL" → "Ultimate Chimera" / "Implosion Scroll". */
-    static String prettify(String id) {
-        String[] words = id.toLowerCase(Locale.ROOT).split("[_\\s]+");
+    public static String prettify(String id) {
+        String[] words = WORD_SEPARATORS.split(id.toLowerCase(Locale.ROOT));
         StringBuilder sb = new StringBuilder();
         for (String word : words) {
             if (word.isEmpty()) {

@@ -3,6 +3,8 @@
   "package": "sbs.modid.client.core.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "BossHealthOverlayAccessor",
+    "BossHealthOverlayMixin",
     "GuiHudOpacityMixin",
     "GuiOutlineMarkerMixin",
     "GuiRenderCaptureMixin",

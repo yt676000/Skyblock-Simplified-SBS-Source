@@ -17,6 +17,7 @@ import net.minecraft.world.item.ItemStack;
 import sbs.modid.SkyblockSimplifiedSBS;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The Supercraft bridge – the SBS "+" auto-craft button, implemented over
@@ -44,6 +45,8 @@ public final class SupercraftHelper {
     private static final long TIMEOUT_MS = 8_000L;
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     private volatile boolean pending;
     private volatile long pendingUntil;
@@ -91,8 +94,8 @@ public final class SupercraftHelper {
             if (stack == null || stack.isEmpty()) {
                 continue;
             }
-            String name = stack.getHoverName().getString()
-                    .replaceAll(SECTION_SIGN + ".", "").trim().toLowerCase(Locale.ROOT);
+            String name = FORMATTING.matcher(stack.getHoverName().getString())
+                    .replaceAll("").trim().toLowerCase(Locale.ROOT);
             if (name.contains("supercraft")) {
                 pending = false;
                 minecraft.gameMode.handleContainerInput(menu.containerId, slot, 0,

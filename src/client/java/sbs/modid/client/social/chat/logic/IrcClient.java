@@ -8,6 +8,15 @@
 
 package sbs.modid.client.social.chat.logic;
 
+import sbs.modid.client.core.api.ApiFailure;
+import sbs.modid.client.core.net.SessionIdentity;
+import sbs.modid.client.core.net.LinkFilter;
+
+import sbs.modid.client.core.net.RemoteText;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+import sbs.modid.client.core.net.validation.ValidationException;
+
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
@@ -154,13 +163,12 @@ public final class IrcClient {
 //   ConsentScope.IRC_IDENTITY in Licence Token > Privacy and data; every switch there
 //   starts off. See PRIVACY.md.
 // ============================================================================
-                HttpRequest request = HttpRequest.newBuilder(URI.create(
-                                BASE + "/irc/poll?since=" + since + "&timeout=" + POLL_HOLD_SECONDS))
-                        .timeout(POLL_TIMEOUT)
-                        .header("Authorization", "Bearer " + token())
-                        .GET().build();
+                URI pollUri = URI.create(BASE + "/irc/poll?since=" + since + "&timeout=" + POLL_HOLD_SECONDS);
+                // Reading needs no session; only sending does (see sendFromCommand).
                 HttpResponse<String> response = sbs.modid.client.core.api.SbsApi.send(
-                        ConsentScope.IRC_IDENTITY, http, request,
+                        ConsentScope.IRC_IDENTITY, MessageTypes.IRC_POLL,
+                        HttpRequest.newBuilder(pollUri).timeout(POLL_TIMEOUT)
+                                .header("Authorization", "Bearer " + token()).GET().build(),
                         HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
                 if (response.statusCode() == 401) {
                     if (!authFailureShown) {
@@ -175,8 +183,12 @@ public final class IrcClient {
                     continue;
                 }
                 authFailureShown = false;
-                JsonObject body = gson.fromJson(response.body(), JsonObject.class);
-                if (body == null) {
+                JsonObject body;
+                try {
+                    body = RemoteText.sanitizeTree(MessageSchemas.parse(MessageTypes.IRC_POLL, response.body()), 256)
+                            .getAsJsonObject();
+                } catch (ValidationException invalid) {
+                    Thread.sleep(5_000);
                     continue;
                 }
                 long newSince = body.has("seq") ? body.get("seq").getAsLong() : since;
@@ -187,8 +199,8 @@ public final class IrcClient {
                             // [seq, ts, name, msg] + optional [roleLabel, roleColor]. The role is
                             // optional so an older server (or one before roles) still works - it
                             // simply renders without the tag.
-                            String roleLabel = row.size() >= 5 ? row.get(4).getAsString() : "";
-                            String roleColor = row.size() >= 6 ? row.get(5).getAsString() : "";
+                            String roleLabel = row.size() >= 5 && !row.get(4).isJsonNull() ? row.get(4).getAsString() : "";
+                            String roleColor = row.size() >= 6 && !row.get(5).isJsonNull() ? row.get(5).getAsString() : "";
                             deliver(row.get(2).getAsString(), row.get(3).getAsString(),
                                     roleLabel, roleColor);
                         }
@@ -204,7 +216,11 @@ public final class IrcClient {
                 Thread.interrupted();
                 since = -1;
             } catch (Exception e) {
-                SkyblockSimplifiedSBS.LOGGER.debug("[SBS][IRC] poll failed: {}", e.toString());
+                if (ApiFailure.of(e) == ApiFailure.NO_CONSENT) {
+                    ApiFailure.log("[SBS][IRC]", "poll", e);
+                } else {
+                    SkyblockSimplifiedSBS.LOGGER.debug("[SBS][IRC] poll failed: {}", e.toString());
+                }
                 try {
                     Thread.sleep(5_000);
                 } catch (InterruptedException interrupted) {
@@ -295,6 +311,10 @@ public final class IrcClient {
             show(system("Usage: /sbs irc <message>"));
             return;
         }
+        if (LinkFilter.containsLink(msg)) {
+            show(system(LinkFilter.REFUSED + "."));
+            return;
+        }
         String name = playerName();
         if (name == null || token().isEmpty()) {
             show(system("IRC: not connected (need a world + licence token)."));
@@ -310,31 +330,36 @@ public final class IrcClient {
         sender.execute(() -> {
             try {
                 JsonObject body = new JsonObject();
-                body.addProperty("name", name);
                 body.addProperty("msg", msg);
+                try {
+                    MessageSchemas.checkOutgoing(MessageTypes.OUT_IRC_SEND, body);
+                } catch (ValidationException invalid) {
+                    show(system("IRC: message not sent - it is too long or contains unsupported characters."));
+                    return;
+                }
 // ============================================================================
 // [MODERATOR AUDIT / NETWORK DISCLOSURE]
 // KEYWORDS: NETWORK_OUTBOUND, NETWORK_INBOUND, HTTP_REQUEST, API_CLIENT, EXTERNAL_IO
 // ENDPOINT: https://skyblocksimplified.info/irc/send
 // METHOD: POST
 // PURPOSE: Send one message the user has typed into the SBS cross-game chat.
-// DATA SENT: A JSON body with the display name and the message text, plus the licence-token
-//   headers. Built with Gson. Nothing is sent unless the user presses enter on a message.
+// DATA SENT: A JSON body with the message text, plus the licence-token headers and the
+//   verified SBS session header (X-SBS-Session, see SessionIdentity), from which the server
+//   knows the sender. Built with Gson. Nothing is sent unless the user presses enter.
 // DATA RECEIVED: A send confirmation.
-// SAFETY DECLARATION: THIS ENDPOINT DOES TRANSMIT A DISPLAY NAME AND MESSAGE TEXT - that is
-//   what a chat is, and both are supplied by the user in the act of sending. No Mojang
-//   credentials, no session id, no OS telemetry. Gated on ConsentScope.IRC_IDENTITY, which
+// SAFETY DECLARATION: THIS ENDPOINT DOES TRANSMIT MESSAGE TEXT the user typed. The name is
+//   taken by the server from the verified session, never declared by the client. The SBS
+//   session is in memory only and goes only to the SBS origin. No Mojang credentials, no OS
+//   telemetry. Gated on ConsentScope.IRC_IDENTITY, which
 //   starts off. See PRIVACY.md.
 // ============================================================================
-                HttpRequest request = HttpRequest.newBuilder(URI.create(BASE + "/irc/send"))
-                        .timeout(SEND_TIMEOUT)
-                        .header("Content-Type", "application/json")
-                        .header("Authorization", "Bearer " + token())
-                        .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body)))
-                        .build();
-                HttpResponse<String> response = sbs.modid.client.core.api.SbsApi.send(
-                        ConsentScope.IRC_IDENTITY, http, request,
-                        HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                String json = gson.toJson(body);
+                HttpResponse<String> response = SessionIdentity.get().send(ConsentScope.IRC_IDENTITY,
+                        MessageTypes.IRC_SEND_ACK, () -> HttpRequest.newBuilder(URI.create(BASE + "/irc/send"))
+                                .timeout(SEND_TIMEOUT)
+                                .header("Content-Type", "application/json")
+                                .header("Authorization", "Bearer " + token())
+                                .POST(HttpRequest.BodyPublishers.ofString(json)));
                 switch (response.statusCode()) {
                     case 200 -> { /* echoed back through the poll loop */ }
                     case 401 -> show(system("IRC: invalid licence token."));
@@ -343,9 +368,11 @@ public final class IrcClient {
                     case 429 -> show(system("IRC: slow down (rate limit)."));
                     default -> show(system("IRC: send failed (HTTP " + response.statusCode() + ")."));
                 }
+            } catch (SessionIdentity.SessionException session) {
+                show(system("IRC: " + session.userMessage() + "."));
             } catch (Exception e) {
-                SkyblockSimplifiedSBS.LOGGER.warn("[SBS][IRC] send failed: {}", e.toString());
-                show(system("IRC: connection failed."));
+                ApiFailure.log("[SBS][IRC]", "send", e);
+                show(system("IRC: " + ApiFailure.message(e)));
             }
         });
     }

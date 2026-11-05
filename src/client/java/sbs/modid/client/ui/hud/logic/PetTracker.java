@@ -60,9 +60,14 @@ import java.util.regex.Pattern;
  */
 public final class PetTracker implements ProfileScopedStore {
 
+    /**
+     * A colour code and the character after it. Above INSTANCE: the constructor registers with
+     * ProfileContext, which may load the profile (and strip with this) before the class is initialised.
+     */
+    private static final Pattern FORMATTING_CODE = Pattern.compile(String.valueOf((char) 0x00A7) + ".");
+
     private static final PetTracker INSTANCE = new PetTracker();
 
-    private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
     private static final Pattern NAME_LEVEL = Pattern.compile("\\[Lvl\\s*([0-9]+)]\\s*(.+)");
     private static final Pattern PROGRESS = Pattern.compile("Progress to Level\\s*[0-9]+:\\s*([0-9.]+)%");
     private static final Pattern AUTOPET = Pattern.compile("Autopet equipped your \\[Lvl\\s*([0-9]+)]\\s*([^!]+)!");
@@ -127,12 +132,65 @@ public final class PetTracker implements ProfileScopedStore {
 
     private int ticksUntilScan;
 
+    /**
+     * One consistent snapshot of the pet for the HUD card. The fields above are written one at a
+     * time by the scan, the chat handler and the menu click, so a reader taking them one by one could
+     * pair the new pet's name with the old pet's level; the card reads this instead, which is only
+     * ever replaced whole. {@code version} moves on every publish, so the card can tell "nothing
+     * changed" with one int compare and keep the text it already built.
+     */
+    public record PetState(int version, boolean active, String name, int level, double percent,
+                           double xpCurrent, double xpNeeded, String heldItem, boolean maxLevel,
+                           ItemStack capturedIcon) {
+        public boolean hasPet() {
+            return active && !name.isEmpty();
+        }
+
+        public boolean hasXpFigures() {
+            return xpNeeded > 0 && xpCurrent >= 0;
+        }
+
+        /**
+         * Equal to {@code o} in everything but the version; the icon by identity (an {@link ItemStack}
+         * has no value equality). A publish that changes nothing keeps the old snapshot and version.
+         */
+        public boolean sameContent(PetState o) {
+            return active == o.active && level == o.level && maxLevel == o.maxLevel
+                    && Double.compare(percent, o.percent) == 0
+                    && Double.compare(xpCurrent, o.xpCurrent) == 0
+                    && Double.compare(xpNeeded, o.xpNeeded) == 0
+                    && name.equals(o.name) && heldItem.equals(o.heldItem)
+                    && capturedIcon == o.capturedIcon;
+        }
+    }
+
+    private int version;
+    private volatile PetState state = new PetState(0, false, "", 0, -1, -1, -1, "", false, ItemStack.EMPTY);
+
     private PetTracker() {
         ProfileContext.getInstance().register(this);
     }
 
     public static PetTracker getInstance() {
         return INSTANCE;
+    }
+
+    /** The latest published snapshot - see {@link PetState}. */
+    public PetState state() {
+        return state;
+    }
+
+    /** Re-publishes {@link #state} from the fields; called after every change to them. */
+    private synchronized void publish() {
+        PetState next = new PetState(version + 1, active, name, level, xpPercent(), xpCurrent, xpNeeded,
+                heldItem, maxLevel, capturedIcon());
+        // Only a real change moves the version: the card's cached model keys on it, and a re-publish
+        // of the same reading (every tab scan) must not rebuild it.
+        if (state.sameContent(next)) {
+            return;
+        }
+        version++;
+        state = next;
     }
 
     public boolean hasPet() {
@@ -197,6 +255,7 @@ public final class PetTracker implements ProfileScopedStore {
         // The figures have now moved past the percentage that was published alongside them, so the
         // ratio is the fresher of the two: drop the stale reading rather than freeze the bar on it.
         xpPercent = -1;
+        publish();
     }
 
     private static String compact(double value) {
@@ -217,7 +276,6 @@ public final class PetTracker implements ProfileScopedStore {
      * something in its icon slot.
      */
     public ItemStack icon() {
-        resolvePendingIcon();
         if (!icon.isEmpty() && !name.isEmpty() && name.equalsIgnoreCase(iconName)) {
             return icon;
         }
@@ -231,7 +289,6 @@ public final class PetTracker implements ProfileScopedStore {
      * back to the default pet head, so a caller can tell "the real skin" from "a stand-in".
      */
     public ItemStack capturedIcon() {
-        resolvePendingIcon();
         return !icon.isEmpty() && !name.isEmpty() && name.equalsIgnoreCase(iconName) ? icon : ItemStack.EMPTY;
     }
 
@@ -243,6 +300,10 @@ public final class PetTracker implements ProfileScopedStore {
             }
             ticksUntilScan = 10;
             ensureLoaded();
+            // Decoded here rather than on the render path: the card only ever reads the snapshot.
+            if (resolvePendingIcon()) {
+                publish();
+            }
             readTab();
             Screen screen = GuiStateManager.getInstance().getCurrentScreen();
             if (!(screen instanceof AbstractContainerScreen<?> container)) {
@@ -362,6 +423,7 @@ public final class PetTracker implements ProfileScopedStore {
             }
             if (pet.summoned()) {
                 this.active = false;   // clicking the summoned pet puts it away
+                publish();
                 return;
             }
             // Straight from the menu entry, so its XP is as good as it gets - the widget has not even
@@ -395,6 +457,7 @@ public final class PetTracker implements ProfileScopedStore {
         this.iconName = pet.name();
         this.pendingIconSnbt = "";            // a live icon supersedes any remembered one
         this.active = true;
+        publish();
         // The menu is the ONLY source of the real icon and the held item, and it used to keep both
         // to itself - nothing here wrote the cache, so a restart brought back a pet with a name and
         // a level but no head and no held item. Saved on a real change rather than on every scan:
@@ -440,6 +503,7 @@ public final class PetTracker implements ProfileScopedStore {
         }
         if (text.contains("You despawned your")) {
             this.active = false;
+            publish();
         }
     }
 
@@ -478,6 +542,7 @@ public final class PetTracker implements ProfileScopedStore {
         // while it belongs to this pet and the default pet otherwise, so a stale head cannot leak
         // through, and the old skin is still there if you swap back.
         this.active = true;
+        publish();
         save();
     }
 
@@ -489,7 +554,7 @@ public final class PetTracker implements ProfileScopedStore {
     }
 
     private static String strip(String text) {
-        return text == null ? "" : text.replaceAll(SECTION_SIGN + ".", "");
+        return text == null ? "" : FORMATTING_CODE.matcher(text).replaceAll("");
     }
 
     // ------------------------------------------------------------------
@@ -673,6 +738,7 @@ public final class PetTracker implements ProfileScopedStore {
             // which puts the ratio back in charge until the next row carries one.
             xpPercent = -1;
         }
+        publish();
         // After the progress, not before: MAX LEVEL is part of what gets cached, and saving on the
         // identity change alone would have written the maxed pet down as still levelling.
         saveIfChanged();
@@ -795,32 +861,39 @@ public final class PetTracker implements ProfileScopedStore {
             // the time, which is exactly cached.name - assuming that keeps their skin working.
             iconName = cached.iconName == null || cached.iconName.isBlank()
                     ? cached.name : cached.iconName;
+            publish();
             savedSignature = signature();   // loaded state matches the file - nothing to rewrite
         } catch (Throwable t) {
             sbs.modid.SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Pet] could not read the cached pet", t);
         }
     }
 
-    /** Decodes the remembered icon once a world (and with it a registry context) exists. */
-    private void resolvePendingIcon() {
+    /**
+     * Decodes the remembered icon once a world (and with it a registry context) exists. Returns true
+     * when it changed {@link #icon}, so the caller re-publishes.
+     */
+    private boolean resolvePendingIcon() {
         if (pendingIconSnbt.isEmpty() || !icon.isEmpty()) {
-            return;
+            return false;
         }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null) {
-            return;   // try again next frame; the SNBT stays pending
+            return false;   // try again next scan; the SNBT stays pending
         }
+        boolean changed = false;
         try {
             CompoundTag tag = TagParser.parseCompoundFully(pendingIconSnbt);
             var ops = minecraft.level.registryAccess().createSerializationContext(NbtOps.INSTANCE);
             ItemStack stack = ItemStack.OPTIONAL_CODEC.parse(ops, tag).result().orElse(ItemStack.EMPTY);
             if (!stack.isEmpty()) {
                 icon = stack;
+                changed = true;
             }
         } catch (Throwable ignored) {
             // a stale or unparsable stack is not worth a log line every frame
         }
         pendingIconSnbt = "";   // one attempt with a live registry is enough
+        return changed;
     }
 
     /** Writes the current pet to the profile cache. Cheap and rare - only called on a real change. */
@@ -881,6 +954,7 @@ public final class PetTracker implements ProfileScopedStore {
         xpCurrent = -1;
         xpNeeded = -1;
         maxLevel = false;
+        publish();
         ensureLoaded();
     }
 }

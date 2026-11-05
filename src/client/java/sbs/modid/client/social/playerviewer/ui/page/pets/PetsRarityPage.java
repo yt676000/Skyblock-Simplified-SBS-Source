@@ -76,7 +76,7 @@ public final class PetsRarityPage implements PvPage {
             }
             JsonObject pet = pets.get(i);
             PvDraw.cell(g, cx, cy);
-            g.item(PvDraw.petIcon(PvDraw.str(pet, "type")), cx + 1, cy + 1);
+            g.item(PvDraw.petIcon(PvDraw.str(pet, "type"), PvDraw.str(pet, "skin")), cx + 1, cy + 1);
             if (pet.has("active") && pet.get("active").getAsBoolean()) {
                 g.fill(cx, cy, cx + 2, cy + 2, SBSTheme.TOGGLE_ON);
             }

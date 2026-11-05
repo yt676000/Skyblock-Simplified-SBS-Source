@@ -18,7 +18,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import org.joml.Vector4f;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.ConfigManager;
@@ -54,6 +55,8 @@ import java.util.Set;
  * alive but none matched, so a renamed pest can be re-pinned from the log alone.
  */
 public final class PestHighlight {
+
+    private static final java.util.regex.Pattern COLOUR_CODE = java.util.regex.Pattern.compile("§.");
 
     /** How far to look for pest mobs each frame. */
     private static final double SCAN_RADIUS = 40.0;
@@ -92,7 +95,7 @@ public final class PestHighlight {
      * has not caught up with yet, and they are the ground truth the mapping is checked against.
      */
     private static void drawInfestedPlots(GuiGraphicsExtractor g, SBSConfig.GardenSettings cfg,
-                                          Matrix4f viewProjection, Vec3 camPos,
+                                          Matrix4fc viewProjection, Vec3 camPos,
                                           List<Entity> pests, double ground, int plotColor) {
         Set<Long> drawn = new HashSet<>();
         Set<Integer> infested = PestTracker.getInstance().infestedPlots();
@@ -203,7 +206,7 @@ public final class PestHighlight {
     private static final int WALL_STRIP = 3;
 
     private static void drawPlot(GuiGraphicsExtractor g, SBSConfig.GardenSettings cfg,
-                                 Matrix4f viewProjection, Vec3 camPos, GardenPlot.Bounds plot,
+                                 Matrix4fc viewProjection, Vec3 camPos, GardenPlot.Bounds plot,
                                  double ground, int plotColor) {
         double x0 = plot.minX();
         double z0 = plot.minZ();
@@ -235,7 +238,7 @@ public final class PestHighlight {
     }
 
     /** One vertical side of the plot, from its ground line up to the outline's top. */
-    private static void wall(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void wall(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                              double ax, double az, double bx, double bz,
                              double bottom, double top, int color) {
         WorldRender.fillQuad(g, viewProjection, camPos,
@@ -320,7 +323,7 @@ public final class PestHighlight {
 
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         int highlightColor = cfg.pestHighlightColor.argb();
         int plotColor = cfg.pestPlotColor.argb();
 
@@ -402,7 +405,7 @@ public final class PestHighlight {
     /** A nametag with the colour codes stripped, for matching. */
     private static String plainName(Entity entity) {
         var name = entity.getCustomName();
-        return name == null ? "" : name.getString().replaceAll("§.", "");
+        return name == null ? "" : COLOUR_CODE.matcher(name.getString()).replaceAll("");
     }
 
     /**
@@ -418,7 +421,7 @@ public final class PestHighlight {
     }
 
     /** Whether a world point projects inside the viewport (clip space [-1,1], in front of the camera). */
-    private static boolean onScreen(Matrix4f viewProjection, Vec3 camPos, Vec3 point) {
+    private static boolean onScreen(Matrix4fc viewProjection, Vec3 camPos, Vec3 point) {
         Vector4f clip = viewProjection.transform(new Vector4f(
                 (float) (point.x - camPos.x),
                 (float) (point.y - camPos.y),

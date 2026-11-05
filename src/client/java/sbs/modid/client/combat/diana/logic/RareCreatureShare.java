@@ -66,6 +66,7 @@ public final class RareCreatureShare {
     private static final Pattern SHARED = Pattern.compile(
             "(?i)^(?<who>[^:]{1,64}?)\\s*:\\s*x:\\s*(?<x>-?\\d+)[ ,]+y:\\s*(?<y>-?\\d+)[ ,]+"
                     + "z:\\s*(?<z>-?\\d+)\\s*(?<tail>.*)$");
+    private static final Pattern NON_NAME_CHARS = Pattern.compile("[^A-Za-z0-9_]");
 
     /** Channel prefixes we refuse: a guild is not standing in this Hub. */
     private static final String[] EXCLUDED_CHANNELS = {"guild >", "g >", "officer >", "o >"};
@@ -162,7 +163,7 @@ public final class RareCreatureShare {
             // Ranks sit in front of the name: "[MVP+] Someone" -> "Someone".
             cleaned = cleaned.substring(space + 1);
         }
-        return cleaned.replaceAll("[^A-Za-z0-9_]", "");
+        return NON_NAME_CHARS.matcher(cleaned).replaceAll("");
     }
 
     /**

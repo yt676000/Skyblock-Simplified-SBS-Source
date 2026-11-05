@@ -8,6 +8,7 @@
 
 package sbs.modid.client.skills.hunting.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -28,6 +29,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Finds the critters that hide from you inside the Critter Safari and hands the renderer a list to
@@ -75,6 +77,8 @@ import java.util.Set;
  * checked from inside the client, and the log is how it gets pinned in a single trip.
  */
 public final class HidingCritterTracker {
+
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
 
     private static final HidingCritterTracker INSTANCE = new HidingCritterTracker();
 
@@ -216,7 +220,7 @@ public final class HidingCritterTracker {
             }
             // Colour codes out first, everything else left standing: the marker may be a symbol the
             // name extractor is about to remove, so the two matches need different strings.
-            String tag = custom.getString().replaceAll("§.", "");
+            String tag = COLOUR_CODE.matcher(custom.getString()).replaceAll("");
             String name = MobHighlightTracker.mobNameInNametag(tag);
             if (name == null || name.isEmpty()) {
                 continue;
@@ -356,7 +360,7 @@ public final class HidingCritterTracker {
         if (!(sparkling ? cfg().sparkling.ping : cfg().foundPing)) {
             return;
         }
-        player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, sparkling ? 2.0f : 1.6f);
+        SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, sparkling ? 2.0f : 1.6f);
         player.sendSystemMessage(Component.literal(sparkling
                 ? "§8[§bSBS§8]§r §b✦ " + name + " §7sparkling"
                 : "§8[§bSBS§8]§r §d" + name + " §7found"));

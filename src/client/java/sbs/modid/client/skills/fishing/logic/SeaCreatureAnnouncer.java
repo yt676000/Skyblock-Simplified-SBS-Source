@@ -137,6 +137,14 @@ public final class SeaCreatureAnnouncer {
         return INSTANCE;
     }
 
+    /**
+     * World leave: everything here is world-bound (see {@link #reset}). The tick only resets on a
+     * missing player while the module is on; this covers the hop with it off, and a proxy transfer.
+     */
+    public void onWorldChange() {
+        reset();
+    }
+
     private static SBSConfig.SeaCreatureAnnouncerSettings cfg() {
         return ConfigManager.getInstance().get().seaCreatureAnnouncer;
     }
@@ -170,6 +178,17 @@ public final class SeaCreatureAnnouncer {
     // ------------------------------------------------------------------
 
     /** Called once per client tick. Cheap and inert while the module is off. */
+    /**
+     * The tick gate's question beyond "bobber out / rod in hand": whether {@link #onClientTick} has
+     * anything to follow - a hook seen last tick (its falling edge arms the scan), the scan window
+     * after a cast, or a spawn highlight still on its mob.
+     */
+    public boolean needsTick() {
+        return hookWasOut
+                || (hookGoneAt != 0 && System.currentTimeMillis() - hookGoneAt <= SCAN_WINDOW_MS)
+                || highlightCreature != null;
+    }
+
     public void onClientTick() {
         SBSConfig.SeaCreatureAnnouncerSettings cfg = cfg();
         Minecraft minecraft = Minecraft.getInstance();

@@ -14,6 +14,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import sbs.modid.client.core.dev.PacketThreadCheck;
 import sbs.modid.client.core.dev.M7DragonProbe;
 import sbs.modid.client.core.dev.ParticleProbe;
 import sbs.modid.client.helper.floordrop.logic.FloorDropParticles;
@@ -36,6 +37,7 @@ public class ParticleProbeMixin {
 
     @Inject(method = "handleParticleEvent", at = @At("TAIL"))
     private void skyblockSimplified$probeParticles(ClientboundLevelParticlesPacket packet, CallbackInfo ci) {
+        PacketThreadCheck.check("ParticleProbeMixin.probeParticles");
         if (ParticleProbe.ARMED) {
             ParticleProbe.getInstance().onParticlePacket(packet);
         }
@@ -69,6 +71,10 @@ public class ParticleProbeMixin {
         if (sbs.modid.client.skills.mining.precision.logic.PrecisionMiningTracker.LISTENING) {
             sbs.modid.client.skills.mining.precision.logic.PrecisionMiningTracker.getInstance()
                     .onParticlePacket(packet);
+        }
+        // Gyro Helper probe: the second after a Gravity Storm cast, to locate the vortex.
+        if (sbs.modid.client.combat.gyro.logic.GyroState.LISTENING) {
+            sbs.modid.client.combat.gyro.logic.GyroState.getInstance().onParticlePacket(packet);
         }
     }
 }

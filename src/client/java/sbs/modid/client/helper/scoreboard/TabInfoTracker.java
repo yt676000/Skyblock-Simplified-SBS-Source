@@ -77,6 +77,11 @@ public final class TabInfoTracker {
     private long lastScanAt;
     private long lastLogAt;
 
+    /** Bumped whenever {@link #value} or {@link #component} would answer differently. */
+    private volatile int revision;
+    /** {@link #fresh()} as of the last tick - its expiry changes the answers without a scan. */
+    private boolean wasFresh;
+
     private TabInfoTracker() {
     }
 
@@ -84,9 +89,23 @@ public final class TabInfoTracker {
         return INSTANCE;
     }
 
+    /**
+     * A number that goes up by one each time a row's value or component changes, appears or
+     * disappears (including when the rows go stale) - for a caller that caches what it builds from
+     * them. Updated on the client tick, the only place the rows change.
+     */
+    public int revision() {
+        return revision;
+    }
+
     /** Called every client tick; throttles itself. */
     public void onClientTick() {
         long now = System.currentTimeMillis();
+        boolean fresh = fresh();
+        if (fresh != wasFresh) {
+            wasFresh = fresh;
+            revision++;
+        }
         if (now - lastScanAt < SCAN_INTERVAL_MS) {
             return;
         }
@@ -124,6 +143,9 @@ public final class TabInfoTracker {
 
         if (!found.isEmpty()) {
             synchronized (values) {
+                if (!values.equals(found) || !components.equals(foundComponents)) {
+                    revision++;
+                }
                 values.clear();
                 values.putAll(found);
                 components.clear();
@@ -132,9 +154,18 @@ public final class TabInfoTracker {
             dataSeenAt = now;
         } else if (dataSeenAt != 0 && now - dataSeenAt > HIDE_AFTER_MS) {
             synchronized (values) {
+                if (!values.isEmpty() || !components.isEmpty()) {
+                    revision++;
+                }
                 values.clear();
                 components.clear();
             }
+        }
+        // A scan that brought stale rows back to life flips freshness here, not on the next tick.
+        boolean fresh = fresh();
+        if (fresh != wasFresh) {
+            wasFresh = fresh;
+            revision++;
         }
 
         // Tuning aid: only complain when the tab clearly carries one of these rows but none could be

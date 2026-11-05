@@ -12,25 +12,22 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.location.SkyBlockLocation;
+import sbs.modid.client.core.render.CachedModel;
 import sbs.modid.client.economy.bazaar.logic.BazaarOrderTracker;
 import sbs.modid.client.economy.bazaar.logic.BazaarSyncService;
 import sbs.modid.client.economy.bazaar.model.BazaarOrder;
-import sbs.modid.client.economy.bazaar.model.BazaarOrderType;
 import sbs.modid.client.economy.bazaar.model.BazaarStatus;
 import sbs.modid.client.ui.hud.edit.logic.HudLayout;
 import sbs.modid.client.ui.hud.edit.model.HudElement;
 import sbs.modid.client.ui.hud.render.HudCard;
-import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.render.MenuFrame;
 import sbs.modid.client.ui.theme.SBSTheme;
 import sbs.modid.client.core.mixin.AbstractContainerScreenAccessor;
-
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 
 /**
  * The "Manage Orders" side panel: your live Bazaar orders shown next to the Bazaar main menu, so you
@@ -51,7 +48,8 @@ import java.util.List;
  * which polls on its own thread whether or not a Bazaar GUI is open. That is what makes the HUD card
  * show live data rather than whatever was on screen the last time you stood at the Bazaar.
  *
- * <p>Orders needing attention (undercut) sort to the top.
+ * <p>Orders needing attention (undercut) sort to the top. Sorting, strings, colours and offsets are
+ * built once per change into a {@link ManageOrdersModel}; a frame only draws it.
  */
 public final class ManageOrdersPanel {
 
@@ -71,16 +69,38 @@ public final class ManageOrdersPanel {
      */
     private static final int HUD_MAX_ROWS = 8;
 
-    /** BUY orders tinted blue, SELL offers gold – so the side you placed reads at a glance. */
-    /** How often the display order is recomputed. See {@link #sortedOrders()}. */
-    private static final long SORT_INTERVAL_MS = 250;
+    private static final Component TITLE = Component.literal("Manage Orders");
+    private static final Component EMPTY_HINT = Component.literal("No tracked orders yet.");
 
-    /** The last sorted view, and when it was built. */
-    private List<BazaarOrder> sorted = List.of();
-    private long sortedAt;
+    /**
+     * What the model is derived from: the tracker's list revision (orders added, removed, rescanned),
+     * the order status revision (statuses are written in place by the API sync), the theme revision
+     * (colours are theme-tinted) and the font (widths). The panel width is a constant and widths are
+     * in GUI units, so the GUI scale does not enter; no row shows a relative time, so no clock.
+     */
+    record ModelKey(long ordersRevision, long statusRevision, int themeRevision, Font font) {
+    }
 
-    private static final int BUY_COLOR = 0xFF55C7F5;
-    private static final int SELL_COLOR = 0xFFE0A14D;
+    /**
+     * The model plus its draw-ready {@link Component}s, built with it so a frame never wraps a
+     * string. {@code name/amount/status} are parallel to {@code model.rows()}; {@code more} is the
+     * "+N more" line for each cap ({@link #MAX_ROWS} and {@link #HUD_MAX_ROWS}), null when unused.
+     */
+    record Drawn(ManageOrdersModel model, FormattedCharSequence title, FormattedCharSequence emptyHint,
+                 FormattedCharSequence tag, FormattedCharSequence[] name, FormattedCharSequence[] amount,
+                 FormattedCharSequence[] status, FormattedCharSequence morePanel,
+                 FormattedCharSequence moreHud) {
+        FormattedCharSequence more(int maxRows) {
+            return maxRows == HUD_MAX_ROWS ? moreHud : morePanel;
+        }
+    }
+
+    /** Rows for the current orders, rebuilt only when the {@link ModelKey} changes. */
+    private final CachedModel<ModelKey, Drawn> model =
+            new CachedModel<>("bazaar.manageOrders", ManageOrdersPanel::buildModel);
+
+    /** The last key handed to {@link #model}, reused while its inputs are unchanged (no per-frame key). */
+    private ModelKey lastKey;
 
     private ManageOrdersPanel() {
     }
@@ -100,9 +120,9 @@ public final class ManageOrdersPanel {
         if (!BazaarOrderTracker.isBazaarGui(title) || BazaarOrderTracker.isOrdersMenu(title)) {
             return;
         }
-        List<BazaarOrder> orders = sortedOrders();
-
         Font font = Minecraft.getInstance().font;
+        Drawn orders = currentModel(font);
+
         AbstractContainerScreenAccessor bounds = (AbstractContainerScreenAccessor) container;
         int left = bounds.skyblockSimplified$leftPos();
         int top = bounds.skyblockSimplified$topPos();
@@ -154,11 +174,15 @@ public final class ManageOrdersPanel {
                 || SkyBlockLocation.zone().isEmpty()) {
             return;
         }
-        List<BazaarOrder> orders = INSTANCE.sortedOrders();
-        if (orders.isEmpty()) {
+        // Cheap emptiness check before touching the model: the card is off for most players.
+        if (BazaarOrderTracker.getInstance().getOrders().isEmpty()) {
             return;
         }
         Font font = Minecraft.getInstance().font;
+        Drawn orders = INSTANCE.currentModel(font);
+        if (orders.model().orderCount() == 0) {
+            return;
+        }
         HudElement.Bounds bounds = HudElement.BAZAAR_ORDERS.defaultBounds(g.guiWidth(), g.guiHeight());
         int x = (int) bounds.x();
         int y = (int) bounds.y();
@@ -167,9 +191,59 @@ public final class ManageOrdersPanel {
         // Measuring is what opts the card into the growth correction, so a long order list grows
         // away from the screen edge it is anchored to instead of off it.
         HudLayout.measure(HudElement.BAZAAR_ORDERS, x, y, PANEL_W,
-                panelHeight(font, orders.size(), HUD_MAX_ROWS));
+                panelHeight(font, orders.model().orderCount(), HUD_MAX_ROWS));
         INSTANCE.drawPanel(g, font, orders, x, y, HUD_MAX_ROWS, SBSTheme.HUD_CORNER);
         HudLayout.end(g);
+    }
+
+    private Drawn currentModel(Font font) {
+        long ordersRev = BazaarOrderTracker.getInstance().revision();
+        long statusRev = BazaarOrder.statusRevision();
+        int themeRev = SBSTheme.revision();
+        ModelKey key = lastKey;
+        if (key == null || key.ordersRevision() != ordersRev || key.statusRevision() != statusRev
+                || key.themeRevision() != themeRev || key.font() != font) {
+            key = new ModelKey(ordersRev, statusRev, themeRev, font);
+            lastKey = key;
+        }
+        return model.get(key);
+    }
+
+    private static Drawn buildModel(ModelKey key) {
+        Font font = key.font();
+        ManageOrdersModel.Measure measure = new ManageOrdersModel.Measure() {
+            @Override
+            public int width(String text) {
+                return font.width(text);
+            }
+
+            @Override
+            public String prefixByWidth(String text, int maxWidth) {
+                return font.plainSubstrByWidth(text, maxWidth, false);
+            }
+        };
+        ManageOrdersModel m = ManageOrdersModel.build(BazaarOrderTracker.getInstance().getOrders(), measure,
+                PANEL_W - 2 * PAD, MAX_ROWS);
+        int n = m.rows().size();
+        FormattedCharSequence[] name = new FormattedCharSequence[n];
+        FormattedCharSequence[] amount = new FormattedCharSequence[n];
+        FormattedCharSequence[] status = new FormattedCharSequence[n];
+        for (int i = 0; i < n; i++) {
+            ManageOrdersModel.Row row = m.rows().get(i);
+            name[i] = seq(row.name());
+            amount[i] = seq(row.amount());
+            status[i] = seq(row.status());
+        }
+        int count = m.orderCount();
+        return new Drawn(m, Language.getInstance().getVisualOrder(TITLE),
+                Language.getInstance().getVisualOrder(EMPTY_HINT), seq(m.tag()), name, amount, status,
+                count > MAX_ROWS ? seq("+" + (count - MAX_ROWS) + " more") : null,
+                count > HUD_MAX_ROWS ? seq("+" + (count - HUD_MAX_ROWS) + " more") : null);
+    }
+
+    /** What {@code g.text(font, Component, ...)} would compute every frame, computed once here. */
+    private static FormattedCharSequence seq(String text) {
+        return Language.getInstance().getVisualOrder(Component.literal(text));
     }
 
     /** The panel's height for a given order count, so a caller can reserve space before drawing. */
@@ -182,128 +256,40 @@ public final class ManageOrdersPanel {
     }
 
     /** Shell, header and rows at an absolute position - everything both call sites have in common. */
-    private void drawPanel(GuiGraphicsExtractor g, Font font, List<BazaarOrder> orders,
+    private void drawPanel(GuiGraphicsExtractor g, Font font, Drawn drawn,
                            int x, int y, int maxRows, int corner) {
-        int shown = Math.min(orders.size(), maxRows);
-        boolean overflow = orders.size() > maxRows;
+        ManageOrdersModel orders = drawn.model();
+        int count = orders.orderCount();
+        int shown = Math.min(Math.min(count, maxRows), orders.rows().size());
         int lineH = font.lineHeight + LINE_GAP;
-        int height = panelHeight(font, orders.size(), maxRows);
+        int height = panelHeight(font, count, maxRows);
 
         HudCard.draw(g, x, y, PANEL_W, height, corner);
 
         int ix = x + PAD;
-        int right = x + PANEL_W - PAD;
         int iy = y + PAD;
 
         // Header: title + a count of orders that need attention (undercut), red when > 0.
-        g.text(font, Component.literal("Manage Orders"), ix, iy, SBSTheme.ACCENT_BRIGHT);
-        int undercut = 0;
-        for (BazaarOrder o : orders) {
-            if (o.status() == BazaarStatus.OUTDATED) {
-                undercut++;
-            }
-        }
-        String tag = undercut > 0 ? undercut + " undercut" : orders.size() + "";
-        g.text(font, Component.literal(tag), right - font.width(tag), iy,
-                undercut > 0 ? SBSTheme.BAZAAR_OUTDATED_FRAME : SBSTheme.TEXT_MUTED);
+        g.text(font, drawn.title(), ix, iy, SBSTheme.ACCENT_BRIGHT);
+        g.text(font, drawn.tag(), ix + orders.tagX(), iy, orders.tagColor());
 
         int ly = iy + font.lineHeight + LINE_GAP;
-        if (orders.isEmpty()) {
-            g.text(font, Component.literal("No tracked orders yet."), ix, ly, SBSTheme.TEXT_MUTED);
+        if (count == 0) {
+            g.text(font, drawn.emptyHint(), ix, ly, SBSTheme.TEXT_MUTED);
             return;
         }
+        int dotOffset = (font.lineHeight - 4) / 2;
         for (int i = 0; i < shown; i++) {
-            drawRow(g, font, orders.get(i), ix, right, ly);
+            ManageOrdersModel.Row row = orders.rows().get(i);
+            int dotY = ly + dotOffset;
+            g.fill(ix, dotY, ix + 4, dotY + 4, row.statusColor());
+            g.text(font, drawn.name()[i], ix + row.nameX(), ly, row.nameColor());
+            g.text(font, drawn.amount()[i], ix + row.amountX(), ly, SBSTheme.TEXT_MUTED);
+            g.text(font, drawn.status()[i], ix + row.statusX(), ly, row.statusColor());
             ly += lineH;
         }
-        if (overflow) {
-            String more = "+" + (orders.size() - maxRows) + " more";
-            g.text(font, Component.literal(more), ix, ly, SBSTheme.TEXT_MUTED);
+        if (count > maxRows) {
+            g.text(font, drawn.more(maxRows), ix, ly, SBSTheme.TEXT_MUTED);
         }
-    }
-
-    /** One order row: [status dot] name (buy/sell tinted) … xAmount status. */
-    private void drawRow(GuiGraphicsExtractor g, Font font, BazaarOrder order, int ix, int right, int ly) {
-        int dotY = ly + (font.lineHeight - 4) / 2;
-        g.fill(ix, dotY, ix + 4, dotY + 4, statusColor(order.status()));
-
-        String statusShort = statusShort(order.status());
-        int statusW = font.width(statusShort);
-        int statusX = right - statusW;
-
-        String amount = "x" + order.amount();
-        int amountW = font.width(amount);
-        int amountX = statusX - 6 - amountW;
-
-        int nameX = ix + 8;
-        int nameMax = amountX - 4 - nameX;
-        String name = trim(font, order.itemName(), nameMax);
-        g.text(font, Component.literal(name), nameX, ly,
-                order.type() == BazaarOrderType.BUY ? BUY_COLOR : SELL_COLOR);
-        g.text(font, Component.literal(amount), amountX, ly, SBSTheme.TEXT_MUTED);
-        g.text(font, Component.literal(statusShort), statusX, ly, statusColor(order.status()));
-    }
-
-    /** Orders sorted so the ones needing action come first: undercut, then matched, best, filled. */
-    /**
-     * The orders in the order they are shown, re-sorted at most every {@link #SORT_INTERVAL_MS}.
-     *
-     * <p>It used to copy and sort the whole list on every frame the panel was up. An order's status
-     * changes on the network's cadence, not the frame's, so a quarter of a second late is invisible
-     * - and this is the Bazaar, the screen where the mod can least afford per-frame allocation.
-     */
-    private List<BazaarOrder> sortedOrders() {
-        long now = System.currentTimeMillis();
-        if (now - sortedAt < SORT_INTERVAL_MS) {
-            return sorted;
-        }
-        sortedAt = now;
-        List<BazaarOrder> orders = new ArrayList<>(BazaarOrderTracker.getInstance().getOrders());
-        orders.sort(Comparator
-                .comparingInt((BazaarOrder o) -> priority(o.status()))
-                .thenComparing(o -> o.type())
-                .thenComparing(BazaarOrder::itemName));
-        sorted = orders;
-        return sorted;
-    }
-
-    private static int priority(BazaarStatus status) {
-        return switch (status) {
-            case OUTDATED -> 0;
-            case MATCHED -> 1;
-            case BEST_OFFER -> 2;
-            case UNKNOWN -> 3;
-            case FILLED -> 4;
-        };
-    }
-
-    private static int statusColor(BazaarStatus status) {
-        return switch (status) {
-            case BEST_OFFER -> SBSTheme.BAZAAR_BEST_FRAME;
-            case MATCHED -> SBSTheme.BAZAAR_MATCHED_FRAME;
-            case OUTDATED -> SBSTheme.BAZAAR_OUTDATED_FRAME;
-            case FILLED -> SBSTheme.HUD_MANA;
-            case UNKNOWN -> SBSTheme.TEXT_MUTED;
-        };
-    }
-
-    private static String statusShort(BazaarStatus status) {
-        return switch (status) {
-            case BEST_OFFER -> "Best";
-            case MATCHED -> "Match";
-            case OUTDATED -> "Undercut";
-            case FILLED -> "Filled";
-            case UNKNOWN -> "…";
-        };
-    }
-
-    private static String trim(Font font, String text, int maxWidth) {
-        if (maxWidth <= 0) {
-            return "";
-        }
-        if (font.width(text) <= maxWidth) {
-            return text;
-        }
-        return font.plainSubstrByWidth(text, Math.max(1, maxWidth - font.width("…")), false) + "…";
     }
 }

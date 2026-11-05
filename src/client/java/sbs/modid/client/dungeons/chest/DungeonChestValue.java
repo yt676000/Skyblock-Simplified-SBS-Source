@@ -57,6 +57,9 @@ public final class DungeonChestValue {
 
     /** "Undead Essence" -> {@code ESSENCE_UNDEAD}. */
     private static final Pattern ESSENCE = Pattern.compile("(?i)^(\\w+)\\s+Essence$");
+    private static final Pattern SPACES = Pattern.compile("\s+");
+    private static final Pattern NON_DIGITS = Pattern.compile("[^0-9]");
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     private DungeonChestValue() {
     }
@@ -271,7 +274,7 @@ public final class DungeonChestValue {
         if (book.matches()) {
             int level = roman(book.group(2));
             if (level > 0) {
-                String display = book.group(1).trim().toLowerCase(Locale.ROOT).replaceAll("\s+", "_");
+                String display = SPACES.matcher(book.group(1).trim().toLowerCase(Locale.ROOT)).replaceAll("_");
                 String base = EnchantNames.resolveBase(display).toUpperCase(Locale.ROOT);
                 String id = "ENCHANTMENT_" + base + "_" + level;
                 if (base.startsWith("ULTIMATE_")) {
@@ -307,7 +310,7 @@ public final class DungeonChestValue {
 
     private static long parseNumber(String text) {
         try {
-            return Long.parseLong(text.replaceAll("[^0-9]", ""));
+            return Long.parseLong(NON_DIGITS.matcher(text).replaceAll(""));
         } catch (NumberFormatException bad) {
             return 0L;
         }
@@ -321,7 +324,7 @@ public final class DungeonChestValue {
         }
         List<String> out = new ArrayList<>();
         for (var line : lore.lines()) {
-            out.add(line.getString().replaceAll("§.", "").trim());
+            out.add(FORMATTING.matcher(line.getString()).replaceAll("").trim());
         }
         return out;
     }

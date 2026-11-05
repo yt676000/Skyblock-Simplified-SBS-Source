@@ -153,7 +153,7 @@ public final class PlayerNotesWarner {
      */
     private static void learnUuids(Minecraft minecraft, ClientLevel level, PlayerNotesStore store) {
         for (Player player : level.players()) {
-            if (player != minecraft.player && sbs.modid.client.core.player.RealPlayers.isRealPlayer(player)) {
+            if (player != minecraft.player && sbs.modid.client.core.player.RealPlayers.hasPlayerListEntry(player)) {
                 store.observe(player.getGameProfile().name(),
                         PlayerNoteBook.accountUuid(player.getUUID()));
             }
@@ -212,7 +212,7 @@ public final class PlayerNotesWarner {
             // name that happens to be noted.
             String uuid = PlayerNoteBook.accountUuid(player.getUUID());
             String key = PlayerNoteBook.key(name);
-            if (uuid == null || !sbs.modid.client.core.player.RealPlayers.isRealPlayer(player) || nearbyWarned.contains(key) || partyWarned.contains(key)) {
+            if (uuid == null || !sbs.modid.client.core.player.RealPlayers.hasPlayerListEntry(player) || nearbyWarned.contains(key) || partyWarned.contains(key)) {
                 continue;
             }
             PlayerNote note = store.book().match(name, uuid);

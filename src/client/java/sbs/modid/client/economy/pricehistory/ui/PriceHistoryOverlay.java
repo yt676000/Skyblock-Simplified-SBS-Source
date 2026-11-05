@@ -8,6 +8,8 @@
 
 package sbs.modid.client.economy.pricehistory.ui;
 
+import sbs.modid.client.core.net.UrlGuard;
+
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -290,7 +292,7 @@ public final class PriceHistoryOverlay {
                 String url = customUrl;
                 close();
                 Minecraft.getInstance().execute(() ->
-                        net.minecraft.client.gui.screens.ConfirmLinkScreen.confirmLinkNow(screen, url));
+                        UrlGuard.openAfterClick(screen, url));
                 return;
             }
             prepareFallback();

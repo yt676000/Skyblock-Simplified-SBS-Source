@@ -410,7 +410,8 @@ public final class BazaarFlipsScreen extends Screen {
         if (list.isEmpty()) {
             String text = feed.isLoading() ? "§7Loading bazaar flips..."
                     : state.failure() != null
-                    ? "§c" + state.failure().sentence() + " §7No local data either."
+                    ? sbs.modid.client.ui.render.FailureStyle.code(state.failure())
+                            + state.failure().sentence() + " §7No local data either."
                     : state.mode() == BazaarFlipFeed.Mode.NONE ? "§7Loading bazaar flips..."
                     : "§7Nothing passed the filters on this snapshot.";
             g.centeredText(font, Component.literal(text), innerX + contentWidth / 2, top + 8,

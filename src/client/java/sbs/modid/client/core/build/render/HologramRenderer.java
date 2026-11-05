@@ -12,7 +12,9 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.perf.Perf;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.render.WorldRender;
 
 import java.util.List;
@@ -43,7 +45,7 @@ public final class HologramRenderer {
         GhostStyle style = frame.style();
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         int thickness = Math.max(1, Math.min(4, style.lineWidth()));
 
         // Farthest first, so nearer translucent cubes layer on top (a painter's order that reads as
@@ -51,6 +53,14 @@ public final class HologramRenderer {
         List<GhostCollector.Ghost> ghosts = frame.ghosts();
         for (int i = ghosts.size() - 1; i >= 0; i--) {
             GhostCollector.Ghost ghost = ghosts.get(i);
+            // One view test per cell, before the fill lookup and the 8-corner projections.
+            boolean inView = WorldRender.boxInView(viewProjection, camPos.x, camPos.y, camPos.z,
+                    ghost.x(), ghost.y(), ghost.z(), ghost.x() + 1, ghost.y() + 1, ghost.z() + 1,
+                    g.guiWidth(), g.guiHeight());
+            Perf.countMarker(inView);
+            if (!inView) {
+                continue;
+            }
             int rgb = style.colorFor(ghost.status());
             if (keepsFill(style.fill(), GhostModels.drewModel(ghost.x(), ghost.y(), ghost.z()))) {
                 WorldRender.fillBox(g, viewProjection, camPos,

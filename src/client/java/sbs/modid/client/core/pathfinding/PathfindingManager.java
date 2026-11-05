@@ -213,6 +213,7 @@ public final class PathfindingManager {
     /** Called once per client tick from {@code GuiTrackingMixin}. */
     public void tick(Minecraft minecraft) {
         lastTickNanos = 0;
+        PathLog.flush(System.currentTimeMillis());
         if (!PathRouting.routing()) {
             if (!routes.isEmpty()) {
                 clear();
@@ -269,9 +270,12 @@ public final class PathfindingManager {
         }
         int[] slices = RoutePlanner.slices(nodeBudget, running.size());
         long started = System.nanoTime();
+        // The node budget is the plan; the deadline is the guarantee. A run of expensive nodes
+        // outpaces the slow calibration, and without the hard stop one tick ran 170+ ms.
+        long deadline = started + TIME_BUDGET_NANOS;
         int spent = 0;
         for (int i = 0; i < running.size(); i++) {
-            spent += running.get(i).step(slices[i]);
+            spent += running.get(i).step(slices[i], deadline);
         }
         long elapsed = System.nanoTime() - started;
         lastTickNanos = elapsed;
@@ -334,8 +338,8 @@ public final class PathfindingManager {
 
     /**
      * Moves {@link #nodeBudget} toward the node count that fits in {@link #TIME_BUDGET_NANOS}, from
-     * how long {@code nodes} nodes' worth of slices actually took. A slice that finished early is
-     * counted as if spent in full, which only ever makes the estimate more conservative.
+     * how long the {@code nodes} actually expanded took (a slice cut by the deadline counts only what
+     * it did).
      */
     private void calibrate(long elapsedNanos, int nodes) {
         if (elapsedNanos <= 0 || nodes <= 0) {

@@ -79,6 +79,8 @@ public final class CoinLedger {
     private long activeMs;
     /** The idle limit the last tick ran with, for activity reported without one. */
     private long idleLimit = Long.MAX_VALUE;
+    /** Bumped whenever a booked figure changes, so the card rebuilds only then (and on its clock). */
+    private int version;
 
     // ------------------------------------------------------------------ inputs
 
@@ -163,6 +165,7 @@ public final class CoinLedger {
         purse = -1L;
         lastTick = -1L;
         activeMs = 0;
+        version++;
     }
 
     // ------------------------------------------------------------------ matching
@@ -203,6 +206,7 @@ public final class CoinLedger {
     }
 
     private void book(Event event, long amount) {
+        version++;
         if (event.kind() == Kind.TRANSFER) {
             if (event.in()) {
                 transferIn += amount;
@@ -221,9 +225,15 @@ public final class CoinLedger {
             return;
         }
         (in ? earned : spent).merge(Source.UNKNOWN, amount, Long::sum);
+        version++;
     }
 
     // ------------------------------------------------------------------ reading
+
+    /** Changes whenever a booked figure does; the card's rebuild key. */
+    public int version() {
+        return version;
+    }
 
     /**
      * Earned by source, claims folded in for the sources whose claims count. Ordered by the

@@ -5,12 +5,18 @@
 
   "sbs.privacy.button.accept_all": "Allow all",
   "sbs.privacy.button.decline_all": "Allow nothing",
-  "sbs.privacy.button.website": "Open %s (opens your browser)",
-  "sbs.privacy.button.website.describe": "Opens the SkyBlock Simplified website in your normal web browser, outside Minecraft. Minecraft will ask you to confirm first, and lets you copy the address instead of opening it.",
+  "sbs.privacy.button.website": "Open the privacy policy on %s (opens your browser)",
+  "sbs.privacy.button.website.describe": "Opens the SkyBlock Simplified privacy policy in your normal web browser, outside Minecraft. Minecraft will ask you to confirm first, and lets you copy the address instead of opening it.",
 
-  "sbs.privacy.label.notice": "The full privacy notice ships with the mod as PRIVACY.md, and the legal notice as LEGAL-NOTICE.md. Both are in the mod's repository.",
   "sbs.privacy.label.contact_website": "Questions, complaints and data protection requests: info@codecreative.store, or our Discord.",
   "sbs.privacy.label.stored": "Your answers are stored per Minecraft account in config/sbs/license/privacy/ and are shared by every config profile.",
+  "sbs.privacy.policy.current": "Privacy policy version: %s",
+  "sbs.privacy.policy.accepted": "Your choices were last made under policy version %s, on %s.",
+  "sbs.privacy.policy.accepted_unknown": "Your choices were last made on %s, before policy versions were recorded.",
+  "sbs.privacy.policy.none": "You have not made any choices yet.",
+  "sbs.privacy.policy.outdated": "The privacy policy has changed since then. Review your choices below.",
+  "sbs.privacy.policy_update.title": "SkyBlock Simplified: the privacy policy was updated",
+  "sbs.privacy.policy_update.body": "Review your choices in Licence Token > Privacy & data. Optional features you allowed under the previous version stay off until you do.",
   "sbs.privacy.label.details_hint": "Hover a row to see exactly what it sends, who receives it and how long it is kept.",
 
   "sbs.privacy.support.title": "Support & bug reports",
@@ -65,10 +71,10 @@
   "sbs.privacy.scope.presence_nearby.decline": "Nothing changes. Until the new version ships, no badges appear over other players.",
 
   "sbs.privacy.scope.party_finder.title": "Party finder",
-  "sbs.privacy.scope.party_finder.data": "Your name and UUID, the party you are in, and the requirements and SkyBlock stats a party is filtered on.",
+  "sbs.privacy.scope.party_finder.data": "Your name and UUID, the party you are in, and the requirements and SkyBlock stats a party is filtered on. Without a licence: a free token issued for your Minecraft UUID, after the game confirms your account with Mojang (the same check as joining a server).",
   "sbs.privacy.scope.party_finder.why": "So parties can be listed, matched to the requirements you set, and shown to other players looking for one.",
   "sbs.privacy.scope.party_finder.recipients": "The SBS backend, and other SBS users browsing the party list.",
-  "sbs.privacy.scope.party_finder.retention": "A party is removed 30 minutes after its last activity. Stats looked up for filtering are cached for 15 minutes.",
+  "sbs.privacy.scope.party_finder.retention": "A party is removed 30 minutes after its last activity. Stats looked up for filtering are cached for 15 minutes. A free token is valid for 30 days; its record (stored as a hash, with your UUID) is deleted 30 days after it expires. Hashed IP addresses for abuse limits are kept for 48 hours.",
   "sbs.privacy.scope.party_finder.decline": "The party finder is unavailable. Hypixel's own party system is unaffected.",
 
   "sbs.privacy.scope.carry_tickets.title": "Carry tickets",
@@ -79,10 +85,10 @@
   "sbs.privacy.scope.carry_tickets.decline": "The carry board is unavailable.",
 
   "sbs.privacy.scope.profile_data.title": "Profile, item and stat lookups",
-  "sbs.privacy.scope.profile_data.data": "Your SkyBlock profile id, data derived from your inventory and collections, and any player name you look up with the profile viewer.",
+  "sbs.privacy.scope.profile_data.data": "Your SkyBlock profile id, data derived from your inventory and collections, and any player name you look up with the profile viewer. Without a licence: a free token issued for your Minecraft UUID, after the game confirms your account with Mojang (the same check as joining a server).",
   "sbs.privacy.scope.profile_data.why": "So the server can work out your stats, value your items and calculate flips for you. Items sent for valuation have their unique item id and timestamp stripped first.",
   "sbs.privacy.scope.profile_data.recipients": "The SBS backend. It fetches from the Hypixel API on your behalf using its own key.",
-  "sbs.privacy.scope.profile_data.retention": "Looked-up profiles are cached for 15 minutes. Item valuations are not stored against your account.",
+  "sbs.privacy.scope.profile_data.retention": "Looked-up profiles are cached for 15 minutes. Item valuations are not stored against your account. A free token is valid for 30 days; its record (stored as a hash, with your UUID) is deleted 30 days after it expires. Hashed IP addresses for abuse limits are kept for 48 hours.",
   "sbs.privacy.scope.profile_data.decline": "Item appraisal, the profile viewer and personalised flips are unavailable. Plain market prices still work - those need nothing about you.",
   "sbs.privacy.scope.hollows_structures.title": "Crystal Hollows structure sharing",
   "sbs.privacy.scope.hollows_structures.data": "The id of the Crystal Hollows lobby you are in (such as mini24CD), which structure you walked into, its centre and the box you walked around inside it, how many positions that box was built from, and your mod version. Never your name, UUID or chat.",
@@ -99,5 +105,18 @@
   "sbs.privacy.scope.diagnostics.decline": "Nothing changes - there is no crash reporter yet.",
 
   "sbs.privacy.migration.title": "SkyBlock Simplified: your privacy settings",
-  "sbs.privacy.migration.body": "This update adds per-purpose control over what the mod sends. Everything starts switched off, including features that used to be on. Open Licence Token > Privacy & data to choose."
+  "sbs.privacy.migration.body": "This update adds per-purpose control over what the mod sends. Everything starts switched off, including features that used to be on. Open Licence Token > Privacy & data to choose.",
+
+  "sbs.api.failure.no_consent": "This feature is turned off in your privacy settings. Turn it on under Licence Token > Privacy & data.",
+  "sbs.api.failure.no_consent.scope": "\"%s\" is turned off in your privacy settings. Turn it on under Licence Token > Privacy & data.",
+  "sbs.api.failure.no_consent.headline": "Local mode - weaker and less accurate. The server ranking is turned off in your privacy settings (Licence Token > Privacy & data).",
+  "sbs.api.failure.no_consent.button": "Open privacy settings",
+  "sbs.api.failure.offline": "Could not reach the server. Check your internet connection.",
+  "sbs.api.failure.no_licence": "Local ranking. A licence unlocks the full server ranking.",
+  "sbs.api.failure.no_licence.headline": "Local ranking, worked out on your machine. A licence unlocks the full server ranking.",
+  "sbs.api.failure.free_access": "PlayerViewer is temporarily unavailable. Try again in a few minutes.",
+  "sbs.pv.refresh": "Refresh",
+  "sbs.pv.refresh.cooldown": "Refresh (%ss)",
+  "sbs.pv.updated.now": "Updated just now",
+  "sbs.pv.updated.minutes": "Updated %s min ago"
 }

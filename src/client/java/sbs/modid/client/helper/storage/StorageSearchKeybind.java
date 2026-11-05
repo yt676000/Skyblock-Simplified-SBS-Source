@@ -29,7 +29,12 @@ public final class StorageSearchKeybind {
 
     /** Called for every fresh in-world key press. */
     public static void onKeyPressed(int keyCode) {
-        int bound = ConfigManager.getInstance().get().storageSearch.openKey;
+        var settings = ConfigManager.getInstance().get().storageSearch;
+        if (settings.clearMarkersKey != 0 && keyCode == settings.clearMarkersKey && ChestMarkers.active()) {
+            ChestMarkers.clear();
+            return;
+        }
+        int bound = settings.openKey;
         if (bound == 0 || keyCode != bound) {
             return;
         }

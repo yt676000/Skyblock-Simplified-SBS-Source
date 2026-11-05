@@ -549,6 +549,41 @@ public final class RoomMapReader {
         if (map == null) {
             return null;
         }
+        if (TILE_CACHE.changed(map, map.colors)) {
+            tileAnalysis = analyseTiles(map);
+        }
+        TileAnalysis analysis = tileAnalysis;
+        if (analysis == null) {
+            return null;
+        }
+        MapGrid grid = analysis.grid();
+        // Feed the anchor sampler from the snapshot path too, so the capture / self-heal also runs
+        // while only the map HUD is active (readRoom is not the only anchor driver any more).
+        sampleAnchor(grid, map, player);
+        float playerCellX;
+        float playerCellZ;
+        if (anchored) {
+            playerCellX = anchorMapCellX + (float) ((player.getX() + 8.0) / 32.0 - anchorWorldCellX);
+            playerCellZ = anchorMapCellZ + (float) ((player.getZ() + 8.0) / 32.0 - anchorWorldCellZ);
+        } else {
+            int[] pixel = playerPixel(map, player);
+            playerCellX = (pixel[0] - grid.phaseX()) / (float) grid.step();
+            playerCellZ = (pixel[1] - grid.phaseZ()) / (float) grid.step();
+        }
+        return new MapSnapshot(analysis.tiles(), analysis.minCx(), analysis.minCz(), analysis.maxCx(),
+                analysis.maxCz(), playerCellX, playerCellZ, grid.phaseX(), grid.phaseZ(), grid.step());
+    }
+
+    /** The colour-only part of a snapshot: grid calibration plus every tile; depends on nothing but the pixels. */
+    private record TileAnalysis(MapGrid grid, List<MapTile> tiles, int minCx, int minCz, int maxCx, int maxCz) {
+    }
+
+    // The tile analysis re-runs only when the map pixels changed; the player position is not part of it.
+    private static final MapColourCache TILE_CACHE = new MapColourCache(MAP_SIZE * MAP_SIZE);
+    private static TileAnalysis tileAnalysis;
+
+    /** Calibrates the grid and reads every tile, or {@code null} when the map holds no usable dungeon. */
+    private static TileAnalysis analyseTiles(MapItemSavedData map) {
         MapGrid grid = calibrate(map);
         if (grid == null) {
             return null;
@@ -577,21 +612,7 @@ public final class RoomMapReader {
         if (tiles.isEmpty()) {
             return null;
         }
-        // Feed the anchor sampler from the snapshot path too, so the capture / self-heal also runs
-        // while only the map HUD is active (readRoom is not the only anchor driver any more).
-        sampleAnchor(grid, map, player);
-        float playerCellX;
-        float playerCellZ;
-        if (anchored) {
-            playerCellX = anchorMapCellX + (float) ((player.getX() + 8.0) / 32.0 - anchorWorldCellX);
-            playerCellZ = anchorMapCellZ + (float) ((player.getZ() + 8.0) / 32.0 - anchorWorldCellZ);
-        } else {
-            int[] pixel = playerPixel(map, player);
-            playerCellX = (pixel[0] - grid.phaseX()) / (float) grid.step();
-            playerCellZ = (pixel[1] - grid.phaseZ()) / (float) grid.step();
-        }
-        return new MapSnapshot(List.copyOf(tiles), minCx, minCz, maxCx, maxCz, playerCellX, playerCellZ,
-                grid.phaseX(), grid.phaseZ(), grid.step());
+        return new TileAnalysis(grid, List.copyOf(tiles), minCx, minCz, maxCx, maxCz);
     }
 
     /**

@@ -12,6 +12,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.audio.SbsAudio;
+import sbs.modid.client.core.audio.SbsSounds;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.perf.Perf;
@@ -91,7 +92,7 @@ public final class Alerts {
                     alert.hud() != null && onGameThread(alert.hud()));
         }
         if (AlertChannels.has(mask, AlertChannel.SOUND)) {
-            result.put(AlertChannel.SOUND, SbsAudio.play(alert.tone(), cfg.soundVolume));
+            result.put(AlertChannel.SOUND, SbsSounds.tone(alert.tone(), cfg.soundVolume));
         }
         if (AlertChannels.has(mask, AlertChannel.NARRATOR)) {
             result.put(AlertChannel.NARRATOR,
@@ -127,6 +128,7 @@ public final class Alerts {
         try (Perf.Section perf = Perf.tick("tick.Alerts")) {
             SBSConfig.AlertSettings cfg = cfg();
             NarratorVoice.tick(cfg.narratorVolume, cfg.narratorLanguage);
+            SbsSounds.sync();
             SbsAudio.tick();
             AlertTitle.tick();
         }

@@ -51,7 +51,15 @@ public enum ModuleSubgroup {
     // ---- Quality of Life ----
     /** Getting somewhere, or finding something: maps, warps, souls, NPCs, quests. */
     NAVIGATION(ModuleGroup.QUALITY_OF_LIFE, "Navigation"),
-    TIMERS(ModuleGroup.QUALITY_OF_LIFE, "Timers & Reminders");
+    TIMERS(ModuleGroup.QUALITY_OF_LIFE, "Timers & Reminders"),
+
+    // ---- Dungeons ----
+    /**
+     * The puzzle-room solvers: one toggle and one colour per puzzle. A header over one card is the
+     * case the class note warns about; it was asked for by name, and it keeps eleven puzzle rows from
+     * being read as part of the general Dungeons card.
+     */
+    PUZZLE_SOLVERS(ModuleGroup.DUNGEONS, "Puzzle Solvers");
 
     /** The sub-header text of the bucket holding a subdivided group's undeclared modules. */
     public static final String GENERAL_NAME = "General";

@@ -10,6 +10,7 @@ package sbs.modid.client.core.item;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
@@ -33,10 +34,67 @@ public final class ItemTooltip {
     private ItemTooltip() {
     }
 
+    /**
+     * The last tooltip built, for the stack hovered frame after frame. Valid while the stack and the
+     * components its lines come from are the same instances, prices and config have not moved, the
+     * modifier keys read the same, and it is younger than {@link #MAX_AGE_MS} - the bound for any
+     * contributor whose line reads the clock. Client thread only.
+     */
+    private static ItemStack lastStack;
+    private static Object lastLore;
+    private static Object lastData;
+    private static Object lastName;
+    private static int lastCount;
+    private static int lastPrices;
+    private static int lastConfig;
+    private static boolean lastShift;
+    private static boolean lastCtrl;
+    private static long lastBuiltAt;
+    private static List<Component> lastLines;
+
+    private static final long MAX_AGE_MS = 250L;
+
     /** The full tooltip, as a new mutable list; the hover name alone if building it fails. */
     public static List<Component> of(ItemStack stack) {
+        Minecraft minecraft = Minecraft.getInstance();
+        long now = System.currentTimeMillis();
+        Object lore = stack.get(DataComponents.LORE);
+        Object data = stack.get(DataComponents.CUSTOM_DATA);
+        Object name = stack.get(DataComponents.CUSTOM_NAME);
+        int prices = sbs.modid.client.economy.prices.PriceVersion.get();
+        int config = sbs.modid.client.core.config.ConfigManager.getInstance().revision();
+        boolean shift = minecraft.hasShiftDown();
+        boolean ctrl = minecraft.hasControlDown();
+        if (lastLines != null && stack == lastStack && lore == lastLore && data == lastData && name == lastName
+                && stack.getCount() == lastCount && prices == lastPrices && config == lastConfig
+                && shift == lastShift && ctrl == lastCtrl && now - lastBuiltAt < MAX_AGE_MS) {
+            return new ArrayList<>(lastLines);
+        }
+        List<Component> built = build(minecraft, stack);
+        lastStack = stack;
+        lastLore = lore;
+        lastData = data;
+        lastName = name;
+        lastCount = stack.getCount();
+        lastPrices = prices;
+        lastConfig = config;
+        lastShift = shift;
+        lastCtrl = ctrl;
+        lastBuiltAt = now;
+        lastLines = new ArrayList<>(built);
+        return built;
+    }
+
+    /** Lets go of the remembered stack - on screen close, with the other per-stack caches. */
+    public static void clear() {
+        lastStack = null;
+        lastLines = null;
+        lastLore = lastData = lastName = null;
+    }
+
+    private static List<Component> build(Minecraft minecraft, ItemStack stack) {
         try {
-            return new ArrayList<>(Screen.getTooltipFromItem(Minecraft.getInstance(), stack));
+            return new ArrayList<>(Screen.getTooltipFromItem(minecraft, stack));
         } catch (Throwable t) {
             // A tooltip contributor throwing must not take the overlay down with it.
             List<Component> fallback = new ArrayList<>();

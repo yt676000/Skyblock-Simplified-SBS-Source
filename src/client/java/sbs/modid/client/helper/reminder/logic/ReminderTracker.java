@@ -8,6 +8,7 @@
 
 package sbs.modid.client.helper.reminder.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -227,7 +228,7 @@ public final class ReminderTracker {
 
         Minecraft minecraft = Minecraft.getInstance();
         if (cfg.sound && minecraft.player != null) {
-            minecraft.player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.4f);
+            SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.4f);
         }
         // Extra channels on top of the chat line - which always goes out, so this only ever adds.
         // The chat bit is cleared: sending it here would print the same reminder twice.

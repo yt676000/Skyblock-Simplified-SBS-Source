@@ -14,7 +14,8 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.render.OverlayColor;
@@ -71,7 +72,7 @@ public final class EffectiveBlockHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         int best = colour(cfg.effectiveBestColorHex, DEFAULT_BEST);
         int middle = colour(cfg.effectiveMiddleColorHex, DEFAULT_MIDDLE);
         int low = colour(cfg.effectiveLowColorHex, DEFAULT_LOW);
@@ -113,7 +114,7 @@ public final class EffectiveBlockHighlight {
     }
 
     /** One block face as a translucent quad, and optionally its four edges at full opacity. */
-    private static void drawFace(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawFace(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                  int x, int y, int z, int face, int colour, boolean outline) {
         Vec3[] q = corners(x, y, z, face);
         WorldRender.fillQuad(g, viewProjection, camPos, q[0], q[1], q[2], q[3], colour, STRIP);

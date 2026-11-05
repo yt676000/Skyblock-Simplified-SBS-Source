@@ -16,7 +16,8 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.render.OverlayColor;
@@ -47,6 +48,8 @@ import java.util.List;
  * separate two of them - so a sparkling critter's label carries a leading {@code ✦} as well.
  */
 public final class HidingCritterHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     /** Fallback when the configured hex is unparseable, so a half-typed colour never blanks the box. */
     private static final int FALLBACK_RGB = 0xFF2FD5;
@@ -73,7 +76,7 @@ public final class HidingCritterHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
 
         int color = colorOf(cfg.colorHex, FALLBACK_RGB);
         int sparklingColor = colorOf(cfg.sparkling.colorHex, FALLBACK_SPARKLING_RGB);
@@ -151,16 +154,15 @@ public final class HidingCritterHighlight {
      * extractor removed, or a word the label already carries; either way the prefix is what makes
      * the two kinds distinguishable without relying on the colour.
      */
-    private static void label(GuiGraphicsExtractor g, Minecraft minecraft, Matrix4f viewProjection,
+    private static void label(GuiGraphicsExtractor g, Minecraft minecraft, Matrix4fc viewProjection,
                               Vec3 camPos, AABB box, HidingCritterTracker.Sighting sighting, int color) {
         String text = sighting.mob() == null ? sighting.name() + " (hidden)" : sighting.name();
         if (sighting.sparkling()) {
             text = "✦ " + text;
         }
-        Vec3 top = new Vec3(box.getCenter().x, box.maxY + 0.5, box.getCenter().z);
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos, top,
-                g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                box.getCenter().x, box.maxY + 0.5, box.getCenter().z, g.guiWidth(), g.guiHeight(), screen)) {
             g.centeredText(minecraft.font, Component.literal(text), screen[0], screen[1], color);
         }
     }

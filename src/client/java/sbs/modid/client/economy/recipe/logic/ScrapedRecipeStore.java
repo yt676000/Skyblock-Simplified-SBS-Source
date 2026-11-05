@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 /**
  * Captures Hypixel SkyBlock recipes from the game's own recipe menus and persists them to disk –
@@ -62,6 +63,8 @@ public final class ScrapedRecipeStore implements RecipeProvider {
     private static final int[] RESULT_SLOTS = {23, 24, 25};
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     private final Map<String, SbsRecipe> recipes = new ConcurrentHashMap<>();
     private volatile boolean loaded;
@@ -212,7 +215,7 @@ public final class ScrapedRecipeStore implements RecipeProvider {
     }
 
     private static String stripCodes(String text) {
-        return text == null ? "" : text.replaceAll(SECTION_SIGN + ".", "");
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("");
     }
 
     // ------------------------------------------------------------------

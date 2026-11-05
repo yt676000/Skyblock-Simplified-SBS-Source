@@ -234,8 +234,19 @@ public final class CommandRegistry {
                 "Shows the mayor, their perks and the election; with an item, its price history by mayor.",
                 ECONOMY, "/sbs mayor hyperion");
         sbs(l, "cph", List.of(), "reset", "reset", "Restarts the Coins per Hour session.", ECONOMY);
+        sbs(l, "dice", List.of(), "reset [all]", "reset",
+                "Restarts the Dice Profit session; \"all\" also clears the profile's all-time totals.", ECONOMY);
+        sbs(l, "sacrifice", List.of(), "reset [all]", "reset",
+                "Restarts the Sacrifice Altar session; \"all\" also clears the profile's all-time totals.", ECONOMY);
         sbs(l, "minions", List.of(), "[plan]", "plan",
                 "Opens the minion calculator; \"plan\" opens the budget planner.", ECONOMY);
+
+        sbs(l, "dungeonprofit", List.of(), "[reset]", "reset",
+                "Opens the Dungeon Profit history: runs, per-floor summary; reset starts a new session.",
+                DUNGEONS);
+        sbs(l, "kuudraprofit", List.of(), "[reset]", "reset",
+                "Opens the Kuudra Profit history: runs, per-tier summary; reset starts a new session.",
+                COMBAT);
 
         // --- Skills
         sbs(l, "visitors", List.of(), "", "",
@@ -261,8 +272,8 @@ public final class CommandRegistry {
                 "/sbs trackcarry revenant PlayerName");
         sbs(l, "kuudra", List.of(), "mark|area|list|del|clear|reload|export|import",
                 "mark|area|list|del|clear|reload|export|import", "Manages your Kuudra pearl setups.", COMBAT);
-        sbs(l, "diana", List.of(), "[status|clear|debug]", "status|clear|debug",
-                "Says what the Diana helper currently believes about burrows and guesses, and why.", COMBAT);
+        sbs(l, "diana", List.of(), "[status|clear|debug|profit]", "status|clear|debug|profit",
+                "Says what the Diana helper currently believes, and why; profit shows the loot table.", COMBAT);
 
         // --- Dungeons
         sbs(l, "terminals", List.of("terminal"), "", "", "Opens the terminal practice screen.", DUNGEONS);
@@ -321,6 +332,9 @@ public final class CommandRegistry {
                 "Gives the item in your hand its own name back.", ITEMS);
         sbs(l, "objective", List.of(), "[off|go]", "off|go",
                 "Shows where the route to your current objective goes; off hides it, go travels there.", QOL);
+        sbs(l, "requeue", List.of(), "[cancel|up|down|same]", "cancel|up|down|same",
+                "Auto Requeue: cancel the countdown, or queue the next run one floor up / down / the same.",
+                DUNGEONS);
         sbs(l, "rejoin", List.of(), "[stop]", "stop",
                 "Starts the Rejoin Timer by hand, for a kick the mod did not notice.", QOL);
         sbs(l, "waypoint", List.of("waypoints"), "clear|list", "clear|list",
@@ -352,10 +366,13 @@ public final class CommandRegistry {
         dev(l, "sbs", "terminaltest", List.of(), "", "Runs the terminal solvers against test boards.");
         dev(l, "sbs", "probe", List.of(), "[arm|off|status]", "Writes the open menu to a file, verbatim.");
         dev(l, "sbs", "priceprobe", List.of(), "", "Shows every price lookup for the item under the cursor.");
+        dev(l, "sbs", "backupprice", List.of(), "<KEY>", "Shows one item's remembered backup price entry.");
         dev(l, "sbs", "sharddump", List.of(), "[arm|off]", "Dumps how the last shard menu was read.");
         dev(l, "sbs", "chatprobe", List.of(), "[arm|off|status]", "Writes every chat line to a file.");
-        dev(l, "sbs", "scan", List.of(), "[start|stop|status] [chat|actionbar|scoreboard|tablist|all]",
-                "Server Scanner: records every menu, slot change and click (and optional text channels) as JSONL.");
+        dev(l, "sbs", "scan", List.of(),
+                "[full [fishing|dungeon|slayer|mining|kuudra|diana]|start <channels|all>|mark <text>|stop|status] [radius=<n>]",
+                "Server Scanner: menus, clicks and any of chat, actionbar, scoreboard, tablist, entity, damage, sound,"
+                        + " title, inventory, particles, blocks, world as JSONL plus a timeline and summary.txt.");
         dev(l, "sbs", "logmenu", List.of(), "", "Logs the open menu once, in full, into the scan session or its own file.");
         dev(l, "sbs", "particleprobe", List.of(), "[arm|off|status]", "Writes every particle packet to a file.");
         dev(l, "sbs", "soundprobe", List.of(), "[arm|off|status]", "Writes every nearby sound to a file.");

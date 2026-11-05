@@ -14,7 +14,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.render.WorldRender;
 import sbs.modid.client.dungeons.floorseven.logic.DragonTracker;
@@ -37,6 +38,8 @@ import java.util.Map;
  * where each dragon came up, correctable by hand with {@code /sbs dragons <colour>}.
  */
 public final class DragonHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     /** Live box: the dragon is in it. Thick, filled - "hit it now". */
     private static final int WEIGHT_IN_ZONE = 4;
@@ -71,7 +74,7 @@ public final class DragonHighlight {
 
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
 
         // The living dragons first: each draws the box it has to be brought back to.
@@ -96,7 +99,7 @@ public final class DragonHighlight {
         }
     }
 
-    private static void box(GuiGraphicsExtractor g, Font font, Matrix4f viewProjection, Vec3 camPos,
+    private static void box(GuiGraphicsExtractor g, Font font, Matrix4fc viewProjection, Vec3 camPos,
                             Vec3 statue, int color, int weight, boolean filled, String label) {
         double radius = DragonTracker.zoneRadius();
         double x0 = statue.x - radius;
@@ -111,9 +114,9 @@ public final class DragonHighlight {
         }
         WorldRender.boxEdges(g, viewProjection, camPos, x0, y0, z0, x1, y1, z1, color, weight);
 
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos,
-                new Vec3(statue.x, y1 + LABEL_HEIGHT, statue.z), g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                statue.x, y1 + LABEL_HEIGHT, statue.z, g.guiWidth(), g.guiHeight(), screen)) {
             g.centeredText(font, Component.literal(label), screen[0], screen[1], color);
         }
     }

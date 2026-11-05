@@ -76,6 +76,22 @@ public final class DisplayedText {
         }
     }
 
+    /**
+     * {@link #runRaw} without the {@link Runnable}, for a per-frame draw that must not allocate a
+     * capturing lambda. Returns the previous state, which goes back into {@link #exitRaw} from a
+     * {@code finally}.
+     */
+    public static boolean enterRaw() {
+        boolean previous = raw;
+        raw = true;
+        return previous;
+    }
+
+    /** Restores the state {@link #enterRaw} returned. */
+    public static void exitRaw(boolean previous) {
+        raw = previous;
+    }
+
     /** Runs {@code body} with the Text Editor disabled and redaction still active. */
     public static void runTextRulesApplied(Runnable body) {
         boolean previous = textRulesApplied;

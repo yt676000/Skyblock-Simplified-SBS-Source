@@ -16,7 +16,8 @@ import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig.PartyHighlightSettings;
 import sbs.modid.client.core.render.WorldRender;
@@ -33,6 +34,8 @@ import sbs.modid.client.social.party.logic.PartyTracker;
  * so the dungeon highlight works even when no party chat was ever seen.
  */
 public final class PartyHighlight {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
 
     /** A teammate under the low-health threshold. */
     private static final int LOW_HEALTH_COLOR = 0xFFFF2020;
@@ -64,7 +67,7 @@ public final class PartyHighlight {
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
         int color = cfg.color.argb();
         PartyTracker tracker = PartyTracker.getInstance();
@@ -120,7 +123,7 @@ public final class PartyHighlight {
                 && cfg.hiddenBossFloors.contains(state.floorNumber());
     }
 
-    private static void drawEdges(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos, AABB box, int color) {
+    private static void drawEdges(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos, AABB box, int color) {
         Vec3[] corners = {
                 new Vec3(box.minX, box.minY, box.minZ), new Vec3(box.maxX, box.minY, box.minZ),
                 new Vec3(box.minX, box.minY, box.maxZ), new Vec3(box.maxX, box.minY, box.maxZ),
@@ -134,11 +137,12 @@ public final class PartyHighlight {
         }
     }
 
-    private static void drawLabel(GuiGraphicsExtractor g, Font font, Matrix4f vp, Vec3 camPos,
+    private static void drawLabel(GuiGraphicsExtractor g, Font font, Matrix4fc vp, Vec3 camPos,
                                   AABB box, String label, int color) {
-        Vec3 top = new Vec3((box.minX + box.maxX) / 2, box.maxY + 0.5, (box.minZ + box.maxZ) / 2);
-        int[] screen = WorldRender.projectToScreen(vp, camPos, top, g.guiWidth(), g.guiHeight());
-        if (screen != null) {
+        int[] screen = SCREEN;
+        if (WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                (box.minX + box.maxX) / 2, box.maxY + 0.5, (box.minZ + box.maxZ) / 2,
+                g.guiWidth(), g.guiHeight(), screen)) {
             g.text(font, Component.literal(label), screen[0] - font.width(label) / 2, screen[1], color);
         }
     }

@@ -16,6 +16,8 @@ import sbs.modid.client.core.async.SbsExecutors;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.config.SBSFiles;
+import sbs.modid.client.core.entity.EntityIndex;
+import sbs.modid.client.core.entity.EntityKind;
 import sbs.modid.client.core.memory.MemoryGuard;
 
 import java.nio.charset.StandardCharsets;
@@ -35,6 +37,7 @@ public final class PerfReport {
     private static long countersSince = System.currentTimeMillis();
     private static long networkAtReset = 0;
     private static long diskAtReset = 0;
+    private static long reclassAtReset = 0;
 
     private PerfReport() {
     }
@@ -71,8 +74,19 @@ public final class PerfReport {
                 new String[] {"Heap", mb(rt.totalMemory() - rt.freeMemory()) + " used, floor "
                         + (floor < 0 ? "?" : mb(floor)) + ", max " + mb(rt.maxMemory())},
                 new String[] {"Worker queue", String.valueOf(SbsExecutors.queueDepth())},
+                new String[] {"Backup prices", sbs.modid.client.economy.prices.BackupPrices.getInstance().perfSummary()},
+                new String[] {"Markers drawn / culled", Perf.markersDrawn() + " / " + Perf.markersCulled()},
+                new String[] {"Block scans", sbs.modid.client.core.world.BudgetedScan.perfSummary()},
                 new String[] {"Network / disk", String.format(Locale.ROOT, "%.1f / %.1f per min",
-                        (Perf.networkCalls() - networkAtReset) / minutes, (Perf.diskWrites() - diskAtReset) / minutes)});
+                        (Perf.networkCalls() - networkAtReset) / minutes, (Perf.diskWrites() - diskAtReset) / minutes)},
+                // BOOKMARK(merge 2026-10-05): union of particle-spam-limit, entity-index and the main-checkout WIP (markers row).
+                new String[] {"Particles dropped", sbs.modid.client.helper.particles.ParticleLimiter.droppedSummary()},
+                new String[] {"Entity index", String.format(Locale.ROOT,
+                        "stands %d, players %d, living %d, items %d, other %d; %.1f name reclassifications/s",
+                        EntityIndex.size(EntityKind.ARMOR_STAND), EntityIndex.size(EntityKind.PLAYER),
+                        EntityIndex.size(EntityKind.LIVING), EntityIndex.size(EntityKind.ITEM),
+                        EntityIndex.size(EntityKind.OTHER),
+                        (EntityIndex.reclassifications() - reclassAtReset) / (minutes * 60))});
     }
 
     /** Restarts the per-minute counters with {@code /sbs perf reset}. */
@@ -80,6 +94,7 @@ public final class PerfReport {
         countersSince = System.currentTimeMillis();
         networkAtReset = Perf.networkCalls();
         diskAtReset = Perf.diskWrites();
+        reclassAtReset = EntityIndex.reclassifications();
     }
 
     /** Writes {@code perf/<time>[-label].json} and {@code .csv}; returns the base path. */
@@ -97,9 +112,13 @@ public final class PerfReport {
             global.addProperty(pair[0], pair[1]);
         }
         root.add("globals", global);
+        // Counts are only recorded while the overlay is open: say so instead of writing zeros.
+        boolean counting = Perf.counting();
+        root.addProperty("counters", counting ? "on" : "off");
         JsonArray features = new JsonArray();
         StringBuilder csv = new StringBuilder(
-                "name,kind,tier,avg5_ms,p95_5_ms,max5_ms,calls_per_s,avg60_ms,p95_60_ms,max60_ms,alloc_mb_s,over_target\n");
+                "name,kind,tier,avg5_ms,p95_5_ms,max5_ms,calls_per_s,avg60_ms,p95_60_ms,max60_ms,alloc_mb_s,"
+                        + "skipped_per_s5,skipped_per_s60,skip_ratio5,over_target\n");
         for (Perf.Row row : Perf.rows()) {
             JsonObject f = new JsonObject();
             f.addProperty("name", row.name());
@@ -113,14 +132,47 @@ public final class PerfReport {
             f.addProperty("p95_60Ms", row.last60().p95Ms());
             f.addProperty("max60Ms", row.last60().maxMs());
             f.addProperty("allocMbPerSec", row.allocMbPerSec());
+            if (counting) {
+                f.addProperty("skippedPerSec5", row.skippedPerSec5());
+                f.addProperty("skippedPerSec60", row.skippedPerSec60());
+                f.addProperty("skipRatio5", d(row.skipRatio5()));
+            } else {
+                f.addProperty("skipped", "counters off");
+            }
             f.addProperty("overTarget", overTarget(row));
             features.add(f);
             csv.append(String.join(",", row.name(), row.kind().name(), row.tier().name(),
                     d(row.last5().avgMs()), d(row.last5().p95Ms()), d(row.last5().maxMs()),
                     d(row.last5().callsPerSec()), d(row.last60().avgMs()), d(row.last60().p95Ms()),
-                    d(row.last60().maxMs()), d(row.allocMbPerSec()), String.valueOf(overTarget(row)))).append('\n');
+                    d(row.last60().maxMs()), d(row.allocMbPerSec()),
+                    counting ? d(row.skippedPerSec5()) : "counters off",
+                    counting ? d(row.skippedPerSec60()) : "counters off",
+                    counting ? d(row.skipRatio5()) : "counters off",
+                    String.valueOf(overTarget(row)))).append('\n');
         }
         root.add("features", features);
+        if (counting) {
+            JsonArray caches = new JsonArray();
+            for (CacheCounter.Stats c : Perf.counterStats()) {
+                JsonObject o = new JsonObject();
+                o.addProperty("name", c.name());
+                o.addProperty("hitRate5", finite(c.hitRate5()));
+                o.addProperty("hitRate60", finite(c.hitRate60()));
+                o.addProperty("missesPerSec5", c.missesPerSec5());
+                o.addProperty("hits60", c.hits60());
+                o.addProperty("misses60", c.misses60());
+                JsonObject inv = new JsonObject();
+                for (CacheCounter.Reason r : CacheCounter.Reason.values()) {
+                    inv.addProperty(r.name(), c.invalidationsPerSec5(r));
+                }
+                o.add("invalidationsPerSec5", inv);
+                o.addProperty("thrashing", c.thrashing());
+                caches.add(o);
+            }
+            root.add("caches", caches);
+        } else {
+            root.addProperty("caches", "counters off - open /sbs perf before dumping");
+        }
         String json = SBSFiles.GSON.toJson(root);
         String text = csv.toString();
         SbsExecutors.io().execute(() -> {
@@ -133,6 +185,46 @@ public final class PerfReport {
             }
         });
         return base;
+    }
+
+    /** {@code "  skip 3/s (0.25x)"} for a section with skipped runs, else empty. */
+    static String skipText(Perf.Row row) {
+        if (row.skippedPerSec5() <= 0) {
+            return "";
+        }
+        double ratio = row.skipRatio5();
+        return String.format(Locale.ROOT, "  skip %.1f/s (%s)", row.skippedPerSec5(),
+                Double.isInfinite(ratio) ? "all" : String.format(Locale.ROOT, "%.2fx", ratio));
+    }
+
+    /** Hit rate (5 s), misses/s, invalidations/s by reason, and the thrashing flag (60 s). */
+    static String cacheText(CacheCounter.Stats c) {
+        StringBuilder sb = new StringBuilder();
+        double rate = c.hitRate5();
+        sb.append(Double.isNaN(rate) ? "-" : String.format(Locale.ROOT, "%.1f%%", rate * 100)).append(" hit  ")
+                .append(String.format(Locale.ROOT, "%.1f", c.missesPerSec5())).append(" miss/s");
+        double inv = c.invalidationsPerSec5();
+        if (inv > 0) {
+            sb.append(String.format(Locale.ROOT, "  inv %.1f/s", inv));
+            String sep = " (";
+            for (CacheCounter.Reason r : CacheCounter.Reason.values()) {
+                double v = c.invalidationsPerSec5(r);
+                if (v > 0) {
+                    sb.append(sep).append(r.name()).append(' ').append(String.format(Locale.ROOT, "%.1f", v));
+                    sep = ", ";
+                }
+            }
+            sb.append(')');
+        }
+        if (c.thrashing()) {
+            sb.append("  THRASHING");
+        }
+        return sb.toString();
+    }
+
+    /** NaN (no lookups) as JSON null: Gson refuses NaN. */
+    private static Double finite(double v) {
+        return Double.isNaN(v) ? null : v;
     }
 
     private static String ms(double v) {

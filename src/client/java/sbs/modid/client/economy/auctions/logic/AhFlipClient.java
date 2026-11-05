@@ -8,15 +8,15 @@
 
 package sbs.modid.client.economy.auctions.logic;
 
+import sbs.modid.client.core.net.validation.MessageTypes;
+import sbs.modid.client.core.net.validation.SbsReply;
+import sbs.modid.client.core.net.validation.ValidationException;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
-import com.google.gson.JsonParser;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.social.chat.logic.SBSChat;
@@ -184,7 +184,7 @@ public final class AhFlipClient {
                         .header("Authorization", "Bearer " + token())
                         .GET().build();
                 HttpResponse<String> response = sbs.modid.client.core.api.SbsApi.send(
-                        ConsentScope.LICENCE_VALIDATION, http, request,
+                        ConsentScope.LICENCE_VALIDATION, MessageTypes.AH_FLIPS_POLL, request,
                         HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
                 if (response.statusCode() == 401) {
                     if (!authFailureShown) {
@@ -206,30 +206,28 @@ public final class AhFlipClient {
                     Thread.sleep(5_000);
                     continue;
                 }
-                // Parse leniently: a poll answer is normally {"seq":..,"flips":[..]}, but the
-                // server can also return a bare primitive (e.g. a status/error string) or an
-                // {"error":..} object. Gson 2.11 would throw coercing a non-object into
-                // JsonObject.class, so read a JsonElement first and branch on its actual shape.
-                JsonElement parsed = parse(response.body());
-                JsonObject body = parsed != null && parsed.isJsonObject()
-                        ? parsed.getAsJsonObject() : null;
-                if (body == null) {
-                    // A primitive body carries the server's out-of-band note; show it once.
-                    if (parsed != null && parsed.isJsonPrimitive() && !authFailureShown) {
-                        authFailureShown = true;
-                        show(system("Flip alerts: " + sanitizeError(parsed.getAsString())));
-                    }
-                    Thread.sleep(5_000);
-                    continue;
-                }
-                if (body.has("error") && !body.get("error").isJsonNull()) {
+                // The whole answer is validated against sbs.ah.flips.poll (or the shared error
+                // object) before any of it is read; an invalid answer is dropped as a whole.
+                SbsReply reply;
+                try {
+                    reply = SbsReply.parse(MessageTypes.AH_FLIPS_POLL, response.body());
+                } catch (ValidationException invalid) {
                     if (!authFailureShown) {
                         authFailureShown = true;
-                        show(system("Flip alerts: " + sanitizeError(body.get("error").getAsString())));
+                        show(system("Flip alerts: " + ValidationException.USER_MESSAGE));
                     }
                     Thread.sleep(10_000);
                     continue;
                 }
+                if (reply.isError()) {
+                    if (!authFailureShown) {
+                        authFailureShown = true;
+                        show(system("Flip alerts: " + sanitizeError(reply.error())));
+                    }
+                    Thread.sleep(10_000);
+                    continue;
+                }
+                JsonObject body = reply.data();
                 authFailureShown = false; // clean response - re-arm the one-shot notices
                 readMayor(body); // top-level {"mayor":{available,name,...}} sibling of flips
                 long newSince = body.has("seq") && body.get("seq").isJsonPrimitive()
@@ -254,7 +252,7 @@ public final class AhFlipClient {
                 Thread.currentThread().interrupt();
                 return;
             } catch (Exception e) {
-                SkyblockSimplifiedSBS.LOGGER.debug("[SBS][Flips] poll failed: {}", e.toString());
+                sbs.modid.client.core.api.ApiFailure.logBackground("[SBS][Flips]", "poll", e);
                 try {
                     Thread.sleep(5_000);
                 } catch (InterruptedException interrupted) {
@@ -293,11 +291,20 @@ public final class AhFlipClient {
                 AhEndedAuctionsClient.Response ended = client.fetch();
                 if (ended != null && ended.auctions != null) {
                     Set<String> soldIds = new HashSet<>();
+                    List<String> soldBinIds = new java.util.ArrayList<>();
+                    List<Long> soldBinPrices = new java.util.ArrayList<>();
                     for (AhEndedAuctionsClient.Ended auction : ended.auctions) {
                         if (auction != null && auction.auction_id != null) {
                             soldIds.add(normalizeAuctionId(auction.auction_id));
+                            // A BIN with a buyer is a completed sale at exactly that price.
+                            if (auction.bin && auction.buyer != null && auction.price > 0) {
+                                soldBinIds.add(auction.auction_id);
+                                soldBinPrices.add(auction.price);
+                            }
                         }
                     }
+                    sbs.modid.client.economy.prices.BackupPrices.getInstance()
+                            .observeEnded(soldBinIds, soldBinPrices);
                     for (AhFlipFeed.Flip flip : flips) {
                         if (soldIds.contains(flip.auctionId())) {
                             AhFlipFeed.getInstance().dismiss(flip.auctionId());
@@ -311,7 +318,7 @@ public final class AhFlipClient {
                 Thread.currentThread().interrupt();
                 return;
             } catch (Exception e) {
-                SkyblockSimplifiedSBS.LOGGER.debug("[SBS][Flips] sold-watch failed: {}", e.toString());
+                sbs.modid.client.core.api.ApiFailure.logBackground("[SBS][Flips]", "sold-watch", e);
                 try {
                     Thread.sleep(10_000);
                 } catch (InterruptedException interrupted) {
@@ -461,12 +468,9 @@ public final class AhFlipClient {
 
     /** The chat output (optional, in addition to the popups): one line with a click-to-open link. */
     private static void showChatLine(AhFlipFeed.Flip flip) {
-        MutableComponent open = Component.literal(" [OPEN IN AH]")
-                .withColor(SBSChat.PREFIX_COLOR)
-                .withStyle(style -> style
-                        .withClickEvent(new ClickEvent.RunCommand("/viewauction " + flip.auctionId()))
-                        .withHoverEvent(new HoverEvent.ShowText(Component.literal(
-                                "Click to open this auction (" + coins(flip.price()) + " coins)"))));
+        // Plain text only: the auction is opened from the flip popup or the Flips window, by the
+        // player's click there, never from a click event carried by server data.
+        MutableComponent open = Component.literal(" [see Flips window]").withColor(SBSChat.PREFIX_COLOR);
         MutableComponent line = SBSChat.prefix()
                 .append(Component.literal(" [FLIP]").withColor(0xFFC94D))
                 .append(Component.literal(" " + flip.displayName()).withColor(SBSChat.WHITE))
@@ -546,22 +550,6 @@ public final class AhFlipClient {
                 minecraft.player.sendSystemMessage(line);
             }
         });
-    }
-
-    /**
-     * Parses a response body to a JsonElement, or null if it is blank / malformed. Unlike
-     * {@code gson.fromJson(body, JsonObject.class)} this never throws on a primitive or array body
-     * (Gson 2.11 rejects that coercion) - the caller decides what a non-object body means.
-     */
-    private static JsonElement parse(String body) {
-        if (body == null || body.isBlank()) {
-            return null;
-        }
-        try {
-            return JsonParser.parseString(body);
-        } catch (JsonParseException malformed) {
-            return null;
-        }
     }
 
     /**

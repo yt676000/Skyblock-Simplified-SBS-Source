@@ -26,6 +26,8 @@ import sbs.modid.client.ui.hud.render.HudCard;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
 
+import java.util.regex.Pattern;
+
 /**
  * The Rift clock card: how long you have left, out of how long you came in with.
  *
@@ -49,6 +51,8 @@ public final class RiftTimeHud {
     private static final int BLINK_SECONDS = 10;
 
     private static final long BLINK_PERIOD_MS = 500L;
+
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     private RiftTimeHud() {
     }
@@ -219,6 +223,6 @@ public final class RiftTimeHud {
 
     /** Colour codes removed, for measuring a row's real width. */
     private static String strip(String text) {
-        return text.replaceAll("§.", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 }

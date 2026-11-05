@@ -13,9 +13,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
-import sbs.modid.client.dungeons.run.logic.DungeonScoreboard;
+import sbs.modid.client.dungeons.run.logic.DungeonStateManager;
 import sbs.modid.client.dungeons.run.model.DungeonTeamClasses;
 import sbs.modid.client.core.render.WorldRender;
 
@@ -31,6 +32,9 @@ import sbs.modid.client.core.render.WorldRender;
  * fill is not available – plus a bold perimeter ring for a crisp boundary.
  */
 public final class TankRangeRender {
+    /** Render-thread-only scratch for world-to-screen projection. */
+    private static final int[] SCREEN = new int[2];
+    private static final int[] SCREEN_B = new int[2];
 
     /** Tank Diversion radius (blocks) – wiki: "within 30 blocks around you". */
     private static final double RADIUS = 30.0;
@@ -43,22 +47,30 @@ public final class TankRangeRender {
     private static final int FILL_COLOR = 0x2200FF66;   // ~13% green
     private static final int RING_COLOR = 0xAA00FF66;   // bold green boundary
 
+    /** Enabled and in the Catacombs, as of the last client tick. Render thread only. */
+    private static boolean inCatacombs;
+
     private TankRangeRender() {
+    }
+
+    /** Called every client tick: refreshes the gate from {@link DungeonStateManager}'s tick-set flag. */
+    public static void onClientTick() {
+        inCatacombs = ConfigManager.getInstance().get().dungeons.showTankRange
+                && DungeonStateManager.getInstance().inDungeon();
     }
 
     /** Called from the HUD render hook once per frame. */
     public static void render(GuiGraphicsExtractor g) {
-        if (!ConfigManager.getInstance().get().dungeons.showTankRange) {
+        if (!ConfigManager.getInstance().get().dungeons.showTankRange || !inCatacombs) {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null || minecraft.level == null
-                || !DungeonScoreboard.isInCatacombs() || !DungeonTeamClasses.hasClasses()) {
+        if (minecraft.player == null || minecraft.level == null || !DungeonTeamClasses.hasClasses()) {
             return;
         }
         Camera camera = minecraft.gameRenderer.mainCamera();
         Vec3 camPos = camera.position();
-        Matrix4f vp = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Matrix4fc vp = FrameCamera.viewProjection();
 
         for (AbstractClientPlayer player : minecraft.level.players()) {
             if (!player.isAlive() || DungeonTeamClasses.classOf(player.getGameProfile().name()) != 'T') {
@@ -72,31 +84,39 @@ public final class TankRangeRender {
     }
 
     /** Draws the filled disc + ring at {@code (cx, y, cz)} on the tank's foot plane. */
-    private static void drawBubble(GuiGraphicsExtractor g, Matrix4f vp, Vec3 camPos,
+    private static void drawBubble(GuiGraphicsExtractor g, Matrix4fc vp, Vec3 camPos,
                                    double cx, double y, double cz) {
         // Fill: horizontal chords across the disc (each a thick, near-transparent ground line).
         for (int i = 1; i < FILL_SLICES; i++) {
             double dz = (i / (double) FILL_SLICES * 2.0 - 1.0) * RADIUS;
             double half = Math.sqrt(Math.max(0.0, RADIUS * RADIUS - dz * dz));
-            int[] a = WorldRender.projectToScreen(vp, camPos, new Vec3(cx - half, y, cz + dz),
-                    g.guiWidth(), g.guiHeight());
-            int[] b = WorldRender.projectToScreen(vp, camPos, new Vec3(cx + half, y, cz + dz),
-                    g.guiWidth(), g.guiHeight());
-            if (a != null && b != null) {
+            int[] a = SCREEN;
+            int[] b = SCREEN_B;
+            boolean aOk = WorldRender.project(vp, camPos.x, camPos.y, camPos.z, cx - half, y, cz + dz,
+                    g.guiWidth(), g.guiHeight(), a);
+            boolean bOk = WorldRender.project(vp, camPos.x, camPos.y, camPos.z, cx + half, y, cz + dz,
+                    g.guiWidth(), g.guiHeight(), b);
+            if (aOk && bOk) {
                 WorldRender.line(g, a[0], a[1], b[0], b[1], FILL_COLOR, 3);
             }
         }
         // Perimeter ring: a bold boundary so "inside vs outside" is unmistakable (closed loop:
         // i runs to RING_SEGMENTS inclusive, so the last point coincides with the first).
-        int[] prev = null;
+        int[] prev = SCREEN;
+        int[] screen = SCREEN_B;
+        boolean prevOk = false;
         for (int i = 0; i <= RING_SEGMENTS; i++) {
             double angle = i / (double) RING_SEGMENTS * Math.PI * 2.0;
-            Vec3 point = new Vec3(cx + Math.cos(angle) * RADIUS, y, cz + Math.sin(angle) * RADIUS);
-            int[] screen = WorldRender.projectToScreen(vp, camPos, point, g.guiWidth(), g.guiHeight());
-            if (prev != null && screen != null) {
+            boolean screenOk = WorldRender.project(vp, camPos.x, camPos.y, camPos.z,
+                    cx + Math.cos(angle) * RADIUS, y, cz + Math.sin(angle) * RADIUS,
+                    g.guiWidth(), g.guiHeight(), screen);
+            if (prevOk && screenOk) {
                 WorldRender.line(g, prev[0], prev[1], screen[0], screen[1], RING_COLOR, 2);
             }
+            int[] swap = prev;
             prev = screen;
+            screen = swap;
+            prevOk = screenOk;
         }
     }
 }

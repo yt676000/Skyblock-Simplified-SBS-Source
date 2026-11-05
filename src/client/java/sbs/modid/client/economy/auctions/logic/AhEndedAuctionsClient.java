@@ -8,6 +8,10 @@
 
 package sbs.modid.client.economy.auctions.logic;
 
+import sbs.modid.client.core.net.SecureHttp;
+import sbs.modid.client.core.net.validation.MessageSchemas;
+import sbs.modid.client.core.net.validation.MessageTypes;
+
 import com.google.gson.Gson;
 import sbs.modid.SkyblockSimplifiedSBS;
 
@@ -58,11 +62,12 @@ public final class AhEndedAuctionsClient {
                             HttpRequest.newBuilder(URI.create(URL)).timeout(TIMEOUT))
                     .GET()
                     .build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = SecureHttp.send(MessageTypes.HYPIXEL_AUCTIONS_ENDED, request,
+                    HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 return null;
             }
-            Response parsed = gson.fromJson(response.body(), Response.class);
+            Response parsed = MessageSchemas.parse(MessageTypes.HYPIXEL_AUCTIONS_ENDED, response.body(), Response.class);
             return (parsed != null && parsed.auctions != null) ? parsed : null;
         } catch (Exception e) {
             SkyblockSimplifiedSBS.LOGGER.debug("[SBS][Flips] ended-auctions request failed: {}", e.toString());

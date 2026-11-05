@@ -8,7 +8,6 @@
 
 package sbs.modid.client.core.pathfinding;
 
-import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -17,10 +16,13 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import org.joml.Vector4f;
+import sbs.modid.client.core.render.FrameCamera;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.dev.DevMode;
+import sbs.modid.client.core.perf.Perf;
 import sbs.modid.client.core.render.WorldRender;
 
 import java.util.List;
@@ -45,7 +47,22 @@ public final class PathRenderer {
     private static final int PATH_WIDTH = 2;
 
     /** How far above the block centre the path line is drawn, so it sits on the floor. */
-    private static final double PATH_Y_OFFSET = 0.12;
+    static final double PATH_Y_OFFSET = 0.12;
+
+    /** Hint texts, built once rather than per hint per frame. */
+    private static final Component SNEAK_HINT = Component.literal("Sneak");
+    private static final Component PAD_HINT = Component.literal("Step on the jump pad");
+
+    // Projection scratch, render thread only. The route path holds LINE_* across a call into the pad
+    // arc, which is why the arc has its own buffers.
+    private static final Vector4f LINE_PREVIOUS = new Vector4f();
+    private static final Vector4f LINE_CURRENT = new Vector4f();
+    private static final Vector4f ARC_PREVIOUS = new Vector4f();
+    private static final Vector4f ARC_CURRENT = new Vector4f();
+    private static final int[] SEGMENT = new int[4];
+    private static final int[] ARC_SEGMENT = new int[4];
+    private static final int[] POINT_PREVIOUS = new int[2];
+    private static final int[] POINT_CURRENT = new int[2];
 
     /**
      * Waypoints further than this are drawn without their label, to avoid text spam. The marker
@@ -82,6 +99,17 @@ public final class PathRenderer {
      */
     private static final double MIN_VISIBLE_SCALE = 0.01;
 
+    /** Covers the active marker's widest bloom shell (0.04 + 0.05 breath + 0.05 shell). */
+    private static final double CULL_GROW = 0.15;
+
+    /**
+     * GUI pixels a marker may sit past the screen edge and still be kept: half of a label far
+     * wider than any waypoint name, so a label whose anchor is just off screen still shows its end.
+     */
+    private static final float LABEL_CULL_MARGIN = 256f;
+
+    private static final int[] LABEL_POINT = new int[2];
+
     private PathRenderer() {
     }
 
@@ -99,23 +127,22 @@ public final class PathRenderer {
         if (!WaypointStore.hasAny() && !PathfindingManager.getInstance().hasAnyPath()) {
             return;
         }
-        if (!PathRouting.routing() && !PathRouting.drawingWaypoints()) {
+        if (!PathRouting.routingThisTick() && !PathRouting.drawingThisTick()) {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null || minecraft.level == null) {
             return;
         }
-        Camera camera = minecraft.gameRenderer.mainCamera();
-        Vec3 camPos = camera.position();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
+        Vec3 camPos = FrameCamera.position();
+        Matrix4fc viewProjection = FrameCamera.viewProjection();
 
         Set<Waypoint> marked = Set.of();
-        if (PathRouting.routing()) {
+        if (PathRouting.routingThisTick()) {
             drawPaths(g, viewProjection, camPos, cfg);
             marked = RouteMarkers.draw(g, viewProjection, camPos, cfg, minecraft.font);
         }
-        if (PathRouting.drawingWaypoints()) {
+        if (PathRouting.drawingThisTick()) {
             drawWaypoints(g, viewProjection, camPos, cfg, minecraft.font, marked);
         }
     }
@@ -127,7 +154,7 @@ public final class PathRenderer {
      * one renderer instead of copying the path look. Points are drawn as given (lift them off the
      * floor beforehand if needed).
      */
-    public static void drawWorldLine(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    public static void drawWorldLine(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                      List<Vec3> points, int rgb, int width) {
         if (points.size() < 2) {
             return;
@@ -136,10 +163,12 @@ public final class PathRenderer {
         int gh = g.guiHeight();
         double phase = SciFiPathStyle.pulsePhase();
         int segments = points.size() - 1;
-        int[] previous = WorldRender.projectToScreen(viewProjection, camPos, points.get(0), gw, gh);
+        int[] previous = POINT_PREVIOUS;
+        int[] current = POINT_CURRENT;
+        boolean previousOk = project(viewProjection, camPos, points.get(0), gw, gh, previous);
         for (int i = 1; i < points.size(); i++) {
-            int[] current = WorldRender.projectToScreen(viewProjection, camPos, points.get(i), gw, gh);
-            if (previous != null && current != null) {
+            boolean currentOk = project(viewProjection, camPos, points.get(i), gw, gh, current);
+            if (previousOk && currentOk) {
                 double t = (double) (i - 1) / segments;
                 SciFiPathStyle.segment(g, previous[0], previous[1], current[0], current[1],
                         t, phase, rgb, Math.max(1, width));
@@ -148,8 +177,17 @@ public final class PathRenderer {
                             rgb, Math.max(1, width));
                 }
             }
+            int[] swap = previous;
             previous = current;
+            current = swap;
+            previousOk = currentOk;
         }
+    }
+
+    private static boolean project(Matrix4fc viewProjection, Vec3 camPos, Vec3 world, int gw, int gh,
+                                   int[] out) {
+        return WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                world.x, world.y, world.z, gw, gh, out);
     }
 
     // ------------------------------------------------------------------
@@ -162,7 +200,7 @@ public final class PathRenderer {
      * than the last and drawn dimmer and thinner, so two routes along the same blocks read as two
      * lines side by side instead of one line flickering between colours.
      */
-    private static void drawPaths(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawPaths(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                   SBSConfig.PathfindingSettings cfg) {
         PathfindingManager manager = PathfindingManager.getInstance();
         List<Route> routes = manager.routes();
@@ -185,7 +223,7 @@ public final class PathRenderer {
     }
 
     /** One route, in whichever style is configured. */
-    private static void drawRoute(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawRoute(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                   SBSConfig.PathfindingSettings cfg, Route route, int rgb, int width,
                                   double lift, double cubeScale) {
         List<BlockPos> path = route.path();
@@ -205,23 +243,37 @@ public final class PathRenderer {
      * "Sneak" over the first node of every run of sneak nodes - where the player has to crouch.
      * Sneaking also keeps them from walking off an edge; the route does not depend on that.
      */
-    private static void drawSneakHints(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawSneakHints(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                        Font font, Route route, List<BlockPos> path, double lift) {
-        Set<BlockPos> sneaks = route.sneakNodes();
-        if (sneaks.isEmpty()) {
+        if (route.sneakNodes().isEmpty()) {
             return;
         }
+        double[] c = route.centres();
+        byte[] flags = route.nodeFlags();
+        int[] screen = POINT_CURRENT;
         for (int i = 0; i < path.size(); i++) {
-            if (!sneaks.contains(path.get(i)) || (i > 0 && sneaks.contains(path.get(i - 1)))) {
+            if (!sneak(flags, i) || (i > 0 && sneak(flags, i - 1))) {
                 continue;
             }
-            int[] screen = WorldRender.projectToScreen(viewProjection, camPos,
-                    centre(path.get(i)).add(0, 1.2 + lift * 4, 0), g.guiWidth(), g.guiHeight());
-            if (screen != null) {
-                g.centeredText(font, Component.literal("Sneak"), screen[0], screen[1],
+            if (WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                    c[i * 3], c[i * 3 + 1] + (1.2 + lift * 4), c[i * 3 + 2],
+                    g.guiWidth(), g.guiHeight(), screen)) {
+                g.centeredText(font, SNEAK_HINT, screen[0], screen[1],
                         SciFiPathStyle.argb(SciFiPathStyle.SNEAK_RGB, 255));
             }
         }
+    }
+
+    private static boolean sneak(byte[] flags, int i) {
+        return (flags[i] & Route.NODE_SNEAK) != 0;
+    }
+
+    private static boolean hop(byte[] flags, int i) {
+        return (flags[i] & Route.NODE_HOP) != 0;
+    }
+
+    private static boolean pad(byte[] flags, int i) {
+        return (flags[i] & Route.NODE_PAD) != 0;
     }
 
     /** How much higher each further secondary route is drawn, in blocks. */
@@ -257,70 +309,84 @@ public final class PathRenderer {
      * <p>Only every {@code cubeSpacing}-th node gets one: a cube per block is both visually noisy and
      * needlessly expensive, since each cube costs twelve projected edges.
      */
-    private static void drawCubePath(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawCubePath(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                      SBSConfig.PathfindingSettings cfg, Route route, List<BlockPos> path,
                                      int rgb, double lift, double cubeScale) {
         double phase = SciFiPathStyle.pulsePhase();
         double size = Math.max(0.05, cfg.cubeSize / 100.0 * cubeScale);
         int spacing = Math.max(1, cfg.cubeSpacing);
         int last = path.size() - 1;
-        Set<BlockPos> hops = route.teleportNodes();
+        double[] c = route.centres();
+        byte[] flags = route.nodeFlags();
 
         for (int i = 0; i < path.size(); i++) {
             // Always mark the final node, so the route visibly ends AT the waypoint rather than
             // wherever the spacing happened to land. Both ends of a teleport get the same treatment:
             // a jump the spacing skipped would leave the player with no cube to aim the ability from.
-            if (i % spacing != 0 && i != last && !isHopEnd(path, hops, i)) {
+            if (i % spacing != 0 && i != last && !isHopEnd(flags, i)) {
                 continue;
             }
             double t = (double) i / last;
-            SciFiPathStyle.cube(g, viewProjection, camPos, cubeCentre(path.get(i), size).add(0, lift, 0),
-                    size, t, phase, route.sneakNodes().contains(path.get(i)) ? SciFiPathStyle.SNEAK_RGB : rgb);
+            // Raised by the cube's own half-height so it sits ON the floor, not sunk into it.
+            SciFiPathStyle.cube(g, viewProjection, camPos,
+                    c[i * 3], c[i * 3 + 1] + size / 2.0 + lift, c[i * 3 + 2],
+                    size, t, phase, sneak(flags, i) ? SciFiPathStyle.SNEAK_RGB : rgb);
         }
     }
 
-    /** The route as a layered, pulsing conduit with periodic direction chevrons. */
-    private static void drawLinePath(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    /**
+     * The route as a layered, pulsing conduit with periodic direction chevrons.
+     *
+     * <p>Each node is transformed once, into clip space, and shared by the two segments it joins.
+     * A segment with one end behind the camera is cut at the near plane rather than dropped, so a
+     * route that runs past the player into view stays drawn while turning; one wholly beyond a side
+     * of the screen is skipped before it costs a divide (see {@link WorldRender#projectSegment}).
+     */
+    private static void drawLinePath(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                      Route route, List<BlockPos> path, int rgb, int width, double lift) {
         int gw = g.guiWidth();
         int gh = g.guiHeight();
         double phase = SciFiPathStyle.pulsePhase();
         int segments = path.size() - 1;
-        Set<BlockPos> hops = route.teleportNodes();
-        Set<BlockPos> pads = route.padNodes();
-        Set<BlockPos> sneaks = route.sneakNodes();
+        double[] c = route.centres();
+        byte[] flags = route.nodeFlags();
+        double camX = camPos.x;
+        double camY = camPos.y;
+        double camZ = camPos.z;
+        int[] s = SEGMENT;
 
-        // Project once per node, not once per layer - the projection is the expensive part.
-        int[] previous = WorldRender.projectToScreen(viewProjection, camPos,
-                centre(path.get(0)).add(0, lift, 0), gw, gh);
+        Vector4f previous = LINE_PREVIOUS;
+        Vector4f current = LINE_CURRENT;
+        WorldRender.toClip(viewProjection, camX, camY, camZ, c[0], c[1] + lift, c[2], previous);
         for (int i = 1; i < path.size(); i++) {
-            int[] current = WorldRender.projectToScreen(viewProjection, camPos,
-                    centre(path.get(i)).add(0, lift, 0), gw, gh);
-            if (previous != null && current != null) {
-                double t = (double) (i - 1) / segments;
-                // A node the route teleports into is the far end of a jump, so the segment leading
-                // into it is one the player never walks - see SciFiPathStyle.hop.
-                if (pads.contains(path.get(i))) {
-                    // A jump pad's flight: an arc from the pad to the landing, never walked.
-                    drawPadArc(g, viewProjection, camPos, path.get(i - 1), path.get(i), t, phase, rgb,
-                            width, lift);
-                } else if (hops.contains(path.get(i))) {
-                    SciFiPathStyle.hop(g, previous[0], previous[1], current[0], current[1],
-                            t, phase, rgb, width);
-                } else if (sneaks.contains(path.get(i)) || sneaks.contains(path.get(i - 1))) {
-                    // In, through or out of a 1.5-block gap: the player has to be crouched.
-                    SciFiPathStyle.segment(g, previous[0], previous[1], current[0], current[1],
-                            t, phase, SciFiPathStyle.SNEAK_RGB, width);
-                } else {
-                    SciFiPathStyle.segment(g, previous[0], previous[1], current[0], current[1],
-                            t, phase, rgb, width);
-                }
-                if (SciFiPathStyle.isChevronAt(i)) {
-                    SciFiPathStyle.chevron(g, previous[0], previous[1], current[0], current[1],
-                            rgb, width);
-                }
+            WorldRender.toClip(viewProjection, camX, camY, camZ,
+                    c[i * 3], c[i * 3 + 1] + lift, c[i * 3 + 2], current);
+            double t = (double) (i - 1) / segments;
+            int state = WorldRender.projectSegment(previous, current, gw, gh, s);
+            // A node the route teleports into is the far end of a jump, so the segment leading
+            // into it is one the player never walks - see SciFiPathStyle.hop.
+            if (pad(flags, i)) {
+                // A jump pad's flight: an arc from the pad to the landing, never walked. The arc
+                // rises off the straight segment, so it is culled per piece rather than by `state`.
+                drawPadArc(g, viewProjection, camPos, c, i - 1, i, t, phase, rgb, width, lift);
+            } else if (state == WorldRender.SEGMENT_CULLED) {
+                // nothing of it is on screen
+            } else if (hop(flags, i)) {
+                SciFiPathStyle.hop(g, s[0], s[1], s[2], s[3], t, phase, rgb, width);
+            } else if (sneak(flags, i) || sneak(flags, i - 1)) {
+                // In, through or out of a 1.5-block gap: the player has to be crouched.
+                SciFiPathStyle.segment(g, s[0], s[1], s[2], s[3], t, phase, SciFiPathStyle.SNEAK_RGB, width);
+            } else {
+                SciFiPathStyle.segment(g, s[0], s[1], s[2], s[3], t, phase, rgb, width);
             }
+            // Only on a segment whose far end is the real node: on a near-clipped one that end is
+            // wherever the screen clip cut it, and an arrowhead there would point at nothing.
+            if (state == WorldRender.SEGMENT_FRONT && SciFiPathStyle.isChevronAt(i)) {
+                SciFiPathStyle.chevron(g, s[0], s[1], s[2], s[3], rgb, width);
+            }
+            Vector4f swap = previous;
             previous = current;
+            current = swap;
         }
     }
 
@@ -328,44 +394,60 @@ public final class PathRenderer {
      * A jump pad's flight as a dashed parabola from the pad to the landing. The apex rises a quarter
      * of the flight's length (at least three blocks) - a picture of "you will be thrown", not a
      * prediction of the real trajectory, which the pad data does not record.
+     *
+     * @param c    the route's {@link Route#centres()}
+     * @param from node index of the pad, {@code to} of the landing
      */
-    private static void drawPadArc(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
-                                   BlockPos from, BlockPos to, double t, double phase, int rgb,
+    private static void drawPadArc(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
+                                   double[] c, int from, int to, double t, double phase, int rgb,
                                    int width, double lift) {
-        Vec3 a = centre(from).add(0, lift, 0);
-        Vec3 b = centre(to).add(0, lift, 0);
-        double apex = Math.max(3.0, a.distanceTo(b) / 4.0);
+        double ax = c[from * 3];
+        double ay = c[from * 3 + 1] + lift;
+        double az = c[from * 3 + 2];
+        double bx = c[to * 3];
+        double by = c[to * 3 + 1] + lift;
+        double bz = c[to * 3 + 2];
+        double dx = bx - ax;
+        double dy = by - ay;
+        double dz = bz - az;
+        double apex = Math.max(3.0, Math.sqrt(dx * dx + dy * dy + dz * dz) / 4.0);
         int gw = g.guiWidth();
         int gh = g.guiHeight();
-        int[] previous = WorldRender.projectToScreen(viewProjection, camPos, a, gw, gh);
+        int[] s = ARC_SEGMENT;
+        Vector4f previous = ARC_PREVIOUS;
+        Vector4f current = ARC_CURRENT;
+        WorldRender.toClip(viewProjection, camPos.x, camPos.y, camPos.z, ax, ay, az, previous);
         for (int k = 1; k <= PAD_ARC_STEPS; k++) {
             double u = (double) k / PAD_ARC_STEPS;
-            Vec3 point = a.lerp(b, u).add(0, apex * 4 * u * (1 - u), 0);
-            int[] current = WorldRender.projectToScreen(viewProjection, camPos, point, gw, gh);
-            if (previous != null && current != null) {
-                SciFiPathStyle.hop(g, previous[0], previous[1], current[0], current[1], t, phase, rgb,
-                        width);
+            WorldRender.toClip(viewProjection, camPos.x, camPos.y, camPos.z,
+                    ax + u * (bx - ax), ay + u * (by - ay) + apex * 4 * u * (1 - u), az + u * (bz - az),
+                    current);
+            if (WorldRender.projectSegment(previous, current, gw, gh, s) != WorldRender.SEGMENT_CULLED) {
+                SciFiPathStyle.hop(g, s[0], s[1], s[2], s[3], t, phase, rgb, width);
             }
+            Vector4f swap = previous;
             previous = current;
+            current = swap;
         }
     }
 
     /** "Step on the jump pad" over every pad the route uses. The player walks on; nothing is pressed. */
-    private static void drawPadHints(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawPadHints(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                      Font font, Route route, List<BlockPos> path, int rgb, double lift) {
-        Set<BlockPos> pads = route.padNodes();
-        if (pads.isEmpty()) {
+        if (route.padNodes().isEmpty()) {
             return;
         }
+        double[] c = route.centres();
+        byte[] flags = route.nodeFlags();
+        int[] screen = POINT_CURRENT;
         for (int i = 1; i < path.size(); i++) {
-            if (!pads.contains(path.get(i))) {
+            if (!pad(flags, i)) {
                 continue;
             }
-            int[] screen = WorldRender.projectToScreen(viewProjection, camPos,
-                    centre(path.get(i - 1)).add(0, 1.6 + lift * 4, 0), g.guiWidth(), g.guiHeight());
-            if (screen != null) {
-                g.centeredText(font, Component.literal("Step on the jump pad"), screen[0], screen[1],
-                        SciFiPathStyle.argb(rgb, 255));
+            int at = (i - 1) * 3;
+            if (WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                    c[at], c[at + 1] + (1.6 + lift * 4), c[at + 2], g.guiWidth(), g.guiHeight(), screen)) {
+                g.centeredText(font, PAD_HINT, screen[0], screen[1], SciFiPathStyle.argb(rgb, 255));
             }
         }
     }
@@ -374,9 +456,8 @@ public final class PathRenderer {
     private static final int PAD_ARC_STEPS = 16;
 
     /** Whether node {@code i} is either end of a teleport hop. */
-    private static boolean isHopEnd(List<BlockPos> path, Set<BlockPos> hops, int i) {
-        return hops.contains(path.get(i))
-                || (i + 1 < path.size() && hops.contains(path.get(i + 1)));
+    private static boolean isHopEnd(byte[] flags, int i) {
+        return hop(flags, i) || (i + 1 < flags.length && hop(flags, i + 1));
     }
 
     // ------------------------------------------------------------------
@@ -384,7 +465,7 @@ public final class PathRenderer {
     // ------------------------------------------------------------------
 
     /** A pulsing marker and a light beam on every waypoint; the routed one is emphasised. */
-    private static void drawWaypoints(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawWaypoints(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                       SBSConfig.PathfindingSettings cfg, Font font,
                                       Set<Waypoint> marked) {
         Waypoint routed = PathfindingManager.getInstance().target();
@@ -394,6 +475,8 @@ public final class PathRenderer {
         // whole change - it used to be one colour for every marker in the world.
         int preset = cfg.waypointRgb();
         double breath = breath();
+        // Occlusion answers are reused for a few ticks per marker; see MarkerRenderCache.
+        long tick = Minecraft.getInstance().level.getGameTime();
 
         for (Waypoint waypoint : PathRouting.visibleWaypoints()) {
             BlockPos pos = waypoint.pos();
@@ -413,7 +496,19 @@ public final class PathRenderer {
             if (alphaScale < MIN_VISIBLE_SCALE) {
                 continue;
             }
-            if (!waypoint.throughWalls && occluded(camPos, centre(pos).add(0, 0.5, 0))) {
+            // Off screen is decided before the occlusion ray and the label: the box spans the bloom
+            // shell, the beam and the label anchor, widened by how far a label can reach sideways.
+            float labelScale = waypoint.labelSize == null ? 1.0f : waypoint.labelSize.scale();
+            boolean inView = WorldRender.boxInView(viewProjection, camPos.x, camPos.y, camPos.z,
+                    pos.getX() - CULL_GROW, pos.getY() - CULL_GROW, pos.getZ() - CULL_GROW,
+                    pos.getX() + 1 + CULL_GROW, pos.getY() + 1 + BEAM_HEIGHT + 0.4, pos.getZ() + 1 + CULL_GROW,
+                    g.guiWidth(), g.guiHeight(), LABEL_CULL_MARGIN * labelScale);
+            Perf.countMarker(inView);
+            if (!inView) {
+                continue;
+            }
+            if (!waypoint.throughWalls
+                    && MarkerRenderCache.of(waypoint).occluded(camPos, centre(pos).add(0, 0.5, 0), tick)) {
                 continue;   // the caller asked for this one to hide behind terrain
             }
             // A null box from a hand-edited file is the default outline, never a marker with no box.
@@ -429,8 +524,10 @@ public final class PathRenderer {
             }
 
             // A route's destination marker already carries this waypoint's name and distance;
-            // a second label on the same spot would just be the same words twice.
-            if (distance <= labelRange(waypoint) && !marked.contains(waypoint)) {
+            // a second label on the same spot would just be the same words twice. A nameless
+            // waypoint is a box only - the second half of a marked double chest.
+            boolean named = waypoint.name != null && !waypoint.name.isEmpty();
+            if (named && distance <= labelRange(waypoint) && !marked.contains(waypoint)) {
                 drawLabel(g, viewProjection, camPos, font, waypoint, pos, rgb, active, distance,
                         alphaScale);
             }
@@ -448,7 +545,7 @@ public final class PathRenderer {
     }
 
     /** The marker box: a bloom shell plus a crisp core that breathes. */
-    private static void drawMarker(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawMarker(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                    BlockPos pos, int rgb, boolean active, double breath,
                                    double alphaScale) {
         // The active waypoint breathes; the others sit still so the target stands out.
@@ -466,7 +563,7 @@ public final class PathRenderer {
      * screen-space bounding rectangle, so this reads as a glow over the block rather than a cube -
      * the shape the HUD pipeline can draw, and why the outline stays available beside it.
      */
-    private static void fillMarker(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void fillMarker(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                    BlockPos pos, int rgb, double alphaScale) {
         WorldRender.fillBox(g, viewProjection, camPos,
                 pos.getX(), pos.getY(), pos.getZ(), pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1,
@@ -474,7 +571,7 @@ public final class PathRenderer {
     }
 
     /** Draws a cube around a block, inflated by {@code grow} on every side. */
-    private static void box(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void box(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                             BlockPos pos, double grow, int color, int width) {
         WorldRender.boxEdges(g, viewProjection, camPos,
                 pos.getX() - grow, pos.getY() - grow, pos.getZ() - grow,
@@ -486,7 +583,7 @@ public final class PathRenderer {
      * A vertical light beam above the waypoint, built from stacked slices whose alpha falls off with
      * height. That is what makes a waypoint findable across a room without hunting for a small box.
      */
-    private static void drawBeam(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawBeam(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                  BlockPos pos, int rgb, boolean active, double alphaScale) {
         double x = pos.getX() + 0.5;
         double z = pos.getZ() + 0.5;
@@ -495,39 +592,47 @@ public final class PathRenderer {
         int gh = g.guiHeight();
         int topAlpha = active ? 120 : 60;
 
-        int[] previous = WorldRender.projectToScreen(viewProjection, camPos,
-                new Vec3(x, baseY, z), gw, gh);
+        int[] previous = POINT_PREVIOUS;
+        int[] current = POINT_CURRENT;
+        boolean previousOk = WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                x, baseY, z, gw, gh, previous);
         for (int i = 1; i <= BEAM_SLICES; i++) {
             double y = baseY + BEAM_HEIGHT * i / BEAM_SLICES;
-            int[] current = WorldRender.projectToScreen(viewProjection, camPos, new Vec3(x, y, z), gw, gh);
-            if (previous != null && current != null) {
+            boolean currentOk = WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                    x, y, z, gw, gh, current);
+            if (previousOk && currentOk) {
                 int alpha = (int) (topAlpha * (1.0 - (double) i / BEAM_SLICES));
                 WorldRender.line(g, previous[0], previous[1], current[0], current[1],
                         SciFiPathStyle.argb(rgb, scaled(alpha, alphaScale)), active ? 3 : 2);
             }
+            int[] swap = previous;
             previous = current;
+            current = swap;
+            previousOk = currentOk;
         }
     }
 
-    private static void drawLabel(GuiGraphicsExtractor g, Matrix4f viewProjection, Vec3 camPos,
+    private static void drawLabel(GuiGraphicsExtractor g, Matrix4fc viewProjection, Vec3 camPos,
                                   Font font, Waypoint waypoint, BlockPos pos, int rgb,
                                   boolean active, double distance, double alphaScale) {
-        int[] screen = WorldRender.projectToScreen(viewProjection, camPos,
-                centre(pos).add(0, BEAM_HEIGHT + 0.4, 0), g.guiWidth(), g.guiHeight());
-        if (screen == null) {
+        int[] screen = LABEL_POINT;
+        if (!WorldRender.project(viewProjection, camPos.x, camPos.y, camPos.z,
+                pos.getX() + 0.5, pos.getY() + PATH_Y_OFFSET + BEAM_HEIGHT + 0.4, pos.getZ() + 0.5,
+                g.guiWidth(), g.guiHeight(), screen)) {
             return;
         }
-        String label = waypoint.showDistance
-                ? waypoint.name + " §7" + (int) Math.round(distance) + "m"
-                : waypoint.name;
         PathfindingManager manager = PathfindingManager.getInstance();
+        int state = MarkerRenderCache.STATE_PLAIN;
         if (active && manager.noRoute() && !manager.searching()) {
             // Another island with no known pad: no line at all, and the reason where the eye is.
-            label += " §c(no route to that island known)";
+            state = MarkerRenderCache.STATE_NO_ROUTE;
         } else if (active && !manager.reachedGoal() && !manager.searching()) {
             // Be honest when the route only gets close rather than all the way there.
-            label += " §c(partial)";
+            state = MarkerRenderCache.STATE_PARTIAL;
         }
+        // Built only when the rounded distance, the name or the route state changes - not per frame.
+        MarkerRenderCache cache = MarkerRenderCache.of(waypoint);
+        Component label = cache.label(waypoint, (int) Math.round(distance), state);
         // The label size scales both lines about the projected anchor, so a larger label grows
         // upward and outward from the same point instead of drifting off the beam. Normal is 1.0
         // and skips the matrix push, which keeps every other waypoint's label exactly as it was.
@@ -539,7 +644,7 @@ public final class PathRenderer {
             g.pose().scale(labelScale);
             g.pose().translate(-screen[0], -screen[1]);
         }
-        g.centeredText(font, Component.literal(label), screen[0], screen[1],
+        g.centeredText(font, label, screen[0], screen[1],
                 SciFiPathStyle.argb(rgb, scaled(255, alphaScale)));
 
         // A second line under the name, for state that belongs to the marker but is not its name.
@@ -547,10 +652,8 @@ public final class PathRenderer {
         // one - the honey timer's amber/green is the readout, not decoration.
         String sub = waypoint.subLabel;
         if (sub != null && !sub.isEmpty()) {
-            Integer own = sbs.modid.client.core.render.OverlayColor
-                    .parseHex(waypoint.subLabelColorHex);
-            int subRgb = own == null ? rgb : own;
-            g.centeredText(font, Component.literal(sub), screen[0], screen[1] + font.lineHeight,
+            int subRgb = cache.subRgb(waypoint.subLabelColorHex, rgb);
+            g.centeredText(font, cache.sub(sub), screen[0], screen[1] + font.lineHeight,
                     SciFiPathStyle.argb(subRgb, scaled(255, alphaScale)));
         }
         if (scaledLabel) {
@@ -586,10 +689,5 @@ public final class PathRenderer {
     /** The centre of a block, lifted slightly so a path line rests on the floor. */
     private static Vec3 centre(BlockPos pos) {
         return new Vec3(pos.getX() + 0.5, pos.getY() + PATH_Y_OFFSET, pos.getZ() + 0.5);
-    }
-
-    /** A cube's centre: raised by its own half-height so it sits ON the floor, not sunk into it. */
-    private static Vec3 cubeCentre(BlockPos pos, double size) {
-        return new Vec3(pos.getX() + 0.5, pos.getY() + PATH_Y_OFFSET + size / 2.0, pos.getZ() + 0.5);
     }
 }

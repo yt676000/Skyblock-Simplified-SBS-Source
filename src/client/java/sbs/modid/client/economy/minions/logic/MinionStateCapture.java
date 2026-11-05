@@ -68,6 +68,7 @@ public final class MinionStateCapture {
     private static final Pattern TIER_LINE = Pattern.compile("([✔✓✖✗✘])\\s*Tier\\s+([IVX]+)");
     private static final Pattern LIMIT_LINE = Pattern.compile("Minions limit:\\s*(\\d+)");
     private static final Pattern SKIN_URL = Pattern.compile("\"url\"\\s*:\\s*\"[^\"]*/([0-9a-f]+)\"");
+    private static final Pattern FORMATTING = Pattern.compile(String.valueOf((char) 0x00A7) + ".");
 
     /** Minion GUI modifier positions, verified against the menu's real layout. */
     private static final int SLOT_FUEL = 19;
@@ -404,6 +405,6 @@ public final class MinionStateCapture {
     }
 
     private static String plain(String text) {
-        return text == null ? "" : text.replaceAll(String.valueOf((char) 0x00A7) + ".", "");
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("");
     }
 }

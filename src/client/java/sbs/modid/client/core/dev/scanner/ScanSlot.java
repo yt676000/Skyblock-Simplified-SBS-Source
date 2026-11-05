@@ -98,6 +98,43 @@ public record ScanSlot(String id, String sbId, String name, String rawName, List
         return out;
     }
 
+    /**
+     * The {@code new} side of a compact change: the whole slot on first sight ({@code before} empty),
+     * {@code null} when emptied, otherwise only the fields that differ, with their new values - so a
+     * stack growing by one is {@code {"count": 4}}, not the item's whole lore again.
+     */
+    public static JsonElement newFields(ScanSlot before, ScanSlot after) {
+        if (before == null || after == null) {
+            return json(after);
+        }
+        JsonObject out = new JsonObject();
+        if (!Objects.equals(before.id, after.id)) {
+            out.addProperty("id", after.id);
+        }
+        if (!Objects.equals(before.sbId, after.sbId)) {
+            out.add("sbId", string(after.sbId));
+        }
+        if (!Objects.equals(before.name, after.name)) {
+            out.addProperty("name", after.name);
+        }
+        if (!Objects.equals(before.rawName, after.rawName)) {
+            out.addProperty("rawName", after.rawName);
+        }
+        if (!before.lore.equals(after.lore)) {
+            out.add("lore", lines(after.lore));
+        }
+        if (before.count != after.count) {
+            out.addProperty("count", after.count);
+        }
+        if (before.glint != after.glint) {
+            out.addProperty("glint", after.glint);
+        }
+        if (!Objects.equals(before.customData, after.customData)) {
+            out.add("customData", string(after.customData));
+        }
+        return out;
+    }
+
     /** Whether two possibly-empty slots hold the same item. */
     public static boolean same(ScanSlot a, ScanSlot b) {
         return Objects.equals(a, b);

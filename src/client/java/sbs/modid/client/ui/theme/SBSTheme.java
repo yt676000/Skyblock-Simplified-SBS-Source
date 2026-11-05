@@ -100,12 +100,25 @@ public final class SBSTheme {
     public static final int DEFAULT_TEXT = 0xFFFFFF;
 
     /**
+     * Bumped on every {@link #applyTheme} - and so on every theme, style and opacity change, which
+     * all re-derive through it. Anything that caches a colour computed from the constants below keys
+     * on this (see {@link ThemedHex}) instead of recomputing per frame.
+     */
+    private static int revision;
+
+    /** See {@link #revision}. */
+    public static int revision() {
+        return revision;
+    }
+
+    /**
      * Recolours every themed constant from the three base colours. Each constant is transformed
      * relative to its family's DEFAULT base in HSB space: the hue shifts with the base, saturation
      * and brightness scale with it - so "one colour with gradients" stays exactly one pick, and the
      * light/dark steps (panel top vs bottom, card vs hover) re-derive automatically.
      */
     public static void applyTheme(int accentRgb, int backgroundRgb, int textRgb) {
+        revision++;
         // Background family.
         BG_TINT = retint(0x55040A14, DEFAULT_BACKGROUND, backgroundRgb);
         PANEL_FILL_TOP = retint(0xF00B2138, DEFAULT_BACKGROUND, backgroundRgb);

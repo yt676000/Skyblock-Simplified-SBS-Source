@@ -34,6 +34,11 @@ public abstract class AttackTrackMixin {
         // Fairy Souls: what was clicked is how a collection line gets attributed to one soul.
         sbs.modid.client.helper.fairysouls.logic.FairySoulTracker.getInstance()
                 .onEntityClicked(target);
+        // Server Scanner (dev): the hit, for the damage channel and kill detection. One boolean
+        // read while no capture records them.
+        if (sbs.modid.client.core.dev.scanner.ServerScanner.ATTACKS) {
+            sbs.modid.client.core.dev.scanner.ServerScanner.onAttack(target);
+        }
     }
 
     @Inject(method = "interact", at = @At("HEAD"))
@@ -50,6 +55,23 @@ public abstract class AttackTrackMixin {
         // Reward chests: they are opened through an armor stand, so this - not BlockInteractMixin -
         // is where the client learns which chest a preview belongs to.
         sbs.modid.client.dungeons.chest.RewardChestGlow.getInstance().onEntityInteract(target);
+    }
+
+    /**
+     * F7 Arrow Align misclick guard (off by default): swallows a right click on a frame that is
+     * already right. CONSUME, not FAIL - after a non-success result vanilla falls through to using
+     * the held item, which would send a packet anyway. Fails open: see
+     * {@code ArrowAlignTracker.blocksClick}.
+     */
+    @Inject(method = "interact", at = @At("HEAD"), cancellable = true)
+    private void skyblockSimplified$arrowAlignGuard(Player player, Entity target,
+                                                    net.minecraft.world.phys.EntityHitResult hit,
+                                                    InteractionHand hand,
+                                                    CallbackInfoReturnable<net.minecraft.world.InteractionResult> cir) {
+        if (sbs.modid.client.dungeons.floorseven.logic.ArrowAlignTracker.getInstance()
+                .blocksClick(target, player.isShiftKeyDown())) {
+            cir.setReturnValue(net.minecraft.world.InteractionResult.CONSUME);
+        }
     }
 
     @Inject(method = "startDestroyBlock", at = @At("HEAD"))

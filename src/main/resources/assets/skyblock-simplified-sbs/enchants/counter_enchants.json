@@ -1,0 +1,24 @@
+{
+  "_note": "Counter enchants: enchants that level up from a running total kept on the item. One row per enchant. 'enchant' is the key in the item's enchantments compound, 'counterKey' the custom-data key holding the total (UNVERIFIED until the [SBS][CounterEnchant] probe logs it), 'thresholds' the CUMULATIVE total needed for level 1, 2, 3, ... (so its length is the max level). 'certainty' is CONFIRMED, WIKI or ESTIMATED. Bump dataVersion with every change.",
+  "schemaVersion": 1,
+  "dataVersion": 1,
+  "generatedAt": "2026-10-06",
+  "enchants": [
+    {
+      "enchant": "champion",
+      "counterKey": "champion_combat_xp",
+      "unit": "XP",
+      "certainty": "WIKI",
+      "source": "hypixelskyblock.minecraft.wiki/w/Champion, tier table, read 2026-10-06",
+      "thresholds": [0, 50000, 100000, 250000, 500000, 1000000, 1500000, 2000000, 2500000, 3000000]
+    },
+    {
+      "enchant": "toxophilite",
+      "counterKey": "toxophilite_combat_xp",
+      "unit": "XP",
+      "certainty": "WIKI",
+      "source": "hypixelskyblock.minecraft.wiki/w/Toxophilite_(Enchantment), tier table, read 2026-10-06",
+      "thresholds": [0, 50000, 100000, 250000, 500000, 1000000, 1500000, 2000000, 2500000, 3000000]
+    }
+  ]
+}

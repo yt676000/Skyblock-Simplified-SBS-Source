@@ -106,6 +106,15 @@ public final class ItemPriceKey {
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
 
+    /** A section sign and the code char after it. */
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
+
+    /** Anything that is not an upper-case letter or digit - becomes a key underscore. */
+    private static final Pattern NON_KEY_CHARS = Pattern.compile("[^A-Z0-9]+");
+
+    /** Underscores at either end of a key. */
+    private static final Pattern EDGE_UNDERSCORES = Pattern.compile("^_+|_+$");
+
     /** Which reader produced the key, so a diagnostic can say why a price was or was not found. */
     public enum Origin {
 
@@ -192,13 +201,34 @@ public final class ItemPriceKey {
      * forms and then falls through to id, name and registry path. The one thing added here is the
      * other shard spelling, inserted directly after the key it is an alias of so an exact hit always
      * beats an alias.
+     *
+     * <p>The result is a pure function of the candidate list, which {@code ItemAnalysis} hands out
+     * as the same instance for the same item, so the last answer is reused while the same item is
+     * asked about (a hovered tooltip asks every frame).
      */
     public static List<String> keysFor(ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return List.of();
         }
+        List<String> candidates = PriceLookup.candidatesFor(stack);
+        KeysMemo memo = keysMemo;
+        if (memo != null && memo.candidates == candidates) {
+            return memo.keys;
+        }
+        List<String> keys = keysFrom(candidates);
+        keysMemo = new KeysMemo(candidates, keys);
+        return keys;
+    }
+
+    /** The last {@link #keysFor} input and answer, published as one immutable pair. */
+    private record KeysMemo(List<String> candidates, List<String> keys) {
+    }
+
+    private static volatile KeysMemo keysMemo;
+
+    private static List<String> keysFrom(List<String> candidates) {
         LinkedHashSet<String> keys = new LinkedHashSet<>();
-        for (String candidate : PriceLookup.candidatesFor(stack)) {
+        for (String candidate : candidates) {
             if (candidate == null || candidate.isBlank()) {
                 continue;
             }
@@ -304,9 +334,9 @@ public final class ItemPriceKey {
         String text = PlainText.strip(displayName == null ? "" : displayName).trim();
         text = NAME_LEADING_JUNK.matcher(text).replaceFirst("");
         text = NAME_SHARD_SUFFIX.matcher(text).replaceFirst("");
-        String key = text.toUpperCase(Locale.ROOT)
-                .replaceAll("[^A-Z0-9]+", "_")
-                .replaceAll("^_+|_+$", "");
+        String key = EDGE_UNDERSCORES.matcher(
+                NON_KEY_CHARS.matcher(text.toUpperCase(Locale.ROOT)).replaceAll("_"))
+                .replaceAll("");
         return key.isEmpty() ? null : SHARD_PREFIX + key;
     }
 
@@ -477,6 +507,6 @@ public final class ItemPriceKey {
     }
 
     private static String strip(String text) {
-        return text == null ? "" : text.replaceAll(SECTION_SIGN + ".", "").trim();
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("").trim();
     }
 }

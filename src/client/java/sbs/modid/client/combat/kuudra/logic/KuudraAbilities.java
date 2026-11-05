@@ -188,7 +188,7 @@ public final class KuudraAbilities {
             if (other == self || other.distanceTo(self) > FOCUS_RADIUS) {
                 continue;
             }
-            if (sbs.modid.client.core.player.RealPlayers.isRealPlayer(other)) {
+            if (sbs.modid.client.core.player.RealPlayers.hasPlayerListEntry(other)) {
                 caught.add(other);
             }
         }

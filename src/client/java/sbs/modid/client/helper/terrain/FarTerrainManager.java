@@ -1360,9 +1360,10 @@ public final class FarTerrainManager {
     public void onServerTransfer() {
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = minecraft.level;
-        // Bookkeeping only - this method runs on the NETWORK thread (handleConfigurationStart), and
-        // dropping chunks from here races the client thread; that race was a crash on every travel.
-        // The scenery chunks themselves die with the level teardown moments later, and the
+        // Bookkeeping only. This runs on the client thread now (ChunkStreamMixin hooks after the
+        // thread redirect); it used to run on the netty thread first as well, where dropping chunks
+        // raced the client thread and crashed every travel. Nothing is dropped here either way:
+        // the scenery chunks die with the level teardown moments later, and the
         // updateViewRadius below already shrinks the ring they were held in.
         FarTerrainNeighborView.getInstance().onLevelGone();
         var connection = minecraft.getConnection();

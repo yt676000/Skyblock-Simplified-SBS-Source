@@ -8,6 +8,7 @@
 
 package sbs.modid.client.skills.mining.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.component.DataComponents;
@@ -53,6 +54,7 @@ public final class ToolDurability {
             "crit", "ferocity", "attack", "cooldown", "xp", "experience", "progress");
 
     private static final char SECTION_SIGN = (char) 0x00A7;
+    private static final Pattern NON_DIGITS = Pattern.compile("[^0-9]");
 
     /** One tool's remaining uses: what the lore called it, how many are left and out of how many. */
     public record Uses(String label, long left, long max) {
@@ -126,7 +128,7 @@ public final class ToolDurability {
         warned = true;
         player.sendOverlayMessage(Component.literal(
                 "§c" + uses.label() + " §7is at §c" + uses.percent() + "% §7- " + uses.left() + " left"));
-        player.playSound(SoundEvents.NOTE_BLOCK_BASS.value(), 0.7f, 0.7f);
+        SbsSounds.play(SoundEvents.NOTE_BLOCK_BASS.value(), 0.7f, 0.7f);
     }
 
     /**
@@ -196,7 +198,7 @@ public final class ToolDurability {
 
     private static long parse(String raw) {
         try {
-            return Long.parseLong(raw.replaceAll("[^0-9]", ""));
+            return Long.parseLong(NON_DIGITS.matcher(raw).replaceAll(""));
         } catch (NumberFormatException e) {
             return -1L;
         }

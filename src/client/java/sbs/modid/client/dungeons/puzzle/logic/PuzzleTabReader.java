@@ -8,10 +8,14 @@
 
 package sbs.modid.client.dungeons.puzzle.logic;
 
+import net.minecraft.network.chat.Component;
 import sbs.modid.SkyblockSimplifiedSBS;
+import sbs.modid.client.core.dev.DevLogText;
 import sbs.modid.client.core.tab.TabWidgets;
+import sbs.modid.client.dungeons.events.ChatPatternRegistry;
 import sbs.modid.client.dungeons.puzzle.model.PuzzleEntry;
 import sbs.modid.client.dungeons.puzzle.model.PuzzleStatus;
+import sbs.modid.client.dungeons.puzzle.model.PuzzleTabSection;
 import sbs.modid.client.dungeons.puzzle.model.PuzzleType;
 
 import java.util.ArrayList;
@@ -28,41 +32,51 @@ import java.util.regex.Pattern;
  * The tab knows which puzzles exist in the run and whether they are done - before the player has been
  * anywhere near them. The room tracker knows which puzzle is in front of you now. A solver wants both.
  *
- * <p><b>Every pattern here is unverified.</b> Nothing in this repository reads a puzzle row, and the
- * exact wording Hypixel prints cannot be established outside a live run - the same position the
- * secrets/crypts patterns started from in {@code DungeonStateManager}. So the parse is deliberately
- * tolerant (split the row on its colon, recognise the state marker if it is one of the obvious ones,
- * otherwise {@link PuzzleStatus#UNKNOWN}) and <b>the captured section is logged verbatim once per
- * change</b> under {@code [SBS][Puzzle]}. One run in a dungeon with this shipped produces the text
- * needed to replace the guesswork with a real pattern; until then this reports what it honestly got
- * and no consumer treats an unknown state as a known one.
+ * <p><b>The row patterns are unverified.</b> The header {@code Puzzles: (N)} is known; the rows under
+ * it have never been captured, so the parse is deliberately tolerant (split the row on its colon,
+ * believe only the unambiguous state glyphs, otherwise {@link PuzzleStatus#UNKNOWN}) and the section
+ * is <b>logged verbatim - plain and with its colour codes - once per distinct content</b> under
+ * {@code [SBS][Puzzle]}. That log line is the capture the patterns get replaced from; until then this
+ * reports what it honestly got and no consumer treats an unknown state as a known one.
  *
- * <p>Reading is throttled - the tab is walked at most once every {@value #SCAN_MS} ms, which is the
- * same budget {@code DungeonStateManager} uses and is far below the per-frame scanning the feature
- * request rules out.
+ * <p><b>Read on change, not on a timer.</b> The section is re-parsed only when
+ * {@link TabWidgets#revision()} moves, which is once per tab packet that changed a line - so a run
+ * where nothing happens costs one int comparison a tick.
  */
 public final class PuzzleTabReader {
 
-    private static final PuzzleTabReader INSTANCE = new PuzzleTabReader();
 
-    private static final long SCAN_MS = 500;
-
-    /** "Puzzles: (3)" / "Puzzles (3)" / "Puzzles: 3" - the count is the only part relied on. */
+    /** "Puzzles: (3)" - the count is the only part relied on; the colon and brackets are optional. */
     private static final Pattern HEADER = Pattern.compile("(?i)^Puzzles\\b:?\\s*\\(?(\\d+)\\)?");
 
     /** "Ice Fill: ✔" - name before the colon, state marker after it. */
     private static final Pattern ROW = Pattern.compile("^([^:]{2,40}):\\s*(.*)$");
 
-    /** A trailing "(Someone)" on a failed row, which is how the tab names who failed it. */
+    /** A "(Someone)" on a failed row, which is how the tab is expected to name who failed it. */
     private static final Pattern BLAMED = Pattern.compile("\\(([A-Za-z0-9_]{3,16})\\)");
 
-    private volatile List<PuzzleEntry> entries = List.of();
-    private volatile int total = -1;
+    /**
+     * The three result lines CONFIRMED from 1.8.9 logs: "PUZZLE SOLVED! ... Good job!",
+     * "PUZZLE FAIL! ... Yikes!" and "PUZZLE FAILED! &lt;player&gt; failed a puzzle.". None of them
+     * names the puzzle, so they decide nothing here - they are logged next to the tab's state at the
+     * same moment, which is the evidence needed to check the row parse against a known outcome.
+     * 26.x prefixes them with {@code "> "} - see {@link PuzzleResultLine}.
+     */
+    static final Pattern RESULT_LINE = Pattern.compile(
+            "^" + PuzzleResultLine.PREFIX + "PUZZLE (?:SOLVED|FAILED|FAIL)!");
 
-    private long lastScan;
+    private volatile PuzzleTabSection section = PuzzleTabSection.ABSENT;
+
+    private int lastRevision = Integer.MIN_VALUE;
     private String lastLogged = "";
 
+    // Declared after every static field: the constructor registers patterns, and a field
+    // initialised below this line is still null when it runs (the puzzle chat was dead for it).
+    private static final PuzzleTabReader INSTANCE = new PuzzleTabReader();
+
     private PuzzleTabReader() {
+        ChatPatternRegistry.getInstance().register(RESULT_LINE,
+                (matcher, component) -> onResultLine(component), "puzzle result lines");
     }
 
     public static PuzzleTabReader getInstance() {
@@ -73,14 +87,26 @@ public final class PuzzleTabReader {
     // Read
     // ------------------------------------------------------------------
 
-    /** Re-reads the tab if the throttle has elapsed. Cheap to call every tick. */
+    /** Re-parses the section if the tab changed since the last call. Client tick, inside a run. */
     public void tick() {
-        long now = System.currentTimeMillis();
-        if (now - lastScan < SCAN_MS) {
+        int revision = TabWidgets.revision();
+        if (revision == lastRevision) {
             return;
         }
-        lastScan = now;
-        scan();
+        lastRevision = revision;
+        List<String> lines = TabWidgets.lines();
+        PuzzleTabSection parsed = parse(lines);
+        if (!parsed.equals(section)) {
+            section = parsed;
+        }
+        if (parsed.present()) {
+            logOnce(parsed, lines);
+        }
+    }
+
+    /** The latest section. {@link PuzzleTabSection#ABSENT} when the tab has none. Any thread. */
+    public PuzzleTabSection section() {
+        return section;
     }
 
     /**
@@ -88,36 +114,53 @@ public final class PuzzleTabReader {
      * the same as "this run has no puzzles", and callers must not read it as such.
      */
     public List<PuzzleEntry> entries() {
-        return entries;
+        return section.entries();
     }
 
     /** The count the header printed, or {@code -1} when the header was not found. */
     public int total() {
-        return total;
+        return section.total();
     }
 
     /** The reported state of one puzzle, or {@link PuzzleStatus#UNKNOWN} when the tab did not say. */
     public PuzzleStatus statusOf(PuzzleType type) {
-        for (PuzzleEntry entry : entries) {
-            if (entry.type() == type) {
-                return entry.status();
-            }
-        }
-        return PuzzleStatus.UNKNOWN;
+        return section.statusOf(type);
+    }
+
+    /** Whether the tab says this puzzle is over - solved or failed - so nothing is left to show. */
+    public boolean finished(PuzzleType type) {
+        PuzzleStatus status = section.statusOf(type);
+        return status == PuzzleStatus.COMPLETE || status == PuzzleStatus.FAILED;
     }
 
     public void reset() {
-        entries = List.of();
-        total = -1;
+        section = PuzzleTabSection.ABSENT;
+        lastRevision = Integer.MIN_VALUE;
         lastLogged = "";
     }
 
+    private void onResultLine(Component component) {
+        if (!section.present()) {
+            return;   // not in a run with a puzzle section; nothing to compare it with
+        }
+        lastRevision = Integer.MIN_VALUE;   // re-read on the next tick even if no packet came
+        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Puzzle] result line '{}' - tab at that moment: {}",
+                DevLogText.plain(component), section.entries());
+    }
+
     // ------------------------------------------------------------------
-    // Parse
+    // Parse - pure, so it can be tested on captured lines
     // ------------------------------------------------------------------
 
-    private void scan() {
-        List<String> lines = TabWidgets.lines();
+    /**
+     * Finds the {@code Puzzles: (N)} header in widget lines (as {@link TabWidgets#lines()} returns
+     * them: in display order, colour-stripped, trimmed) and parses up to N rows under it.
+     *
+     * <p>Bounded by the header's own count: the section has no terminator worth trusting, and
+     * reading "until something stops looking like a row" would swallow {@code Team Deaths: 0}. A row
+     * that does not look like {@code name: state} ends the section early.
+     */
+    public static PuzzleTabSection parse(List<String> lines) {
         int headerIndex = -1;
         int count = -1;
         for (int i = 0; i < lines.size(); i++) {
@@ -129,28 +172,22 @@ public final class PuzzleTabReader {
             }
         }
         if (headerIndex < 0) {
-            entries = List.of();
-            total = -1;
-            return;
+            return PuzzleTabSection.ABSENT;
         }
 
         List<PuzzleEntry> found = new ArrayList<>();
-        List<String> captured = new ArrayList<>();
-        // Bounded by the header's own count: the section has no terminator worth trusting, and
-        // reading "until something stops looking like a row" would happily swallow the next widget.
+        List<String> rows = new ArrayList<>();
         for (int i = headerIndex + 1; i < lines.size() && found.size() < count; i++) {
             String line = lines.get(i);
             Matcher row = ROW.matcher(line);
             if (!row.matches()) {
                 break;
             }
-            captured.add(line);
+            rows.add(line);
             found.add(parseRow(row.group(1).trim(), row.group(2).trim()));
         }
-
-        entries = Collections.unmodifiableList(found);
-        total = count;
-        logOnce(count, captured, found);
+        return new PuzzleTabSection(count, Collections.unmodifiableList(found),
+                Collections.unmodifiableList(rows), headerIndex + 1);
     }
 
     private static PuzzleEntry parseRow(String name, String state) {
@@ -169,41 +206,64 @@ public final class PuzzleTabReader {
      * The state marker. Only the unambiguous glyphs are believed; anything else is
      * {@link PuzzleStatus#UNKNOWN} rather than assumed incomplete, because "not yet done" and "we
      * could not read this row" look identical to a player and mean opposite things to a solver.
+     * {@code ✔} = complete and {@code ✦} = open are CONFIRMED (2026-10-11, maintainer's log); the
+     * failed glyph ({@code ✖}?) is still unconfirmed - no failed puzzle in the captures yet.
      */
-    private static PuzzleStatus statusFrom(String state) {
+    static PuzzleStatus statusFrom(String state) {
         if (state.indexOf('✔') >= 0 || state.indexOf('✓') >= 0) {
             return PuzzleStatus.COMPLETE;
         }
         if (state.indexOf('✖') >= 0 || state.indexOf('✗') >= 0 || state.indexOf('✘') >= 0) {
             return PuzzleStatus.FAILED;
         }
+        // CONFIRMED 2026-10-11: open rows read [✦], then [✔] once solved
+        if (state.indexOf('✦') >= 0) {
+            return PuzzleStatus.INCOMPLETE;
+        }
         return PuzzleStatus.UNKNOWN;
     }
 
     /**
-     * Logs the section verbatim whenever it changes. This is the instrument the patterns above are
-     * meant to be replaced from - it prints what the tab really said next to what was made of it, so
-     * a wrong guess is visible in the log rather than silently producing an empty solver.
+     * The probe: logs the section verbatim whenever its content changes - each row plain and in its
+     * legacy {@code §} form, because a state that differs only by colour would be invisible in the
+     * plain text - next to what was parsed from it. A run of this log is the capture the row patterns
+     * and their tests are written from (redacted - rows can carry player names).
+     *
+     * <p>The window logged is the header's count of lines under it, <b>whether or not they parsed</b>:
+     * a row pattern that is wrong for the real layout parses nothing, and the capture has to show
+     * the lines it failed on, not an empty section.
      */
-    private void logOnce(int count, List<String> captured, List<PuzzleEntry> parsed) {
-        StringBuilder key = new StringBuilder().append(count);
-        for (String line : captured) {
-            key.append('|').append(line);
+    private void logOnce(PuzzleTabSection parsed, List<String> lines) {
+        int from = parsed.firstRow();
+        int to = Math.min(lines.size(), from + parsed.total());
+        StringBuilder key = new StringBuilder().append(parsed.total());
+        for (int i = from; i < to; i++) {
+            key.append('|').append(lines.get(i));
         }
         if (key.toString().equals(lastLogged)) {
             return;
         }
         lastLogged = key.toString();
-        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Puzzle] tab section: header count={} rows={}", count,
-                captured.size());
-        for (int i = 0; i < captured.size(); i++) {
-            PuzzleEntry entry = parsed.get(i);
-            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Puzzle]   raw='{}' -> type={} status={} failedBy={}",
-                    captured.get(i), entry.type(), entry.status(), entry.failedBy());
+        List<Component> components = TabWidgets.components();
+        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Puzzle] tab section: header '{}' count={} rows parsed={}",
+                lines.get(from - 1), parsed.total(), parsed.rows().size());
+        for (int i = from; i < to; i++) {
+            int row = i - from;
+            String legacy = i < components.size() ? DevLogText.legacy(components.get(i)) : null;
+            if (row < parsed.entries().size()) {
+                PuzzleEntry entry = parsed.entries().get(row);
+                SkyblockSimplifiedSBS.LOGGER.info("[SBS][Puzzle]   raw='{}' legacy='{}' -> type={} "
+                        + "status={} failedBy={}", lines.get(i), legacy, entry.type(), entry.status(),
+                        entry.failedBy());
+            } else {
+                SkyblockSimplifiedSBS.LOGGER.info("[SBS][Puzzle]   raw='{}' legacy='{}' -> NOT PARSED",
+                        lines.get(i), legacy);
+            }
         }
-        if (captured.size() != count) {
+        if (parsed.rows().size() != parsed.total()) {
             SkyblockSimplifiedSBS.LOGGER.warn("[SBS][Puzzle] tab header claimed {} puzzles but {} rows "
-                    + "parsed - the row pattern is wrong for this layout", count, captured.size());
+                    + "parsed - the row pattern is wrong for this layout", parsed.total(),
+                    parsed.rows().size());
         }
     }
 }

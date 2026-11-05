@@ -70,6 +70,12 @@ public final class SweepTracker {
 
     private volatile long lastNearMissLogAt;
 
+    /**
+     * Bumped after every change to the chop or the session statistics, so the card rebuilds only
+     * then. Bumped last, so a render that sees the new value reads the new state.
+     */
+    private volatile int version;
+
     private SweepTracker() {
     }
 
@@ -106,6 +112,7 @@ public final class SweepTracker {
         if (chop.hasSweep()) {
             recordSession(chop.effectiveSweep());
         }
+        version++;
     }
 
     private synchronized void recordSession(double sweep) {
@@ -222,6 +229,7 @@ public final class SweepTracker {
             sessionSum = 0;
             sessionCount = 0;
         }
+        version++;
     }
 
     /** Profile switch: a different profile is different gear, so it is a different Sweep. */
@@ -230,6 +238,11 @@ public final class SweepTracker {
     }
 
     // ------------------------------------------------------------------ output
+
+    /** Changes whenever the chop or the session statistics do; the card's rebuild key. */
+    public int version() {
+        return version;
+    }
 
     /** The newest chop, or {@code null} when none has been read this session. */
     public SweepChop last() {

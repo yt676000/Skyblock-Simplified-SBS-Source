@@ -8,6 +8,7 @@
 
 package sbs.modid.client.skills.fishing.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -83,8 +84,11 @@ public final class BiteIndicator {
             bitingSince = System.currentTimeMillis();
             FishingTracker.getInstance().onBite();
             if (cfg.alertSound && anyPart(cfg)) {
-                player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 2.0f);
+                SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 2.0f);
             }
+        } else if (!now && biting) {
+            // The marker went away with the bobber still out: the bite was let go (Reel Timer).
+            FishingTracker.getInstance().onBiteEnd();
         }
         biting = now;
     }

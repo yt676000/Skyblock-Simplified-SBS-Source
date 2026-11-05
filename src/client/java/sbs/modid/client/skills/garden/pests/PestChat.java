@@ -61,6 +61,9 @@ public final class PestChat {
     private static final Pattern COLLECT_WORD = Pattern.compile(
             "(?i)\\b(?:collect\\w*|claim\\w*|empt\\w*|loot\\w*|harvest\\w*|retriev\\w*)\\b");
     private static final Pattern DIGITS = Pattern.compile("\\d+");
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
+    private static final Pattern STACK_COUNT = Pattern.compile("x(\\d+)$");
+    private static final Pattern NON_DIGITS = Pattern.compile("[^0-9]");
 
     private PestChat() {
     }
@@ -103,7 +106,7 @@ public final class PestChat {
 
     /** ESTIMATED: whether a container title is a Pest Trap's menu. */
     public static boolean isTrapMenu(String title) {
-        return title != null && TRAP_WORD.matcher(title.replaceAll("§.", "")).find();
+        return title != null && TRAP_WORD.matcher(COLOUR_CODE.matcher(title).replaceAll("")).find();
     }
 
     /**
@@ -113,10 +116,10 @@ public final class PestChat {
     public static Map<String, Integer> menuPests(List<Caught> items) {
         Map<String, Integer> out = new LinkedHashMap<>();
         for (Caught item : items) {
-            String name = item.pest() == null ? "" : item.pest().replaceAll("§.", "").trim();
+            String name = item.pest() == null ? "" : COLOUR_CODE.matcher(item.pest()).replaceAll("").trim();
             for (String pest : PESTS) {
                 if (name.equalsIgnoreCase(pest) || name.matches("(?i)" + pest + "\\s*x\\d+")) {
-                    Matcher n = Pattern.compile("x(\\d+)$").matcher(name);
+                    Matcher n = STACK_COUNT.matcher(name);
                     int count = n.find() ? Integer.parseInt(n.group(1)) : Math.max(1, item.count());
                     out.merge(pest, count, Integer::sum);
                     break;
@@ -134,7 +137,7 @@ public final class PestChat {
         if (value == null) {
             return -1;
         }
-        String v = value.replaceAll("§.", "").trim();
+        String v = COLOUR_CODE.matcher(value).replaceAll("").trim();
         if (v.isEmpty()) {
             return -1;
         }
@@ -184,11 +187,11 @@ public final class PestChat {
     public static Map<String, Long> sackGains(String hover) {
         Map<String, Long> perItemSack = new LinkedHashMap<>();
         for (String line : hover.split("\n")) {
-            Matcher m = SACK_LINE.matcher(line.replaceAll("§.", ""));
+            Matcher m = SACK_LINE.matcher(COLOUR_CODE.matcher(line).replaceAll(""));
             if (!m.find() || m.group(1).startsWith("-")) {
                 continue;
             }
-            long amount = Long.parseLong(m.group(1).replaceAll("[^0-9]", ""));
+            long amount = Long.parseLong(NON_DIGITS.matcher(m.group(1)).replaceAll(""));
             perItemSack.merge(m.group(2) + "|" + m.group(3), amount, Math::max);
         }
         Map<String, Long> perItem = new LinkedHashMap<>();

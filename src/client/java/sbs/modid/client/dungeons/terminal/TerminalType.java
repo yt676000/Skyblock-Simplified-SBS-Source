@@ -9,13 +9,14 @@
 package sbs.modid.client.dungeons.terminal;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * The phase-3 terminals of F7 / M7, recognised by their GUI title. Six of them exist in the gates
  * between Goldor's sections, and each is a different little puzzle:
  *
  * <ul>
- *   <li>{@link #ORDER} - "Click in order!": panes numbered 1..14 by stack size, clicked ones turn green.</li>
+ *   <li>{@link #ORDER} - "Click in order!": panes numbered 1..10 by stack size, clicked ones turn green.</li>
  *   <li>{@link #COLOR} - "Select all the &lt;colour&gt; items!": 27 items, click every one of that colour.</li>
  *   <li>{@link #STARTS_WITH} - "What starts with '&lt;letter&gt;'?": 27 items, click every matching name.</li>
  *   <li>{@link #PANES} - "Correct all the panes!": red and green panes, flip every red one.</li>
@@ -49,12 +50,14 @@ public enum TerminalType {
     /** Fallback for a "Click the &lt;item&gt;!" style title we have not seen spelled out. */
     ITEM_NAME;
 
+    private static final Pattern NON_LETTERS = Pattern.compile("[^a-z]");
+
     public static TerminalType classify(String title) {
         if (title == null || title.isBlank()) {
             return NONE;
         }
         String norm = title.toLowerCase(Locale.ROOT);
-        String letters = norm.replaceAll("[^a-z]", "");
+        String letters = NON_LETTERS.matcher(norm).replaceAll("");
         if (letters.contains("buttonontime")) {
             return MELODY;
         }

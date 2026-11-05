@@ -13,7 +13,10 @@ import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.ui.settings.SettingRow;
 import sbs.modid.client.core.module.ModuleGroup;
 import sbs.modid.client.core.module.SbsModule;
+import sbs.modid.client.social.chat.model.ChatSpamPreset;
+import sbs.modid.client.social.chat.model.SpamFilterMode;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -62,7 +65,7 @@ public final class BetterChatModule implements SbsModule {
 
     @Override
     public List<SettingRow> settings() {
-        return List.of(
+        List<SettingRow> rows = new ArrayList<>(List.of(
                 SettingRow.toggle("Better Chat", () -> cfg().enabled,
                         () -> { cfg().enabled = !cfg().enabled; save(); })
                         .describe("Chat quality-of-life: stack repeated messages, timestamps, "
@@ -93,7 +96,7 @@ public final class BetterChatModule implements SbsModule {
                         v -> { cfg().mentionWords = v == null ? "" : v; save(); })
                         .describe("Extra words that count as mentioning you, separated by commas "
                                 + "- nicknames, your guild tag, an item you are selling."),
-                SettingRow.toggle("Mention Sound", () -> cfg().mentionSound,
+                SettingRow.soundToggle("Mention Sound", () -> cfg().mentionSound,
                         () -> { cfg().mentionSound = !cfg().mentionSound; save(); })
                         .describe("Plays a ping when a mention arrives."),
 
@@ -104,24 +107,40 @@ public final class BetterChatModule implements SbsModule {
                 SettingRow.keybind("Hide Chat Key", () -> cfg().hideChatKey,
                         key -> { cfg().hideChatKey = key; save(); })
                         .describe("A key that hides and shows the chat on demand. Click the row, "
-                                + "press a key; Esc unbinds."),
+                                + "press a key; Esc unbinds.")));
 
-                SettingRow.label("Filters (message still counts for trackers, just not shown):"),
-                SettingRow.toggle("Hide 'commands too fast'", () -> cfg().hideCommandsTooFast,
-                        () -> { cfg().hideCommandsTooFast = !cfg().hideCommandsTooFast; save(); })
-                        .describe("Hides Hypixel's 'You are sending commands too fast' spam."),
-                SettingRow.toggle("Hide 'not enough mana'", () -> cfg().hideNotEnoughMana,
-                        () -> { cfg().hideNotEnoughMana = !cfg().hideNotEnoughMana; save(); })
-                        .describe("Hides the 'You do not have enough mana' spam from mashing an "
-                                + "ability."),
-                SettingRow.toggle("Hide 'blocks in the way'", () -> cfg().hideBlocksInTheWay,
-                        () -> { cfg().hideBlocksInTheWay = !cfg().hideBlocksInTheWay; save(); })
-                        .describe("Hides the 'There are blocks in the way' teleport spam."),
-                SettingRow.text("Hide Containing", "text, comma-separated", 256,
+        rows.add(SettingRow.label("Chat Spam Filters (still counted by every tracker, just not shown):"));
+        for (ChatSpamPreset preset : ChatSpamPreset.values()) {
+            rows.add(spamFilterRow(preset));
+        }
+        rows.add(SettingRow.text("Hide Containing", "text, comma-separated", 256,
                         () -> cfg().hideContaining == null ? "" : cfg().hideContaining,
                         v -> { cfg().hideContaining = v == null ? "" : v; save(); })
                         .describe("Your own filters: any message containing one of these "
                                 + "comma-separated texts is hidden. The messages still count for "
                                 + "every tracker - they are only not drawn."));
+        return rows;
+    }
+
+    /**
+     * Off / Hide / Compact for one preset. The label carries this session's count as of the page
+     * opening - a number, never the lines themselves.
+     */
+    private static SettingRow spamFilterRow(ChatSpamPreset preset) {
+        int hidden = preset.hiddenThisSession();
+        String label = hidden > 0 ? preset.label + " (" + hidden + " this session)" : preset.label;
+        return SettingRow.segmented(label, SpamFilterMode.LABELS,
+                        () -> cfg().spamMode(preset).ordinal(),
+                        index -> {
+                            SpamFilterMode mode = SpamFilterMode.values()[index];
+                            if (mode == SpamFilterMode.OFF) {
+                                cfg().spamFilters.remove(preset.id);
+                            } else {
+                                cfg().spamFilters.put(preset.id, mode);
+                            }
+                            save();
+                        })
+                .describe(preset.description + " Hide removes it; Compact stacks repeats into one "
+                        + "line with a counter. Trackers still read every line.");
     }
 }

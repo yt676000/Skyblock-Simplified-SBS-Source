@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Finds the one real Livid among the eight clones in the F5 / M5 boss room, once per client tick.
@@ -71,6 +72,9 @@ public final class LividTracker {
     private static final LividTracker INSTANCE = new LividTracker();
 
     private static final char SECTION_SIGN = (char) 0x00A7;
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
+    private static final Pattern NON_LETTERS = Pattern.compile("[^A-Za-z ]");
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
     /** The floor Livid is the boss of (F5 and M5 share it). */
     private static final int LIVID_FLOOR = 5;
@@ -154,6 +158,15 @@ public final class LividTracker {
 
     public static LividTracker getInstance() {
         return INSTANCE;
+    }
+
+    /**
+     * World leave: the fight state is entity ids (candidates, the confirmed and wool picks, peak
+     * health), all reassigned by a rejoin; the fight is re-read from the room on return.
+     */
+    public void onWorldChange() {
+        peakHealth.clear();
+        reset();
     }
 
     private static SBSConfig.DungeonsSettings cfg() {
@@ -461,8 +474,8 @@ public final class LividTracker {
 
     /** The readable name in a Livid nametag ("§c§lVendetta Livid§r §a4M❤" → "Vendetta Livid"). */
     public static String label(String raw) {
-        String core = raw.replaceAll(SECTION_SIGN + ".", "");
-        core = core.replaceAll("[^A-Za-z ]", " ").replaceAll("\\s+", " ").trim();
+        String core = FORMATTING.matcher(raw).replaceAll("");
+        core = WHITESPACE.matcher(NON_LETTERS.matcher(core).replaceAll(" ")).replaceAll(" ").trim();
         int index = core.toLowerCase(Locale.ROOT).indexOf("livid");
         if (index < 0) {
             return "Livid";

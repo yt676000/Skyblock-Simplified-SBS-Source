@@ -12,7 +12,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.chat.Component;
 import sbs.modid.client.core.build.logic.Hologram;
 import sbs.modid.client.core.build.logic.HologramManager;
 import sbs.modid.client.core.build.render.GhostCollector;
@@ -55,6 +54,33 @@ public final class BuildHud {
         SECTIONS.add(BuildHud::inputHelpSection);
     }
 
+    /** The input help never changes, so it is one section built once. */
+    private static final Section INPUT_HELP = new Section(List.of(
+            new Line("Left-click: corner 1  •  Right-click: corner 2", SBSTheme.TEXT),
+            new Line("Sneak + right-click air: clear  •  Alt + wheel: step deeper", SBSTheme.TEXT)), -1f);
+
+    /**
+     * The placing section as last built and the key it was built for: the same instance is handed
+     * back until one of these moves. Render thread only.
+     */
+    private static Section placing;
+    private static Object placingDisplay;
+    private static BlockPos placingAt;
+    private static int placingCollisions = -1;
+    private static boolean placingWhole;
+    private static boolean placingHelp;
+    private static boolean placingSingleplayer;
+
+    /**
+     * The card as last built, the sections it was built from (by identity) and the screen width it
+     * was capped to; {@code current} is this frame's, reused so a frame allocates nothing.
+     * Render thread only.
+     */
+    private static Card card;
+    private static Section[] built = new Section[0];
+    private static Section[] current = new Section[0];
+    private static int builtGuiWidth = -1;
+
     private BuildHud() {
     }
 
@@ -69,43 +95,48 @@ public final class BuildHud {
                 || sbs.modid.client.helper.build.logic.Freecam.cinematic()) {
             return;
         }
-        List<Section> sections = new ArrayList<>();
-        for (Supplier<Section> supplier : SECTIONS) {
-            Section section = supplier.get();
-            if (section != null && !section.lines().isEmpty()) {
-                sections.add(section);
-            }
+        // Sections are compared by identity: the built-in ones hand back the same instance while
+        // nothing they show changed, so a steady card is not re-measured. A section that builds a new
+        // one every call simply rebuilds the card every frame, as before.
+        int count = SECTIONS.size();
+        if (current.length != count) {
+            current = new Section[count];
+            built = new Section[count];
+            card = null;
         }
-        if (sections.isEmpty()) {
+        boolean changed = card == null || g.guiWidth() != builtGuiWidth;
+        boolean any = false;
+        for (int i = 0; i < count; i++) {
+            Section section = SECTIONS.get(i).get();
+            if (section != null && section.lines().isEmpty()) {
+                section = null;
+            }
+            current[i] = section;
+            any |= section != null;
+            changed |= section != built[i];
+        }
+        if (!any) {
             return;
         }
+        if (changed) {
+            System.arraycopy(current, 0, built, 0, count);
+            builtGuiWidth = g.guiWidth();
+            card = build(current, g.guiWidth());
+        }
+        Card model = card;
         Font font = Minecraft.getInstance().font;
         int lineH = font.lineHeight + 2;
-        // Measured from the text actually drawn, capped by the screen so it can never run off it.
-        int maxWidth = Math.max(80, g.guiWidth() - 2 * SBSTheme.SCREEN_MARGIN);
-        int width = 0;
-        int height = PAD * 2;
-        for (Section section : sections) {
-            for (Line line : section.lines()) {
-                width = Math.max(width, font.width(line.text()));
-                height += lineH;
-            }
-            if (section.progress() >= 0) {
-                height += BAR_HEIGHT + 3;
-            }
-        }
-        width = Math.min(maxWidth, width + PAD * 2);
         HudElement.Bounds b = HudElement.BUILD_TOOLS.defaultBounds(g.guiWidth(), g.guiHeight());
         int x = Math.round(b.x());
         int y = Math.round(b.y());
-        HudLayout.measure(HudElement.BUILD_TOOLS, x, y, width, height);
+        HudLayout.measure(HudElement.BUILD_TOOLS, x, y, model.width(), model.height());
         HudLayout.begin(g, HudElement.BUILD_TOOLS);
-        HudCard.draw(g, x, y, width, height);
+        HudCard.draw(g, x, y, model.width(), model.height());
         int iy = y + PAD;
-        int textW = width - PAD * 2;
-        for (Section section : sections) {
-            for (Line line : section.lines()) {
-                g.text(font, Component.literal(RowText.fit(font, line.text(), textW)), x + PAD, iy, line.color());
+        int textW = model.width() - PAD * 2;
+        for (BuiltSection section : model.sections()) {
+            for (HudCard.Line line : section.lines()) {
+                HudCard.drawLine(g, font, line, x + PAD, x + PAD + textW, iy);
                 iy += lineH;
             }
             if (section.progress() >= 0) {
@@ -118,6 +149,50 @@ public final class BuildHud {
         HudLayout.end(g);
     }
 
+    /** The card measured, its lines fitted to the width, from the non-null entries of {@code sections}. */
+    private static Card build(Section[] sections, int guiWidth) {
+        Font font = Minecraft.getInstance().font;
+        int lineH = font.lineHeight + 2;
+        // Measured from the text actually drawn, capped by the screen so it can never run off it.
+        int maxWidth = Math.max(80, guiWidth - 2 * SBSTheme.SCREEN_MARGIN);
+        int width = 0;
+        int height = PAD * 2;
+        for (Section section : sections) {
+            if (section == null) {
+                continue;
+            }
+            for (Line line : section.lines()) {
+                width = Math.max(width, font.width(line.text()));
+                height += lineH;
+            }
+            if (section.progress() >= 0) {
+                height += BAR_HEIGHT + 3;
+            }
+        }
+        width = Math.min(maxWidth, width + PAD * 2);
+        int textW = width - PAD * 2;
+        List<BuiltSection> built = new ArrayList<>(sections.length);
+        for (Section section : sections) {
+            if (section == null) {
+                continue;
+            }
+            List<HudCard.Line> lines = new ArrayList<>(section.lines().size());
+            for (Line line : section.lines()) {
+                lines.add(HudCard.Line.of(font, RowText.fit(font, line.text(), textW), line.color()));
+            }
+            built.add(new BuiltSection(List.copyOf(lines), section.progress()));
+        }
+        return new Card(List.copyOf(built), width, height);
+    }
+
+    /** One section of the cached card: its fitted lines and its bar (-1 for none). */
+    private record BuiltSection(List<HudCard.Line> lines, float progress) {
+    }
+
+    /** The cached card: its sections and measured size. */
+    private record Card(List<BuiltSection> sections, int width, int height) {
+    }
+
     /**
      * The help card: what the clicks do while build input is active - the stick in hand or build
      * freecam, one rule ({@code BuildInput}), so both show the same card. Not while a paste is placed:
@@ -127,9 +202,7 @@ public final class BuildHud {
         if (Placement.active() || !sbs.modid.client.helper.build.logic.BuildInput.active()) {
             return null;
         }
-        return new Section(List.of(
-                new Line("Left-click: corner 1  •  Right-click: corner 2", SBSTheme.TEXT),
-                new Line("Sneak + right-click air: clear  •  Alt + wheel: step deeper", SBSTheme.TEXT)), -1f);
+        return INPUT_HELP;
     }
 
     private static Section placingSection() {
@@ -138,11 +211,6 @@ public final class BuildHud {
         }
         Hologram hologram = HologramManager.getInstance().hologram();
         BlockPos at = hologram.anchor();
-        List<Line> lines = new ArrayList<>();
-        String name = hologram.display().header().name();
-        lines.add(new Line("Placing " + (name.isBlank() ? "clipboard" : name) + "  •  "
-                + hologram.display().sizeLabel() + "  •  at " + at.getX() + ", " + at.getY() + ", " + at.getZ(),
-                SBSTheme.ACCENT_BRIGHT));
         // The whole build counted against the world, once the census has finished a pass at this
         // spot; until then the nearby cells the renderer already classified.
         sbs.modid.client.helper.build.logic.HologramCensus.Result census =
@@ -158,6 +226,31 @@ public final class BuildHud {
                 }
             }
         }
+        boolean helpShowing = BuildHelpHud.showing();
+        boolean singleplayer = BuildGate.singleplayer();
+        // The display schematic carries the name and the size; together with the rest these are
+        // everything the section shows, so an unchanged key hands back the same section.
+        if (placing == null || hologram.display() != placingDisplay || at != placingAt
+                || collisions != placingCollisions || whole != placingWhole
+                || helpShowing != placingHelp || singleplayer != placingSingleplayer) {
+            placingDisplay = hologram.display();
+            placingAt = at;
+            placingCollisions = collisions;
+            placingWhole = whole;
+            placingHelp = helpShowing;
+            placingSingleplayer = singleplayer;
+            placing = buildPlacing(hologram, at, collisions, whole, helpShowing, singleplayer);
+        }
+        return placing;
+    }
+
+    private static Section buildPlacing(Hologram hologram, BlockPos at, int collisions, boolean whole,
+                                        boolean helpShowing, boolean singleplayer) {
+        List<Line> lines = new ArrayList<>();
+        String name = hologram.display().header().name();
+        lines.add(new Line("Placing " + (name.isBlank() ? "clipboard" : name) + "  •  "
+                + hologram.display().sizeLabel() + "  •  at " + at.getX() + ", " + at.getY() + ", " + at.getZ(),
+                SBSTheme.ACCENT_BRIGHT));
         if (collisions > 0) {
             lines.add(new Line(String.format(Locale.ROOT, "%,d block%s%s would be overwritten (red)",
                     collisions, collisions == 1 ? "" : "s", whole ? "" : " nearby"), SBSTheme.WARN));
@@ -165,11 +258,11 @@ public final class BuildHud {
             lines.add(new Line("Nothing in the way", SBSTheme.TOGGLE_ON));
         }
         // The key lines live on the help card when it is up; never the same lines on two cards.
-        if (!BuildHelpHud.showing()) {
+        if (!helpShowing) {
             lines.add(new Line("Arrows / wheel: move (Shift x5)  •  PgUp/PgDn: up/down", SBSTheme.TEXT));
             lines.add(new Line("R: turn  •  F: flip  •  G: plot grid  •  Enter: "
-                    + (BuildGate.singleplayer() ? "place" : "pin here") + "  •  Esc: cancel", SBSTheme.TEXT));
+                    + (singleplayer ? "place" : "pin here") + "  •  Esc: cancel", SBSTheme.TEXT));
         }
-        return new Section(lines, -1f);
+        return new Section(List.copyOf(lines), -1f);
     }
 }

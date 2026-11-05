@@ -63,6 +63,15 @@ import java.util.regex.Pattern;
  */
 public final class LoadoutsOverlay implements sbs.modid.client.core.config.ProfileScopedStore {
 
+    // Ahead of INSTANCE: the constructor can reach strip()/cleanName() through reloadProfile().
+    private static final Pattern FORMATTING = Pattern.compile(String.valueOf((char) 0x00A7) + ".");
+    private static final Pattern PAGE_COUNTER = Pattern.compile("\\([0-9]+/[0-9]+\\)");
+    private static final Pattern POWER_WORD = Pattern.compile(".*\\bpowers?\\b.*");
+    private static final Pattern NON_NAME_CHARS = Pattern.compile("[^A-Za-z0-9' -]");
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    private static final Pattern PET_LEVEL_PREFIX = Pattern.compile("(?i)^\\[Lvl\\s*[0-9]+]\\s*");
+    private static final Pattern NON_ID_CHARS = Pattern.compile("[^A-Z0-9]+");
+
     private static final LoadoutsOverlay INSTANCE = new LoadoutsOverlay();
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
@@ -75,11 +84,9 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
     private static final int GRID_COLS = 6;
 
     private static final String[] EQUIP_KEYS = {"Necklace", "Cloak", "Belt", "Gloves"};
-    private static final String[] EQUIP_LETTERS = {"N", "C", "B", "G"};
 
     /** The extra loadout parts listed in the lore, shown left of the player. */
     private static final String[] EXTRA_KEYS = {"HOTF", "HOTM", "Power Stone", "Tuning"};
-    private static final String[] EXTRA_LETTERS = {"F", "M", "P", "T"};
     private static final String[] EXTRA_NAMES = {"Heart of the Forest", "Heart of the Mountain",
             "Power Stone", "Stat Tuning"};
 
@@ -148,10 +155,28 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
         int page() { return page; }
         int menuSlot() { return menuSlot; }
 
-        /** This loadout's stripped lore (armor / equipment / HOTM… values live here per loadout). */
+        /**
+         * This loadout's stripped lore (armor / equipment / HOTM… values live here per loadout).
+         *
+         * <p>Memoised on the LORE component itself: the HUD card reads this eight times a frame, and
+         * re-stripping every line each time was ~100 KB of garbage per frame. {@code ItemLore} is
+         * immutable, so a new item or an in-place lore change hands us a different instance and the
+         * memo rebuilds; the returned list is unmodifiable (every caller only reads it).
+         */
         List<String> lore() {
-            return strippedLore(loadoutItem);
+            ItemStack item = loadoutItem;
+            net.minecraft.world.item.component.ItemLore source =
+                    item.get(net.minecraft.core.component.DataComponents.LORE);
+            LoreMemo memo = loreMemo;
+            if (memo == null || memo.source() != source) {
+                memo = new LoreMemo(source, List.copyOf(strippedLore(item)));
+                loreMemo = memo;
+            }
+            return memo.lines();
         }
+
+        /** Last {@link #lore()} result and the component it was stripped from (one field: no torn read). */
+        private volatile LoreMemo loreMemo;
 
         boolean hasArmor() {
             return !pieces[0].isEmpty() || !pieces[1].isEmpty()
@@ -166,6 +191,10 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
      * into UNUSED loadouts - both leave wrong "real" stacks that would never be overwritten.
      */
     private static final int CACHE_VERSION = 3;
+
+    /** See {@link Entry#lore()}. */
+    private record LoreMemo(net.minecraft.world.item.component.ItemLore source, List<String> lines) {
+    }
 
     /** Pages whose layout has already been logged this session (dev mode only). */
     private final java.util.Set<Integer> loggedLayoutPages = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -204,7 +233,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
 
     private static String title(AbstractContainerScreen<?> screen) {
         return screen.getTitle() != null
-                ? screen.getTitle().getString().replaceAll(SECTION_SIGN + ".", "").trim() : "";
+                ? FORMATTING.matcher(screen.getTitle().getString()).replaceAll("").trim() : "";
     }
 
     /**
@@ -418,92 +447,6 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
     private final ItemStack[] extraSlotIcons =
             {ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY};
 
-    /**
-     * Vanilla stand-ins, built <b>lazily</b> - never in a static initialiser.
-     *
-     * <p>{@code new ItemStack(...)} reads the item's components, and those are not bound until well
-     * into startup: building one while this class is being loaded crashes the game with "Components
-     * not bound yet". As a static field that made the whole class a landmine - merely <i>mentioning</i>
-     * {@code LoadoutsOverlay} from anything that runs early (a client-tick hook was enough) blew it
-     * up. Lazy, they cost one null check on a path that only ever runs while a menu is open, and the
-     * class is safe to touch from anywhere.
-     */
-    private static ItemStack[] extraFallbackIcons;
-    private static ItemStack petFallbackIcon;
-
-    /** Stand-in per extra slot, shown until the real menu items have been harvested. */
-    private static ItemStack[] extraFallbackIcons() {
-        if (extraFallbackIcons == null) {
-            extraFallbackIcons = new ItemStack[] {
-                new ItemStack(Items.OAK_SAPLING),      // Heart of the Forest
-                new ItemStack(Items.DIAMOND_PICKAXE),  // Heart of the Mountain
-                new ItemStack(Items.NETHER_STAR),      // Power Stone
-                new ItemStack(Items.REDSTONE),         // Stat Tuning
-            };
-        }
-        return extraFallbackIcons;
-    }
-
-    /** Stand-in for a pet whose real head has not resolved yet (the Pets menu icon). */
-    private static ItemStack petFallbackIcon() {
-        if (petFallbackIcon == null) {
-            petFallbackIcon = new ItemStack(Items.BONE);
-        }
-        return petFallbackIcon;
-    }
-
-    /**
-     * Maxwell power (lower-case) -> the power stone item that unlocks it, extracted from the repo
-     * item lores ("Combine 9x of this stone ... to permanently unlock the Silky power"). Lets
-     * every card show ITS power's actual stone instead of one generic slot icon.
-     */
-    private static final Map<String, String> POWER_STONE_IDS = Map.ofEntries(
-            Map.entry("forceful", "ACACIA_BIRDHOUSE"),
-            Map.entry("bloody", "BEATING_HEART"),
-            Map.entry("bubba", "BUBBA_BLISTER"),
-            Map.entry("crumbly", "CHOCOLATE_CHIP"),
-            Map.entry("shaded", "DARK_ORB"),
-            Map.entry("sanguisuge", "DISPLACED_LEECH"),
-            Map.entry("bizarre", "ECCENTRIC_PAINTING"),
-            Map.entry("sighted", "ENDER_MONOCLE"),
-            Map.entry("adept", "END_STONE_SHULKER"),
-            Map.entry("itchy", "FURBALL"),
-            Map.entry("frozen", "GLACITE_SHARD"),
-            Map.entry("slender", "HAZMAT_ENDERMAN"),
-            Map.entry("demonic", "HORNS_OF_TORMENT"),
-            Map.entry("silky", "LUXURIOUS_SPOOL"),
-            Map.entry("hurtful", "MAGMA_URCHIN"),
-            Map.entry("strong", "MANDRAA"),
-            Map.entry("mythical", "OBSIDIAN_TABLET"),
-            Map.entry("pleasant", "PRECIOUS_PEARL"),
-            Map.entry("sweet", "ROCK_CANDY"),
-            Map.entry("scorching", "SCORCHED_BOOKS"),
-            Map.entry("buttery", "SUNFLOWER_BUTTER"),
-            Map.entry("healthy", "VITAMIN_DEATH"),
-            Map.entry("unhealthy", "VITAMIN_LIFE"));
-
-    /** Resolved power stone icons by power name; successes only (icons resolve async). */
-    private final Map<String, ItemStack> powerStoneCache = new ConcurrentHashMap<>();
-
-    /** The stone item icon for a Maxwell power ("Silky" -> Luxurious Spool), or empty. */
-    private ItemStack powerStoneIcon(String power) {
-        String key = cleanName(power);
-        ItemStack cached = powerStoneCache.get(key);
-        if (cached != null) {
-            return cached;
-        }
-        String id = POWER_STONE_IDS.get(key);
-        if (id == null) {
-            return ItemStack.EMPTY;
-        }
-        ItemStack icon = SkyBlockItemIcons.getInstance().icon(id, power, 1);
-        if (icon == null || icon.isEmpty() || isBarrier(icon)) {
-            return ItemStack.EMPTY;   // still loading - retry next frame
-        }
-        powerStoneCache.put(key, icon);
-        return icon;
-    }
-
     private void harvestExtraSlotIcons(AbstractContainerMenu menu, int upper) {
         boolean changed = false;
         for (int i = 0; i < upper; i++) {
@@ -522,7 +465,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
             // the active power, e.g. "Fortuitous Power") - but never inside "Empowered ...".
             int idx = lower.contains("heart of the forest") ? 0
                     : lower.contains("heart of the mountain") ? 1
-                    : lower.contains("power stone") || lower.matches(".*\\bpowers?\\b.*") ? 2
+                    : lower.contains("power stone") || POWER_WORD.matcher(lower).matches() ? 2
                     : lower.contains("tuning") ? 3 : -1;
             if (idx >= 0 && extraSlotIcons[idx].isEmpty()) {
                 extraSlotIcons[idx] = stack.copy();
@@ -551,7 +494,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
     private void harvestPetsMenu(AbstractContainerScreen<?> screen) {
         // The title carries the page counter FIRST, exactly like the Loadouts menu: "(1/3) Pets" -
         // a plain startsWith("pets") never matched and the harvest silently never ran.
-        String bare = title(screen).replaceAll("\\([0-9]+/[0-9]+\\)", "").trim().toLowerCase(Locale.ROOT);
+        String bare = PAGE_COUNTER.matcher(title(screen)).replaceAll("").trim().toLowerCase(Locale.ROOT);
         if (!bare.startsWith("pets")) {
             return;
         }
@@ -995,7 +938,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
      * is the safe filter.
      */
     private static String cleanName(String name) {
-        return name.replaceAll("[^A-Za-z0-9' -]", " ").replaceAll("\\s+", " ")
+        return WHITESPACE.matcher(NON_NAME_CHARS.matcher(name).replaceAll(" ")).replaceAll(" ")
                 .trim().toLowerCase(Locale.ROOT);
     }
 
@@ -1577,6 +1520,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
             rememberedSlot = -1;
             rememberedAt = 0;
             cacheLoaded = false;
+            readScreen = null;   // the open menu is read again into the fresh profile
             session.reset();
             pendingDecodes = 0;
             decodeRetries = 0;
@@ -1915,7 +1859,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
         }
         // ASCII-only clean: the superscript master-star tier (⁵) is a Unicode digit, so a
         // \p{L}\p{N} class kept it glued to the name and every lookup missed.
-        String clean = value.replaceAll("[^A-Za-z0-9' -]", " ").replaceAll("\\s+", " ").trim();
+        String clean = WHITESPACE.matcher(NON_NAME_CHARS.matcher(value).replaceAll(" ")).replaceAll(" ").trim();
         // Candidates: the full name, then with leading words dropped one by one. The fixed REFORGES
         // list misses many equipment reforges ("Primordial Manticore Claws"), so dropping words is
         // the only reforge-agnostic way to reach the base name. The full name is always tried
@@ -2055,7 +1999,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
     }
 
     private static String strip(String text) {
-        return text == null ? "" : text.replaceAll(SECTION_SIGN + ".", "");
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("");
     }
 
     // ------------------------------------------------------------------
@@ -2075,6 +2019,31 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
     private int navButtonW;
     private int navGap;
 
+    /** What the last scrape read: the screen, the slot-packet revision, and the worn armor by identity. */
+    private AbstractContainerScreen<?> readScreen;
+    private int readRevision;
+    private final ItemStack[] readWorn = new ItemStack[4];
+
+    private static final EquipmentSlot[] WORN = {
+            EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
+
+    /** Whether the open menu or the worn armor changed since the last call; remembers the new key. */
+    private boolean menuChangedSinceRead(AbstractContainerScreen<?> screen) {
+        int revision = sbs.modid.client.core.tick.InventoryChanges.revision();
+        boolean changed = screen != readScreen || revision != readRevision;
+        var player = Minecraft.getInstance().player;
+        for (int i = 0; i < WORN.length; i++) {
+            ItemStack worn = player == null ? null : player.getItemBySlot(WORN[i]);
+            if (worn != readWorn[i]) {
+                readWorn[i] = worn;
+                changed = true;
+            }
+        }
+        readScreen = screen;
+        readRevision = revision;
+        return changed;
+    }
+
     public void renderTopMost(AbstractContainerScreen<?> screen, GuiGraphicsExtractor g,
                               int mouseX, int mouseY) {
         String title = title(screen);
@@ -2084,11 +2053,18 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
         if (!enabled() && !widgetEnabled()) {
             return;
         }
-        harvestPetsMenu(screen);   // the Pets menu is the one source of real pet heads (skins!)
+        // Re-read only when a slot packet arrived, the screen changed, or the worn armor (which
+        // cachePage compares against) changed - otherwise every slot is exactly as last read.
+        boolean menuChanged = menuChangedSinceRead(screen);
+        if (menuChanged) {
+            harvestPetsMenu(screen);   // the Pets menu is the one source of real pet heads (skins!)
+        }
         if (!isLoadoutsMenu(title)) {
             return;
         }
-        cachePage(screen); // refresh continuously while open (server fills slots in)
+        if (menuChanged) {
+            cachePage(screen); // the server fills slots in over several packets
+        }
         if (!enabled() || editMode || maxSlot == 0) {
             return;
         }
@@ -2205,7 +2181,6 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
     }
 
     /** Inventory-style hover veil over a piece box. */
-    private static final int HOVER_VEIL = 0x80FFFFFF;
 
     /** Tooltip of the piece box under the mouse this frame (beats the whole-card tooltip). */
     private List<Component> pieceTooltip;
@@ -2238,19 +2213,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
         int page = entry != null ? entry.page() : (slot - 1) / PER_PAGE + 1;
         boolean onOpenPage = page == currentPage;
 
-        if (equipped) {
-            // The active loadout gets a glow + strong border so it reads from across the grid.
-            SciFiRender.glow(g, cx + 1, cy + 1, cardW - 2, cardH - 2, SBSTheme.CORNER_RADIUS,
-                    0x5533FF66, 2);
-        }
-        // On the HUD the theme's HUD card colours; in the grid the translucent card that sits on the
-        // overlay's own panel gradient.
-        int bg = equipped ? 0x8033AA44 : hover ? SBSTheme.CARD_BG_HOVER
-                : onHud ? SBSTheme.HUD_CARD_BG : 0xA0102640;
-        int border = equipped ? 0xFF55FF55 : hover ? SBSTheme.ACCENT_BRIGHT
-                : onHud ? SBSTheme.HUD_CARD_BORDER : SBSTheme.CARD_BORDER;
-        SciFiRender.roundedRectWithBorder(g, cx + 1, cy + 1, cardW - 2, cardH - 2,
-                SBSTheme.CORNER_RADIUS, bg, border);
+        LoadoutCard.frame(g, cx, cy, cardW, cardH, equipped, hover, onHud);
 
         // Top row: number + custom name left, a rename pencil + page chip on the right (chip is
         // green when its page is the one open = a single click equips).
@@ -2267,6 +2230,14 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
                     penHover ? SBSTheme.CARD_BG_HOVER : SBSTheme.CARD_BG,
                     penHover ? SBSTheme.ACCENT : SBSTheme.CARD_BORDER);
             g.centeredText(font, Component.literal("✎"), penX + PENCIL_W / 2, penY + 2, SBSTheme.TEXT);
+            SciFiRender.roundedRectWithBorder(g, chipX, cy + 3, chipW, penH, 2,
+                    onOpenPage ? 0x8033AA44 : SBSTheme.CARD_BG,
+                    onOpenPage ? 0xFF55FF55 : SBSTheme.CARD_BORDER);
+            g.text(font, Component.literal(pageChip), chipX + 3, cy + 4,
+                    onOpenPage ? 0xFF55FF55 : SBSTheme.TEXT_MUTED);
+        }
+        if (penHover) {
+            pieceTooltip = List.of(Component.literal("§eRename loadout"));
         }
 
         String custom = slot > 0 ? customName(slot) : null;
@@ -2278,130 +2249,16 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
             label = label + " §8(from last session)";
         }
         int labelRight = onHud ? cx + cardW - 4 : penX;
-        label = font.plainSubstrByWidth(label, labelRight - (cx + 4) - 2, false);
-        g.text(font, Component.literal(label), cx + 4, cy + 3, SBSTheme.TEXT_MUTED);
 
-        if (!onHud) {
-            SciFiRender.roundedRectWithBorder(g, chipX, cy + 3, chipW, penH, 2,
-                    onOpenPage ? 0x8033AA44 : SBSTheme.CARD_BG,
-                    onOpenPage ? 0xFF55FF55 : SBSTheme.CARD_BORDER);
-            g.text(font, Component.literal(pageChip), chipX + 3, cy + 4,
-                    onOpenPage ? 0xFF55FF55 : SBSTheme.TEXT_MUTED);
-        }
-        if (penHover) {
-            pieceTooltip = List.of(Component.literal("§eRename loadout"));
-        }
-
-        if (entry == null || entry.status() == Status.EMPTY) {
-            g.centeredText(font, Component.literal(entry == null ? "§8?" : "§8empty"),
-                    cx + cardW / 2, cy + cardH / 2, SBSTheme.TEXT_MUTED);
-            return;
-        }
-
-        int leftX = cx + 4;
-        int columnsY = cy + 34;
-
-        // Pet box top-left, gently bobbing up and down: the real pet head (skin included) in the
-        // box, its name to the right. A bone (the Pets menu icon) stands in until the head resolves.
-        if (entry.pet() != null) {
-            ItemStack petIcon = petIcon(entry.pet());
-            if (petIcon.isEmpty()) {
-                petIcon = petFallbackIcon();
-            }
-            int bob = Math.round((float) Math.sin(System.currentTimeMillis() / 350.0) * 2.0f);
-            int petY = columnsY + bob;
-            boolean over = mouseX >= leftX && mouseX < leftX + 16 && mouseY >= columnsY && mouseY < columnsY + 16;
-            SciFiRender.roundedRectWithBorder(g, leftX, petY, 16, 16, 2,
-                    SBSTheme.CARD_BG_HOVER, SBSTheme.ACCENT);
-            g.item(petIcon, leftX, petY);
-            String petName = entry.pet().replaceAll("(?i)^\\[Lvl\\s*[0-9]+]\\s*", "");
-            petName = font.plainSubstrByWidth(petName, (cardW - 26) * 2, false);
-            var pose = g.pose();
-            pose.pushMatrix();
-            pose.translate(leftX + 18, petY + 5);
-            pose.scale(0.5f, 0.5f);
-            int w = font.width(petName);
-            g.fill(-2, -2, w + 2, font.lineHeight + 1, 0x66000000);
-            g.text(font, Component.literal(petName), 0, 0, 0xFF6FD9FF);
-            pose.popMatrix();
-            if (over) {
-                g.fill(leftX, petY, leftX + 16, petY + 16, HOVER_VEIL);
-                pieceTooltip = lineTooltip(entry, "Pet", "Pet");
-            }
-        }
-
-        // Left column under the pet: HOTF / HOTM / Power Stone / Tuning. The icon is the generic
-        // slot item (same for all loadouts; vanilla stand-in until harvested); the VALUE is this
-        // loadout's own lore line.
-        for (int i = 0; i < EXTRA_KEYS.length; i++) {
-            String value = loreValue(entry.lore(), EXTRA_KEYS[i]);
-            boolean present = value != null;
-            ItemStack detail = extraSlotIcons[i].isEmpty() ? extraFallbackIcons()[i] : extraSlotIcons[i];
-            // The Power Stone box shows THIS loadout's stone ("Silky" -> Luxurious Spool), not
-            // the generic slot icon - the power differs per loadout.
-            if (present && EXTRA_KEYS[i].equals("Power Stone")) {
-                ItemStack stone = powerStoneIcon(value);
-                if (!stone.isEmpty()) {
-                    detail = stone;
-                }
-            }
-            int bx = leftX;
-            int by = columnsY + (i + 1) * 18;
-            boolean over = mouseX >= bx && mouseX < bx + 16 && mouseY >= by && mouseY < by + 16;
-            SciFiRender.roundedRectWithBorder(g, bx, by, 16, 16, 2,
-                    present ? SBSTheme.CARD_BG_HOVER : SBSTheme.CARD_BG,
-                    present ? SBSTheme.ACCENT : SBSTheme.CARD_BORDER);
-            if (present) {
-                g.item(detail, bx, by);
-            } else {
-                g.centeredText(font, Component.literal("§8" + EXTRA_LETTERS[i]),
-                        bx + 8, by + 4, SBSTheme.TEXT);
-            }
-            if (over) {
-                g.fill(bx, by, bx + 16, by + 16, HOVER_VEIL);
-                pieceTooltip = lineTooltip(entry, EXTRA_KEYS[i], EXTRA_NAMES[i]);
-            }
-        }
-
-        // Right column: the equipment (Necklace / Cloak / Belt / Gloves), resolved from THIS
-        // loadout's lore to a catalogue icon - so every loadout shows its own equipment at once.
-        // Without the loadout item there is no lore to read; the Equipment menu's last capture
-        // stands in, and its tooltip says how old it is.
-        boolean fromEquipmentMenu = entry.loadoutItem.isEmpty();
-        for (int i = 0; i < EQUIP_KEYS.length; i++) {
-            boolean capturedTooltip = false;
-            ItemStack detail = equipIcon(entry, i);
-            boolean present = entry.equipment() != null && entry.equipment()[i];
-            if (fromEquipmentMenu && detail.isEmpty()) {
-                ItemStack captured = sbs.modid.client.helper.inventory.logic.EquipmentStore.getInstance()
-                        .piece(sbs.modid.client.helper.inventory.logic.EquipmentMenu.Piece.values()[i]);
-                if (captured != null && !captured.isEmpty()) {
-                    detail = captured;
-                    present = true;
-                    capturedTooltip = true;
-                }
-            }
-            int bx = cx + cardW - 20;
-            int by = columnsY + i * 18;
-            boolean over = mouseX >= bx && mouseX < bx + 16 && mouseY >= by && mouseY < by + 16;
-            SciFiRender.roundedRectWithBorder(g, bx, by, 16, 16, 2,
-                    present ? SBSTheme.CARD_BG_HOVER : SBSTheme.CARD_BG,
-                    present ? SBSTheme.ACCENT : SBSTheme.CARD_BORDER);
-            if (!detail.isEmpty()) {
-                g.item(detail, bx, by);
-            } else {
-                g.centeredText(font, Component.literal((present ? "§6" : "§8") + EQUIP_LETTERS[i]),
-                        bx + 8, by + 4, SBSTheme.TEXT);
-            }
-            if (over) {
-                g.fill(bx, by, bx + 16, by + 16, HOVER_VEIL);
-                pieceTooltip = capturedTooltip
-                        ? List.of(detail.getHoverName(), Component.literal("§8From the Equipment menu, "
-                                + age(System.currentTimeMillis() - sbs.modid.client.helper.inventory.logic
-                                        .EquipmentStore.getInstance().capturedAt()) + " ago"))
-                        : lineTooltip(entry, EQUIP_KEYS[i], EQUIP_KEYS[i]);
-            }
-        }
+        boolean empty = entry == null || entry.status() == Status.EMPTY;
+        ItemStack[] shown = empty ? null : displayPieces(entry, onHud);
+        LoadoutCard.Model model = empty
+                ? new LoadoutCard.Model(label, null, null, null, null, null, true,
+                        entry == null ? "§8?" : "§8empty")
+                : new LoadoutCard.Model(label, petOf(entry), detailBoxes(entry), equipmentBoxes(entry),
+                        shown, i -> shown[i].isEmpty()
+                                ? lineTooltip(entry, ARMOR_KEYS[i], ARMOR_KEYS[i])
+                                : stackTooltip(shown[i]), false, "");
 
         /*
          * Your own player model (large) wearing the loadout, head following the mouse - or looking
@@ -2413,73 +2270,132 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
          * player standing somewhere else entirely on screen while the card sat where it was moved
          * to. It therefore gets the card's post-transform rectangle (and the widget's scale folded
          * into its own) instead of the local one every other part of the card uses.
+         *
+         * EVERY card with armor gets its own model, always. This was briefly narrowed to the hovered
+         * card and the worn one, to stop two dozen player render states being rebuilt per frame -
+         * but seeing all of your loadouts at once, dressed, IS the menu, and a grid where the body
+         * only appears under the cursor is a different feature that happens to be faster. If the
+         * cost has to come down again it comes down inside the preview, not by drawing less of it.
          */
-        ItemStack[] shown = displayPieces(entry, onHud);
-        // EVERY card with armor gets its own model, always. This was briefly narrowed to the hovered
-        // card and the worn one, to stop two dozen player render states being rebuilt per frame -
-        // but seeing all of your loadouts at once, dressed, IS the menu, and a grid where the body
-        // only appears under the cursor is a different feature that happens to be faster. If the
-        // cost has to come down again it comes down inside the preview, not by drawing less of it.
-        if (preview != null && entry.hasArmor()) {
-            dress(shown);
-            // Mirror My Player (HUD card only): pose, hands and animations copied from you onto the
-            // never-ticked preview; armour stays the loadout's own (dress above). Off, or in the
-            // menu, the preview is put back to its untouched static state - once, not every frame.
-            Minecraft mc = Minecraft.getInstance();
-            boolean mirror = onHud && mc.player != null
-                    && ConfigManager.getInstance().get().skyblockMenu.loadoutMirror;
-            if (mirror) {
-                PreviewMirror.copy(mc.player, preview, mc.getDeltaTracker().getGameTimeDeltaPartialTick(true));
-                previewMirrored = true;
-            } else if (previewMirrored) {
-                PreviewMirror.clear(preview);
-                previewMirrored = false;
-            }
-            int x1 = cx + 26;
-            int y1 = cy + 24;
-            int x2 = cx + cardW - 26;
-            int y2 = cy + cardH - 26;
-            int scale = Math.max(24, (cardH - 54) / 2);
-            float lookX = mouseX;
-            float lookY = mouseY;
-            if (hud != null) {
-                x1 = Math.round(hud[0] + (x1 - cx) * hud[2]);
-                y1 = Math.round(hud[1] + (y1 - cy) * hud[2]);
-                x2 = Math.round(hud[0] + (x2 - cx) * hud[2]);
-                y2 = Math.round(hud[1] + (y2 - cy) * hud[2]);
-                scale = Math.max(1, Math.round(scale * hud[2]));
-                lookX = (x1 + x2) / 2f;
-                lookY = (y1 + y2) / 2f;
-                if (mirror) {
-                    // Your real head turn instead of straight ahead: the look point that makes the
-                    // vanilla call produce it (PreviewMirror.lookX / lookY for the inverse formula).
-                    lookX = PreviewMirror.lookX(lookX, PreviewMirror.relativeYaw(mc.player));
-                    lookY = PreviewMirror.lookY(lookY, PreviewMirror.pitch(mc.player));
+        LoadoutCard.Preview model3d = preview == null || empty || !entry.hasArmor() ? null
+                : (x1, y1, x2, y2, scale) -> drawPreview(g, shown, cx, cy, x1, y1, x2, y2, scale, hud,
+                        onHud, mouseX, mouseY);
+        List<Component> tip = LoadoutCard.body(g, font, model, cx, cy, cardW, cardH, labelRight, model3d,
+                mouseX, mouseY);
+        if (tip != null) {
+            pieceTooltip = tip;
+        }
+    }
+
+    /** The pet chip of a cached loadout, or null when it lists none. */
+    private LoadoutCard.Pet petOf(Entry entry) {
+        if (entry.pet() == null) {
+            return null;
+        }
+        return new LoadoutCard.Pet(petIcon(entry.pet()), PET_LEVEL_PREFIX.matcher(entry.pet()).replaceAll(""),
+                () -> lineTooltip(entry, "Pet", "Pet"));
+    }
+
+    /**
+     * HOTF / HOTM / Power Stone / Tuning. The icon is the generic slot item (same for all loadouts;
+     * a vanilla stand-in until harvested); the VALUE is this loadout's own lore line, and the Power
+     * Stone box shows THIS loadout's stone ("Silky" -> Luxurious Spool), not the generic slot icon.
+     */
+    private LoadoutCard.Box[] detailBoxes(Entry entry) {
+        LoadoutCard.Box[] boxes = new LoadoutCard.Box[EXTRA_KEYS.length];
+        for (int i = 0; i < EXTRA_KEYS.length; i++) {
+            String value = loreValue(entry.lore(), EXTRA_KEYS[i]);
+            boolean present = value != null;
+            ItemStack detail = extraSlotIcons[i].isEmpty() ? LoadoutCard.detailFallbackIcons()[i] : extraSlotIcons[i];
+            if (present && EXTRA_KEYS[i].equals("Power Stone")) {
+                ItemStack stone = LoadoutCard.powerStoneIcon(value);
+                if (!stone.isEmpty()) {
+                    detail = stone;
                 }
             }
+            int index = i;
+            boxes[i] = new LoadoutCard.Box(present ? detail : ItemStack.EMPTY, LoadoutCard.DETAIL_LETTERS[i],
+                    present, () -> lineTooltip(entry, EXTRA_KEYS[index], EXTRA_NAMES[index]));
+        }
+        return boxes;
+    }
+
+    /**
+     * The equipment (Necklace / Cloak / Belt / Gloves), resolved from THIS loadout's lore to a
+     * catalogue icon - so every loadout shows its own equipment at once. Without the loadout item
+     * there is no lore to read; the Equipment menu's last capture stands in, and its tooltip says
+     * how old it is.
+     */
+    private LoadoutCard.Box[] equipmentBoxes(Entry entry) {
+        boolean fromEquipmentMenu = entry.loadoutItem.isEmpty();
+        LoadoutCard.Box[] boxes = new LoadoutCard.Box[EQUIP_KEYS.length];
+        for (int i = 0; i < EQUIP_KEYS.length; i++) {
+            ItemStack detail = equipIcon(entry, i);
+            boolean present = entry.equipment() != null && entry.equipment()[i];
+            int index = i;
+            java.util.function.Supplier<List<Component>> tip = () -> lineTooltip(entry, EQUIP_KEYS[index], EQUIP_KEYS[index]);
+            if (fromEquipmentMenu && detail.isEmpty()) {
+                ItemStack captured = sbs.modid.client.helper.inventory.logic.EquipmentStore.getInstance()
+                        .piece(sbs.modid.client.helper.inventory.logic.EquipmentMenu.Piece.values()[i]);
+                if (captured != null && !captured.isEmpty()) {
+                    detail = captured;
+                    present = true;
+                    tip = () -> List.of(captured.getHoverName(), Component.literal("§8From the Equipment menu, "
+                            + age(System.currentTimeMillis() - sbs.modid.client.helper.inventory.logic
+                                    .EquipmentStore.getInstance().capturedAt()) + " ago"));
+                }
+            }
+            boxes[i] = new LoadoutCard.Box(detail, LoadoutCard.EQUIP_LETTERS[i], present, tip);
+        }
+        return boxes;
+    }
+
+    /** The never-ticked preview player, dressed in {@code shown}, inside the card's model box. */
+    private void drawPreview(GuiGraphicsExtractor g, ItemStack[] shown, int cx, int cy, int x1, int y1,
+                             int x2, int y2, int scale, float[] hud, boolean onHud, int mouseX, int mouseY) {
+        dress(shown);
+        // Mirror My Player (HUD card only): pose, hands and animations copied from you onto the
+        // never-ticked preview; armour stays the loadout's own (dress above). Off, or in the
+        // menu, the preview is put back to its untouched static state - once, not every frame.
+        Minecraft mc = Minecraft.getInstance();
+        boolean mirror = onHud && mc.player != null
+                && ConfigManager.getInstance().get().skyblockMenu.loadoutMirror;
+        if (mirror) {
+            PreviewMirror.copy(mc.player, preview, mc.getDeltaTracker().getGameTimeDeltaPartialTick(true));
+            previewMirrored = true;
+        } else if (previewMirrored) {
+            PreviewMirror.clear(preview);
+            previewMirrored = false;
+        }
+        float lookX = mouseX;
+        float lookY = mouseY;
+        if (hud != null) {
+            x1 = Math.round(hud[0] + (x1 - cx) * hud[2]);
+            y1 = Math.round(hud[1] + (y1 - cy) * hud[2]);
+            x2 = Math.round(hud[0] + (x2 - cx) * hud[2]);
+            y2 = Math.round(hud[1] + (y2 - cy) * hud[2]);
+            scale = Math.max(1, Math.round(scale * hud[2]));
+            lookX = (x1 + x2) / 2f;
+            lookY = (y1 + y2) / 2f;
+            if (mirror) {
+                // Your real head turn instead of straight ahead: the look point that makes the
+                // vanilla call produce it (PreviewMirror.lookX / lookY for the inverse formula).
+                lookX = PreviewMirror.lookX(lookX, PreviewMirror.relativeYaw(mc.player));
+                lookY = PreviewMirror.lookY(lookY, PreviewMirror.pitch(mc.player));
+            }
+        }
+        // TEMPORARY measurement (HUD only): pause the card's section, time the preview on its
+        // own, reopen the card's. LoadoutHud closes "hud.loadoutCard" at the end either way.
+        if (hud != null) {
+            sbs.modid.client.core.perf.Perf.hud("hud.loadoutCard").close();
+            try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.loadoutPreview")) {
+                InventoryScreen.extractEntityInInventoryFollowsMouse(g, x1, y1, x2, y2, scale, 0.0625F,
+                        lookX, lookY, preview);
+            }
+            sbs.modid.client.core.perf.Perf.hud("hud.loadoutCard");   // reopened: the rest of the card times as card again
+        } else {
             InventoryScreen.extractEntityInInventoryFollowsMouse(g, x1, y1, x2, y2, scale, 0.0625F,
                     lookX, lookY, preview);
-        }
-
-        // Bottom strip: the four armor pieces as inventory-like hoverable cells.
-        int stripW = 4 * 18;
-        int sx = cx + (cardW - stripW) / 2;
-        int sy = cy + cardH - 22;
-        ItemStack[] pieces = shown;
-        for (int i = 0; i < 4; i++) {
-            int bx = sx + i * 18;
-            boolean over = mouseX >= bx && mouseX < bx + 18 && mouseY >= sy && mouseY < sy + 18;
-            SciFiRender.roundedRectWithBorder(g, bx, sy, 17, 17, 2,
-                    SBSTheme.CARD_BG, over ? SBSTheme.ACCENT_BRIGHT : SBSTheme.CARD_BORDER);
-            if (!pieces[i].isEmpty()) {
-                g.item(pieces[i], bx + 1, sy + 1);
-            }
-            if (over) {
-                g.fill(bx + 1, sy + 1, bx + 16, sy + 16, HOVER_VEIL);
-                pieceTooltip = pieces[i].isEmpty()
-                        ? lineTooltip(entry, ARMOR_KEYS[i], ARMOR_KEYS[i])
-                        : stackTooltip(pieces[i]);
-            }
         }
     }
 
@@ -2521,7 +2437,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
         if (!real.isEmpty()) {
             return real;
         }
-        String petName = petLine.replaceAll("(?i)^\\[Lvl\\s*[0-9]+]\\s*", "");
+        String petName = PET_LEVEL_PREFIX.matcher(petLine).replaceAll("");
         ItemStack cached = petIcons.get(petLine);
         if (cached != null) {
             return cached;
@@ -2529,7 +2445,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
         // Fallback (DEFAULT skin only): the /pv way - PetIconCache fetches the pet's skull straight
         // from the repo on GitHub (the LOCAL appearance repo carries no pets at all); then the
         // catalogue. Null while the fetch is in flight.
-        String petId = cleanName(petName).toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_");
+        String petId = NON_ID_CHARS.matcher(cleanName(petName).toUpperCase(Locale.ROOT)).replaceAll("_");
         ItemStack resolved = sbs.modid.client.core.player.PetIconCache.getInstance().get(petId);
         if (resolved == null) {
             resolved = iconByCatalogName(cleanName(petName));
@@ -2659,7 +2575,10 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
 
     private void dress(ItemStack[] pieces) {
         for (int p = 0; p < ARMOR_SLOTS.length; p++) {
-            preview.setItemSlot(ARMOR_SLOTS[p], pieces[p]);
+            // Per frame on the HUD: only re-equip a slot whose stack actually changed.
+            if (preview.getItemBySlot(ARMOR_SLOTS[p]) != pieces[p]) {
+                preview.setItemSlot(ARMOR_SLOTS[p], pieces[p]);
+            }
         }
     }
 

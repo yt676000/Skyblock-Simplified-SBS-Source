@@ -103,32 +103,52 @@ public final class RecipeCostResolver {
         }
     }
 
+    /**
+     * What one unit made by this particular recipe costs, every ingredient priced by {@link #cost}'s
+     * rule; {@code null} when an ingredient cannot be priced. The Craft Helper orders an item's
+     * recipes by this, cheapest first.
+     */
+    public Long unitCost(SbsRecipe recipe) {
+        if (recipe == null || recipe.result == null) {
+            return null;
+        }
+        Set<String> visiting = new HashSet<>();
+        visiting.add(recipe.result.lookupId().toUpperCase(Locale.ROOT));
+        return perUnit(recipe, visiting, 0);
+    }
+
     /** The cheapest fully-priceable recipe for {@code id} per unit produced, or {@code null}. */
     private Long cheapestRecipe(String id, Set<String> visiting, int depth) {
         List<SbsRecipe> candidates = new ArrayList<>(recipes.apply(id));
         candidates.sort(Comparator.comparingInt(RecipeCostResolver::sourceRank));
         Long best = null;
         for (SbsRecipe recipe : candidates) {
-            long total = 0;
-            boolean complete = !recipe.ingredients.isEmpty();
-            for (ItemRef ingredient : recipe.ingredients) {
-                Long unit = resolve(ingredient.lookupId(), visiting, depth + 1);
-                if (unit == null) {
-                    complete = false;
-                    break;
-                }
-                total += unit * Math.max(1, ingredient.count);
-            }
-            if (!complete || total <= 0) {
-                continue;
-            }
-            int produced = recipe.result == null ? 1 : Math.max(1, recipe.result.count);
-            long perUnit = Math.round((double) total / produced);
-            if (best == null || perUnit < best) {
+            Long perUnit = perUnit(recipe, visiting, depth);
+            if (perUnit != null && (best == null || perUnit < best)) {
                 best = perUnit;
             }
         }
         return best;
+    }
+
+    /** One recipe's cost per unit produced, or {@code null} when it is not fully priceable. */
+    private Long perUnit(SbsRecipe recipe, Set<String> visiting, int depth) {
+        long total = 0;
+        if (recipe.ingredients.isEmpty()) {
+            return null;
+        }
+        for (ItemRef ingredient : recipe.ingredients) {
+            Long unit = resolve(ingredient.lookupId().toUpperCase(Locale.ROOT), visiting, depth + 1);
+            if (unit == null) {
+                return null;
+            }
+            total += unit * Math.max(1, ingredient.count);
+        }
+        if (total <= 0) {
+            return null;
+        }
+        int produced = recipe.result == null ? 1 : Math.max(1, recipe.result.count);
+        return Math.round((double) total / produced);
     }
 
     /** Same source preference as {@link PriceEstimator}: scraped menus, then database, vanilla last. */

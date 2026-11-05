@@ -42,7 +42,65 @@ public final class ScanNames {
             new Entry(Pattern.compile("^Superpairs Rewards$"), TABLE + " / Superpairs Rewards"),
             new Entry(Pattern.compile("^Experiment Over$"), TABLE + " / Experiment Over"));
 
+    // ------------------------------------------------------------------ noise
+
+    /*
+     * What a full capture leaves out, by rule. Every suppressed entity or sound is counted under its
+     * rule and the counts are written to the manifest and summary.txt - "N suppressed", never a silent
+     * drop. Keep this list small: a rule that is too wide hides the thing a capture was taken for.
+     */
+
+    /** The "CLICK" / "RIGHT CLICK" label under an NPC's name: on every NPC, never changes. */
+    public static final String NOISE_CLICK_LABEL = "npc click label";
+
+    /**
+     * A named hologram stand (invisible, not tied to a mob, not a health tag) seen again at the same
+     * spot with the same name: the Hub's NPC titles and signs re-load every time their chunk does.
+     * The first sight is recorded; only the re-sightings are suppressed.
+     */
+    public static final String NOISE_STATIC_HOLOGRAM = "hologram seen before";
+
+    /** Another player's pet nametag ("[Lv100] Someone's Golden Dragon"). */
+    public static final String NOISE_OTHER_PET = "other player's pet";
+
+    /** A stand riding another player: hats, wings and other cosmetics. */
+    public static final String NOISE_PLAYER_COSMETIC = "other player's cosmetic";
+
+    /** Another real player, outside presets that keep them (dungeon, kuudra: the party matters). */
+    public static final String NOISE_OTHER_PLAYER = "other player";
+
+    /** An invisible stand with no name and nothing worn: a seat or spacer, it carries nothing. */
+    public static final String NOISE_BARE_STAND = "bare invisible stand";
+
+    /** A damage splash while the damage channel is off: it would be one entity per hit. */
+    public static final String NOISE_DAMAGE_SPLASH = "damage splash (damage off)";
+
+    /** Footsteps, ambience, music and weather - client-side noise, not server cues. */
+    public static final String NOISE_SOUND = "step/ambient/music sound";
+
+    /** Every rule above, for the manifest. */
+    public static final List<String> NOISE_RULES = List.of(NOISE_CLICK_LABEL, NOISE_STATIC_HOLOGRAM,
+            NOISE_OTHER_PET, NOISE_PLAYER_COSMETIC, NOISE_OTHER_PLAYER, NOISE_BARE_STAND,
+            NOISE_DAMAGE_SPLASH, NOISE_SOUND);
+
+    private static final Pattern CLICK_LABEL =
+            Pattern.compile("^(?:RIGHT |LEFT )?CLICK(?: TO .*)?!?$", Pattern.CASE_INSENSITIVE);
+
     private ScanNames() {
+    }
+
+    /** The noise rule a plain entity name falls under, or {@code null}. */
+    public static String noiseName(String plain) {
+        if (plain == null || plain.isEmpty()) {
+            return null;
+        }
+        return CLICK_LABEL.matcher(plain.trim()).matches() ? NOISE_CLICK_LABEL : null;
+    }
+
+    /** Whether a sound id path ({@code entity.player.step}) is client-side noise. */
+    public static boolean noiseSound(String path) {
+        return path.endsWith(".step") || path.startsWith("ambient.") || path.startsWith("music.")
+                || path.startsWith("weather.") || path.startsWith("music_disc.");
     }
 
     /**

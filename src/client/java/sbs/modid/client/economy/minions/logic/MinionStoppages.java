@@ -62,7 +62,15 @@ public final class MinionStoppages {
     private static final String[] ROMAN = {
             "", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"};
 
-    /** What each minion was last known to be doing, so only a change is announced. */
+    /**
+     * What each minion was last known to be doing, so only a change is announced.
+     *
+     * <p>Deliberately not reset on world change: clearing it would re-announce every stopped minion
+     * on each island visit. It is bounded by the number of minions instead - an entry exists only
+     * for a stopped minion, and one the scan sees working is removed. The key is the packed position
+     * alone, not per profile, so a session over several profiles' islands holds at most the sum of
+     * their minion slots, and two profiles' minions on the same block share one entry.
+     */
     private static final Map<Long, MinionStopReason> lastState = new HashMap<>();
 
     private static long lastLogAt;

@@ -28,6 +28,8 @@ import java.util.regex.Pattern;
  */
 public final class FallenStarLines {
 
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
+
     /**
      * How long a star is treated as active with no end line. {@code ESTIMATED} - never observed; one
      * constant so a probe corrects it in one place.
@@ -46,7 +48,7 @@ public final class FallenStarLines {
         if (raw == null) {
             return null;
         }
-        Matcher matcher = CRASH.matcher(raw.replaceAll("§.", "").trim());
+        Matcher matcher = CRASH.matcher(COLOUR_CODE.matcher(raw).replaceAll("").trim());
         return matcher.matches() ? matcher.group(1).trim() : null;
     }
 

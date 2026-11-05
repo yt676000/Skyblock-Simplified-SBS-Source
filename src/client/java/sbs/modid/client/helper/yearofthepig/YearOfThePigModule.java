@@ -100,7 +100,7 @@ public final class YearOfThePigModule implements SbsModule {
                         new HudElement[] {HudElement.SHINY_ORB_TIMER}, "Edit Shiny Orb Timer")))
                         .describe("Opens the editor where you drag the countdown anywhere on the "
                                 + "screen and scale it."),
-                SettingRow.toggle("Expiry Warning Sound", () -> cfg().expiryWarning,
+                SettingRow.soundToggle("Expiry Warning Sound", () -> cfg().expiryWarning,
                         () -> { cfg().expiryWarning = !cfg().expiryWarning; save(); })
                         .describe("Plays a warning sound shortly before your orb expires, so you "
                                 + "can run back and use it."),
@@ -137,11 +137,11 @@ public final class YearOfThePigModule implements SbsModule {
                         .describe("Thickness of the helper lines in pixels."),
 
                 SettingRow.label("— Alerts —"),
-                SettingRow.toggle("Orb Charged Sound", () -> cfg().chargedAlert,
+                SettingRow.soundToggle("Orb Charged Sound", () -> cfg().chargedAlert,
                         () -> { cfg().chargedAlert = !cfg().chargedAlert; save(); })
                         .describe("Plays a sound when your orb is fully charged and ready to be "
                                 + "clicked for the reward."),
-                SettingRow.toggle("\"Already Clicked\" Sound", () -> cfg().takenAlert,
+                SettingRow.soundToggle("\"Already Clicked\" Sound", () -> cfg().takenAlert,
                         () -> { cfg().takenAlert = !cfg().takenAlert; save(); })
                         .describe("Plays a (different) sound if you click an orb you already "
                                 + "collected from - saves the second look."));

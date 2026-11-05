@@ -100,7 +100,7 @@ public final class SbsAudio {
      * the vanilla fallback played for it - the return value is for diagnostics ({@code /sbs
      * testnotify}), not an instruction to retry.
      */
-    public static boolean play(Tone tone, int volumePercent) {
+    static boolean play(Tone tone, int volumePercent) {
         if (volumePercent <= 0) {
             return false;
         }

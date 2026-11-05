@@ -8,20 +8,32 @@
 
 package sbs.modid.client.combat.mobhighlight.logic;
 
+import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectIterator;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import sbs.modid.client.combat.mobhighlight.render.MobHighlightRenderer;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.core.entity.EntityIndex;
+import sbs.modid.client.core.entity.EntityKind;
+import sbs.modid.client.core.entity.NameClass;
+import sbs.modid.client.core.entity.NametagText;
+import sbs.modid.client.core.entity.Tracked;
 import sbs.modid.client.core.player.RealPlayers;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -47,12 +59,15 @@ import java.util.Set;
  *
  * <p><b>Not a highlight.</b> A mob is only ever boxed while the player has an unobstructed line of sight
  * to it – anything behind a wall is skipped, so this only ever highlights mobs you can actually see.
+ *
+ * <p><b>Cost.</b> The passes walk {@link EntityIndex} buckets, not the whole level, and every
+ * per-entity answer that only depends on the name (the extracted mob name and whether it is wanted)
+ * is cached against the name's revision, so an unchanged tag costs a reference compare. The renderer
+ * is only handed a new list when the targets changed.
  */
 public final class MobHighlightTracker {
 
     private static final MobHighlightTracker INSTANCE = new MobHighlightTracker();
-
-    private static final char SECTION_SIGN = (char) 0x00A7;
 
     /** Throttle for the diagnostic heartbeat below. */
     private long lastDebugAt;
@@ -64,15 +79,54 @@ public final class MobHighlightTracker {
      */
     private static final long PERSIST_MS = 4_000L;
 
-    /** Entity id -> the name it was identified as, and when it was last confirmed. */
-    private final java.util.Map<Integer, long[]> lastSeenAt = new java.util.HashMap<>();
-    private final java.util.Map<Integer, String> identifiedName = new java.util.HashMap<>();
+    /** Ticks between sweeps of the per-entity caches for entities that left the level. */
+    private static final int PRUNE_TICKS = 100;
+
+    /** Entity id -> when it was last confirmed, and the name it was identified as. */
+    private final Int2LongOpenHashMap lastSeenAt = new Int2LongOpenHashMap();
+    private final Int2ObjectOpenHashMap<String> identifiedName = new Int2ObjectOpenHashMap<>();
+
+    /** Per entity id: whether its current name is wanted, keyed by entity, name revision and selection. */
+    private static final class NameMatch {
+        Tracked owner;
+        int revision = -1;
+        int wantedVersion = -1;
+        boolean matches;
+    }
+
+    private final Int2ObjectOpenHashMap<NameMatch> matches = new Int2ObjectOpenHashMap<>();
+
+    /** The selection as last seen, lower-cased; rebuilt only when the config set changes. */
+    private final Set<String> wantedSource = new LinkedHashSet<>();
+    private final Set<String> wanted = new HashSet<>();
+    private int wantedVersion;
+
+    /** Lower-cased and display type names per entity type, re-read when the language changes. */
+    private final Reference2ObjectOpenHashMap<EntityType<?>, String[]> typeNames = new Reference2ObjectOpenHashMap<>();
+    private String typeNamesLanguage = "";
+
+    /** This tick's picks (scratch, client thread only) and the list the renderer last got. */
+    private final IntOpenHashSet boxed = new IntOpenHashSet();
+    private final ArrayList<Entity> pickEntities = new ArrayList<>();
+    private final ArrayList<String> pickLabels = new ArrayList<>();
+    private List<MobHighlightRenderer.Target> published = List.of();
+    private int tick;
 
     private MobHighlightTracker() {
     }
 
     public static MobHighlightTracker getInstance() {
         return INSTANCE;
+    }
+
+    /**
+     * World leave: the persistence maps are keyed by entity id, and an id reused in the next world
+     * would keep a stranger boxed under the old mob's name for {@link #PERSIST_MS}.
+     */
+    public void onWorldChange() {
+        lastSeenAt.clear();
+        identifiedName.clear();
+        MobHighlightRenderer.getInstance().setTargets(List.of());
     }
 
     private static SBSConfig.MobHighlightSettings cfg() {
@@ -86,39 +140,31 @@ public final class MobHighlightTracker {
         ClientLevel level = minecraft.level;
         LocalPlayer player = minecraft.player;
         if (!settings.enabled || settings.selectedMobs.isEmpty() || level == null || player == null) {
-            MobHighlightRenderer.getInstance().setTargets(List.of());
+            pickEntities.clear();
+            pickLabels.clear();
+            publish();
             return;
         }
-        // Lower-cased selection for O(1), case-insensitive matching against extracted names.
-        Set<String> wanted = new HashSet<>();
-        for (String name : settings.selectedMobs) {
-            wanted.add(name.toLowerCase(Locale.ROOT));
-        }
+        refreshWanted(settings.selectedMobs);
 
-        List<MobHighlightRenderer.Target> targets = new ArrayList<>();
-        Set<Integer> boxed = new HashSet<>();
+        pickEntities.clear();
+        pickLabels.clear();
+        boxed.clear();
 
         // Pass 1: SkyBlock mobs by their nametag stand (only those in clear line of sight). The
         // nametag name must EXACTLY match one the player ticked - that match is the whole filter, so
         // no health readout is required. Many custom Hypixel mobs (bosses, mini-bosses, event mobs)
         // carry a plain name with no "30/30❤", which the old health-tag gate silently rejected.
-        for (Entity entity : level.entitiesForRendering()) {
-            if (!(entity instanceof ArmorStand stand) || !stand.hasCustomName()) {
+        List<Tracked> stands = EntityIndex.bucket(EntityKind.ARMOR_STAND);
+        for (int i = 0, n = stands.size(); i < n; i++) {
+            Tracked tracked = stands.get(i);
+            if (tracked.nameClass() == NameClass.NONE || !isWanted(tracked)) {
                 continue;
             }
-            var custom = stand.getCustomName();
-            String raw = custom == null ? null : custom.getString();
-            if (raw == null) {
-                continue;
-            }
-            String name = mobNameInNametag(raw);
-            if (name == null || !matchesWanted(wanted, name)) {
-                continue;
-            }
-            LivingEntity mob = mobBelow(level, stand);
+            LivingEntity mob = mobBelow(level, (ArmorStand) tracked.entity);
             if (mob != null && mob != player && !boxed.contains(mob.getId())
                     && player.hasLineOfSight(mob) && boxed.add(mob.getId())) {
-                targets.add(new MobHighlightRenderer.Target(mob, name));
+                pick(mob, tracked.mobName());
             }
         }
 
@@ -126,54 +172,30 @@ public final class MobHighlightTracker {
         // protocol Hypixel does not always ship a separate nametag stand - the name can sit right
         // on the mob entity - and a pass that only walks armor stands never sees those at all
         // (which showed exactly as "only vanilla animals highlight"). Same extraction, same match;
-        // the entity IS the mob, no stand association needed. ArmorStands are excluded - they are
-        // LivingEntities too and pass 1 already handled them.
-        for (Entity entity : level.entitiesForRendering()) {
-            if (!(entity instanceof LivingEntity living) || living instanceof ArmorStand
-                    || living == player || !living.isAlive() || boxed.contains(living.getId())
-                    || !living.hasCustomName()) {
-                continue;
-            }
-            var custom = living.getCustomName();
-            String name = custom == null ? null : mobNameInNametag(custom.getString());
-            if (name == null || !matchesWanted(wanted, name)) {
-                continue;
-            }
-            if (player.hasLineOfSight(living) && boxed.add(living.getId())) {
-                targets.add(new MobHighlightRenderer.Target(living, name));
-            }
-        }
+        // the entity IS the mob, no stand association needed. ArmorStands are their own bucket and
+        // pass 1 already handled them.
+        namedMobPass(EntityIndex.bucket(EntityKind.LIVING), player);
+        namedMobPass(EntityIndex.bucket(EntityKind.PLAYER), player);
 
         // Pass 2: non-hostile mobs (farm animals) by their own type name, again line-of-sight only.
-        for (Entity entity : level.entitiesForRendering()) {
-            if (!(entity instanceof LivingEntity living) || living == player || !living.isAlive()
-                    || boxed.contains(living.getId())
-                    || living.getType().getCategory() == MobCategory.MONSTER) {
-                continue;
-            }
-            String typeName = living.getType().getDescription().getString();
-            if (!wanted.contains(typeName.toLowerCase(Locale.ROOT))) {
-                continue;
-            }
-            if (player.hasLineOfSight(living) && boxed.add(living.getId())) {
-                targets.add(new MobHighlightRenderer.Target(living, typeName));
-            }
-        }
+        refreshTypeNameLanguage(minecraft);
+        typeNamePass(EntityIndex.bucket(EntityKind.LIVING), player);
+        typeNamePass(EntityIndex.bucket(EntityKind.PLAYER), player);
 
         // Persistence: remember every mob identified this tick, then re-add recently-identified ones
         // whose nametag was not parsed this tick - so the highlight sticks instead of blinking with
         // the (flickery) nametag. Still line-of-sight gated, still only mobs seen at least once.
         long now = System.currentTimeMillis();
-        for (MobHighlightRenderer.Target target : targets) {
-            int id = target.entity().getId();
-            lastSeenAt.put(id, new long[]{now});
-            identifiedName.put(id, target.label());
+        for (int i = 0, n = pickEntities.size(); i < n; i++) {
+            int id = pickEntities.get(i).getId();
+            lastSeenAt.put(id, now);
+            identifiedName.put(id, pickLabels.get(i));
         }
-        var iterator = lastSeenAt.entrySet().iterator();
-        while (iterator.hasNext()) {
-            var entry = iterator.next();
-            int id = entry.getKey();
-            if (now - entry.getValue()[0] > PERSIST_MS) {
+        for (ObjectIterator<Int2LongOpenHashMap.Entry> iterator = lastSeenAt.int2LongEntrySet().fastIterator();
+             iterator.hasNext(); ) {
+            Int2LongOpenHashMap.Entry entry = iterator.next();
+            int id = entry.getIntKey();
+            if (now - entry.getLongValue() > PERSIST_MS) {
                 iterator.remove();
                 identifiedName.remove(id);
                 continue;
@@ -188,12 +210,123 @@ public final class MobHighlightTracker {
                 continue;
             }
             if (living != player && player.hasLineOfSight(living) && boxed.add(id)) {
-                targets.add(new MobHighlightRenderer.Target(living, identifiedName.getOrDefault(id, "")));
+                String label = identifiedName.get(id);
+                pick(living, label == null ? "" : label);
             }
         }
 
-        MobHighlightRenderer.getInstance().setTargets(targets);
-        diagnostic(level, wanted, targets.size());
+        publish();
+        if (++tick % PRUNE_TICKS == 0) {
+            matches.int2ObjectEntrySet().removeIf(e -> EntityIndex.get(e.getIntKey()) == null);
+        }
+        diagnostic(pickEntities.size());
+    }
+
+    private void namedMobPass(List<Tracked> bucket, LocalPlayer player) {
+        for (int i = 0, n = bucket.size(); i < n; i++) {
+            Tracked tracked = bucket.get(i);
+            LivingEntity living = (LivingEntity) tracked.entity;
+            if (living == player || !living.isAlive() || boxed.contains(living.getId())
+                    || tracked.nameClass() == NameClass.NONE || !isWanted(tracked)) {
+                continue;
+            }
+            if (player.hasLineOfSight(living) && boxed.add(living.getId())) {
+                pick(living, tracked.mobName());
+            }
+        }
+    }
+
+    private void typeNamePass(List<Tracked> bucket, LocalPlayer player) {
+        for (int i = 0, n = bucket.size(); i < n; i++) {
+            LivingEntity living = (LivingEntity) bucket.get(i).entity;
+            if (living == player || !living.isAlive() || boxed.contains(living.getId())
+                    || living.getType().getCategory() == MobCategory.MONSTER) {
+                continue;
+            }
+            String[] names = typeNames(living.getType());
+            if (!wanted.contains(names[0])) {
+                continue;
+            }
+            if (player.hasLineOfSight(living) && boxed.add(living.getId())) {
+                pick(living, names[1]);
+            }
+        }
+    }
+
+    private void pick(Entity entity, String label) {
+        pickEntities.add(entity);
+        pickLabels.add(label);
+    }
+
+    /** Hands the renderer a new list only when this tick's picks differ from the last one. */
+    private void publish() {
+        int n = pickEntities.size();
+        boolean same = published.size() == n;
+        for (int i = 0; same && i < n; i++) {
+            MobHighlightRenderer.Target target = published.get(i);
+            same = target.entity() == pickEntities.get(i) && target.label().equals(pickLabels.get(i));
+        }
+        if (same) {
+            return;
+        }
+        List<MobHighlightRenderer.Target> next = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            next.add(new MobHighlightRenderer.Target(pickEntities.get(i), pickLabels.get(i)));
+        }
+        published = List.copyOf(next);
+        MobHighlightRenderer.getInstance().setTargets(published);
+    }
+
+    /** Wanted-ness of a tracked entity's current name, computed once per name and selection. */
+    private boolean isWanted(Tracked tracked) {
+        int id = tracked.entity.getId();
+        NameMatch match = matches.get(id);
+        if (match == null) {
+            match = new NameMatch();
+            matches.put(id, match);
+        }
+        int revision = tracked.revision();
+        if (match.owner != tracked || match.revision != revision || match.wantedVersion != wantedVersion) {
+            String name = tracked.mobName();
+            match.matches = name != null && matchesWanted(wanted, name);
+            match.revision = revision;
+            match.wantedVersion = wantedVersion;
+            match.owner = tracked;
+        }
+        return match.matches;
+    }
+
+    /** Lower-cased selection for O(1), case-insensitive matching; rebuilt only when it changed. */
+    private void refreshWanted(Set<String> selected) {
+        if (wantedSource.equals(selected)) {
+            return;
+        }
+        wantedSource.clear();
+        wantedSource.addAll(selected);
+        wanted.clear();
+        for (String name : selected) {
+            wanted.add(name.toLowerCase(Locale.ROOT));
+        }
+        wantedVersion++;
+    }
+
+    private void refreshTypeNameLanguage(Minecraft minecraft) {
+        String language = minecraft.getLanguageManager().getSelected();
+        if (!language.equals(typeNamesLanguage)) {
+            typeNames.clear();
+            typeNamesLanguage = language;
+        }
+    }
+
+    /** {lower-cased, as displayed} type name of {@code type}, read once per language. */
+    private String[] typeNames(EntityType<?> type) {
+        String[] names = typeNames.get(type);
+        if (names == null) {
+            String display = type.getDescription().getString();
+            names = new String[] {display.toLowerCase(Locale.ROOT), display};
+            typeNames.put(type, names);
+        }
+        return names;
     }
 
     /**
@@ -203,7 +336,7 @@ public final class MobHighlightTracker {
      * in the instance log shows the raw nametags and what was extracted from them, so the next fix
      * is aimed rather than guessed.
      */
-    private void diagnostic(ClientLevel level, Set<String> wanted, int matched) {
+    private void diagnostic(int matched) {
         long now = System.currentTimeMillis();
         if (now - lastDebugAt < 5_000L) {
             return;
@@ -212,20 +345,22 @@ public final class MobHighlightTracker {
         int stands = 0;
         int namedMobs = 0;
         List<String> sample = new ArrayList<>();
-        for (Entity entity : level.entitiesForRendering()) {
-            if (!(entity instanceof LivingEntity living) || !living.hasCustomName()) {
-                continue;
-            }
-            if (living instanceof ArmorStand) {
-                stands++;
-            } else {
-                namedMobs++;
-            }
-            if (sample.size() < 4) {
-                var custom = living.getCustomName();
-                String raw = custom == null ? "" : custom.getString();
-                sample.add((living instanceof ArmorStand ? "stand" : "mob") + " \"" + raw
-                        + "\" -> \"" + mobNameInNametag(raw) + "\"");
+        for (EntityKind kind : DIAGNOSTIC_KINDS) {
+            List<Tracked> bucket = EntityIndex.bucket(kind);
+            for (int i = 0, n = bucket.size(); i < n; i++) {
+                Tracked tracked = bucket.get(i);
+                if (tracked.nameClass() == NameClass.NONE && !tracked.entity.hasCustomName()) {
+                    continue;
+                }
+                if (kind == EntityKind.ARMOR_STAND) {
+                    stands++;
+                } else {
+                    namedMobs++;
+                }
+                if (sample.size() < 4) {
+                    sample.add((kind == EntityKind.ARMOR_STAND ? "stand" : "mob") + " \"" + tracked.raw()
+                            + "\" -> \"" + tracked.mobName() + "\"");
+                }
             }
         }
         sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
@@ -233,22 +368,8 @@ public final class MobHighlightTracker {
                 stands, namedMobs, matched, wanted, sample);
     }
 
-    /**
-     * The SkyBlock mob name inside a nametag string, or {@code null} when none is left after the
-     * decoration is stripped. Removes the colour codes, the bracketed level tag ("[Lv120]"), every
-     * decoration glyph and the trailing health readout ("30/30❤", "1.2M♥", "████"), leaving just
-     * the name.
-     *
-     * <p>The glyph strip is a <b>whitelist</b>, not a symbol list: since the July 2025 "Mob Types"
-     * update every mob carries a type symbol before its name ("[Lv5] ⚔ Lapis Zombie"), and the
-     * Hunting update appends a shard marker after it ("Lapis Zombie ᛤ 30/30❤"). ᛤ in particular is
-     * a Unicode <i>letter</i>, so a "strip trailing symbols" rule missed it and the extracted name
-     * ("⚔ Lapis Zombie ᛤ") matched nothing – which silently killed the highlight for every SkyBlock
-     * mob. Real mob names are plain ASCII ("Lapis Zombie", "Barbarian Duke X", "Millennia-Aged
-     * Blaze"), so everything outside ASCII letters/digits and name punctuation is decoration – that
-     * also survives whatever symbol Hypixel adds next. Digits and ".,/" stay through the strip so
-     * the health readout keeps its shape for the pattern that then cuts it off the tail.
-     */
+    private static final EntityKind[] DIAGNOSTIC_KINDS = {EntityKind.ARMOR_STAND, EntityKind.LIVING, EntityKind.PLAYER};
+
     /**
      * Variant words Hypixel prefixes onto a mob's real name ("Corrupted Lapis Zombie",
      * "Runic Enderman"). A ticked "Lapis Zombie" should light those variants up too – they ARE the
@@ -279,17 +400,9 @@ public final class MobHighlightTracker {
         }
     }
 
+    /** {@link NametagText#mobName}; per-tick callers should use {@link Tracked#mobName}, which caches it. */
     public static String mobNameInNametag(String rawName) {
-        if (rawName == null) {
-            return null;
-        }
-        String core = rawName.replaceAll(SECTION_SIGN + ".", "");
-        core = core.replaceAll("\\[[^\\]]*\\]", " ");           // [Lv120] and any other bracketed tag
-        core = core.replaceAll("[^A-Za-z0-9'.,/\\- ]", " ");     // type symbols, ᛤ, stars, hearts, bars
-        // Trailing health ("30/30", "1,000", "12k", "1.2M") plus whatever trails it (spaces by now).
-        core = core.replaceAll("[0-9][0-9.,]*\\s*[kKmMbB]?\\s*(?:/\\s*[0-9][0-9.,]*\\s*[kKmMbB]?)?[^\\p{L}]*$", " ");
-        core = core.replaceAll("\\s+", " ").trim();
-        return core.isEmpty() ? null : core;
+        return NametagText.mobName(rawName);
     }
 
     /**

@@ -34,6 +34,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -57,6 +58,24 @@ import java.util.regex.Pattern;
  */
 public final class BazaarOrderTracker implements sbs.modid.client.core.config.ProfileScopedStore {
 
+    // The patterns below sit above INSTANCE: the constructor registers with ProfileContext, which
+    // may load the profile (and parse with them) before the rest of the class is initialised.
+
+    /** A section sign and the code char after it. */
+    private static final Pattern FORMATTING = Pattern.compile(String.valueOf((char) 0x00A7) + ".");
+
+    /** Digits with their separators - collapsed to one placeholder for an unmatched line's shape. */
+    private static final Pattern NUMBER_RUN = Pattern.compile("[\\d,.]+");
+
+    /** Anything that is not an upper-case letter or digit - becomes an id underscore. */
+    private static final Pattern NON_ID_UPPER = Pattern.compile("[^A-Z0-9]+");
+
+    /** Anything that is not a lower-case letter or digit - becomes an enchant-key underscore. */
+    private static final Pattern NON_ID_LOWER = Pattern.compile("[^a-z0-9]+");
+
+    /** Leading glyphs / digits in front of an item name. */
+    private static final Pattern LEADING_NON_LETTERS = Pattern.compile("^[^A-Za-z]+");
+
     private static final BazaarOrderTracker INSTANCE = new BazaarOrderTracker();
 
     /** Matches the first number (with optional thousands separators / decimals) in a line. */
@@ -67,6 +86,13 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
 
     /** Immutable snapshot, safe to read from the render / API threads. */
     private volatile List<BazaarOrder> orders = List.of();
+
+    /**
+     * Bumped every time {@link #orders} is replaced, so a view can key a cached model on it instead
+     * of re-deriving rows per frame. Statuses change in place on the order objects and are counted
+     * separately by {@link BazaarOrder#statusRevision()}.
+     */
+    private final AtomicLong revision = new AtomicLong();
 
     private boolean loaded;
 
@@ -82,6 +108,17 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
         return INSTANCE;
     }
 
+    /** Increases whenever {@link #getOrders()} starts returning a different list. */
+    public long revision() {
+        return revision.get();
+    }
+
+    /** Swaps in a new immutable snapshot and bumps {@link #revision()}. */
+    private void publish(List<BazaarOrder> next) {
+        orders = next;
+        revision.incrementAndGet();
+    }
+
     /** Current cached orders (immutable snapshot). */
     public List<BazaarOrder> getOrders() {
         return orders;
@@ -93,7 +130,7 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
             return;
         }
         loaded = true;
-        orders = readOrdersFile();
+        publish(readOrdersFile());
     }
 
     private static List<BazaarOrder> readOrdersFile() {
@@ -143,7 +180,7 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
     @Override
     public void reloadProfile() {
         loaded = false;
-        orders = List.of();
+        publish(List.of());
         ensureLoaded();
     }
 
@@ -317,7 +354,7 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
             }
             return;
         }
-        orders = List.copyOf(scanned);
+        publish(List.copyOf(scanned));
         persist(scanned);
     }
 
@@ -652,7 +689,7 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
         if (line == null || line.isBlank() || loggedUnmatched.size() >= MAX_LOGGED_UNMATCHED) {
             return;
         }
-        String shape = line.replaceAll("[\\d,.]+", "#");
+        String shape = NUMBER_RUN.matcher(line).replaceAll("#");
         if (loggedUnmatched.add(shape)) {
             SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bazaar] Unmatched order chat line: '{}'", line);
         }
@@ -678,7 +715,7 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
         }
         List<BazaarOrder> next = new ArrayList<>(orders);
         next.add(order);
-        orders = List.copyOf(next);
+        publish(List.copyOf(next));
         persist(orders);
         // A buy order set up while a re-order flow is in flight is that flow completing: credit it
         // against the history row it started from, so the row clears itself.
@@ -736,7 +773,7 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
         }
         List<BazaarOrder> next = new ArrayList<>(orders);
         next.remove(match);
-        orders = List.copyOf(next);
+        publish(List.copyOf(next));
         persist(orders);
         SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bazaar] Chat: removed {} {} x{}",
                 type, match.itemName(), match.amount());
@@ -807,7 +844,7 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
 
         List<BazaarOrder> next = new ArrayList<>(orders);
         next.remove(match);
-        orders = List.copyOf(next);
+        publish(List.copyOf(next));
         persist(orders);
         openDetail = null; // consumed - a later refund must not reuse this screen
         recordCancelledRemainder(match, remaining);
@@ -897,7 +934,7 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
         if (byName != null) {
             return byName;
         }
-        return name.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_");
+        return NON_ID_UPPER.matcher(name.trim().toUpperCase(Locale.ROOT)).replaceAll("_");
     }
 
     private static BazaarOrderType orderType(String phrase) {
@@ -1117,7 +1154,7 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
         if (byName != null) {
             return byName;
         }
-        return fallbackName.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_");
+        return NON_ID_UPPER.matcher(fallbackName.trim().toUpperCase(Locale.ROOT)).replaceAll("_");
     }
 
     /** {@code ENCHANTMENT_<NAME>_<LEVEL>} from a one-entry {@code enchantments} compound, else null. */
@@ -1146,7 +1183,7 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
      * misidentified as enchantment products.
      */
     private static String enchantmentIdFromName(String name) {
-        String trimmed = name == null ? "" : name.trim().replaceAll("^[^A-Za-z]+", "").trim();
+        String trimmed = name == null ? "" : LEADING_NON_LETTERS.matcher(name.trim()).replaceAll("").trim();
         int lastSpace = trimmed.lastIndexOf(' ');
         if (lastSpace <= 0) {
             return null;
@@ -1163,7 +1200,7 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
             return null;
         }
         String base = resolveEnchantBase(
-                head.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_"));
+                NON_ID_LOWER.matcher(head.toLowerCase(Locale.ROOT)).replaceAll("_"));
         return "ENCHANTMENT_" + base.toUpperCase(Locale.ROOT) + "_" + level;
     }
 
@@ -1201,6 +1238,6 @@ public final class BazaarOrderTracker implements sbs.modid.client.core.config.Pr
         if (text == null) {
             return "";
         }
-        return text.replaceAll(SECTION_SIGN + ".", "");
+        return FORMATTING.matcher(text).replaceAll("");
     }
 }

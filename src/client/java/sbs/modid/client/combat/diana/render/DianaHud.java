@@ -72,12 +72,35 @@ public final class DianaHud {
         }
     }
 
+    /** {@code values()} clones its array on every call; the draw loop reads this one. */
+    private static final DianaPanel[] PANELS = DianaPanel.values();
+
     private DianaHud() {
     }
 
     private static SBSConfig.DianaSettings cfg() {
         return ConfigManager.getInstance().get().diana;
     }
+
+    /**
+     * What the cards' snapshots were built for: the three trackers' versions, a one-second clock
+     * (the chain countdown and its expiry, shared markers timing out), and every setting that shapes
+     * the rows.
+     */
+    private record Version(int tracker, int chains, int sightings, long second, boolean preview,
+                           DianaHudLayout.Layout layout, boolean trackerOn, int perCreatureCap,
+                           CardStyle trackerStyle, CardStyle creatureStyle) {
+    }
+
+    /** Both cards' draw models; a card with nothing to say is {@code null}. */
+    private record Model(Version version, HudCard.Snapshot tracker, HudCard.Snapshot creatures) {
+
+        HudCard.Snapshot card(DianaPanel panel) {
+            return panel == DianaPanel.TRACKER ? tracker : creatures;
+        }
+    }
+
+    private static volatile Model model;
 
     /** Drawn from the HUD pass. Both cards, each with the lines placed on it. */
     public static void render(GuiGraphicsExtractor g) {
@@ -86,18 +109,61 @@ public final class DianaHud {
         if (!preview && (!cfg.enabled || !DianaEvent.awake() || !SkyBlockLocation.onIsland("Hub"))) {
             return;
         }
-        DianaHudLayout.Layout layout = DianaHudLayout.current(cfg);
-        DianaHudRows.Data data = preview ? DianaPreview.sampleData() : liveData(cfg, layout);
-        for (DianaPanel panel : DianaPanel.values()) {
+        Model current = model(cfg, preview);
+        for (DianaPanel panel : PANELS) {
             HudElement element = element(panel);
-            if (HudLayout.isHidden(element)) {
-                continue;
-            }
-            List<DianaHudRows.Row> rows = DianaHudRows.build(layout.lines(panel), data, perCreatureCap(cfg));
-            if (!rows.isEmpty()) {
-                drawPlaced(g, element, panel, style(cfg, panel), rows);
+            HudCard.Snapshot card = current.card(panel);
+            if (card != null && !HudLayout.isHidden(element)) {
+                drawPlaced(g, element, style(cfg, panel), card);
             }
         }
+    }
+
+    private static Model model(SBSConfig.DianaSettings cfg, boolean preview) {
+        DianaHudLayout.Layout layout = DianaHudLayout.current(cfg);
+        int trackerVersion = DianaTracker.getInstance().version();
+        int chains = ChainTracker.getInstance().version();
+        int sightings = MythMobTracker.getInstance().version();
+        long second = System.currentTimeMillis() / 1000L;
+        int cap = perCreatureCap(cfg);
+        CardStyle trackerStyle = style(cfg, DianaPanel.TRACKER);
+        CardStyle creatureStyle = style(cfg, DianaPanel.CREATURES);
+        Model current = model;
+        Version built = current == null ? null : current.version();
+        // Field by field against the built version, so an unchanged frame allocates no key.
+        if (built == null || built.tracker() != trackerVersion || built.chains() != chains
+                || built.sightings() != sightings || built.second() != second || built.preview() != preview
+                || (built.layout() != layout && !built.layout().equals(layout))
+                || built.trackerOn() != cfg.tracker || built.perCreatureCap() != cap
+                || !built.trackerStyle().equals(trackerStyle) || !built.creatureStyle().equals(creatureStyle)) {
+            Version version = new Version(trackerVersion, chains, sightings, second, preview, layout,
+                    cfg.tracker, cap, trackerStyle, creatureStyle);
+            DianaHudRows.Data data = preview ? DianaPreview.sampleData() : liveData(cfg, layout);
+            current = new Model(version,
+                    snapshot(DianaPanel.TRACKER, version.trackerStyle(), layout, data, version),
+                    snapshot(DianaPanel.CREATURES, version.creatureStyle(), layout, data, version));
+            model = current;
+        }
+        return current;
+    }
+
+    /** One card's rows, built and measured; {@code null} when it has nothing to say. */
+    private static HudCard.Snapshot snapshot(DianaPanel panel, CardStyle style, DianaHudLayout.Layout layout,
+                                             DianaHudRows.Data data, Version version) {
+        List<DianaHudRows.Row> rows = DianaHudRows.build(layout.lines(panel), data, version.perCreatureCap());
+        if (rows.isEmpty()) {
+            return null;
+        }
+        Font font = Minecraft.getInstance().font;
+        List<HudCard.Line> lines = new ArrayList<>(rows.size() + 1);
+        if (style.title()) {
+            lines.add(HudCard.Line.of(font, panel.title(), SBSTheme.ACCENT_BRIGHT));
+        }
+        for (DianaHudRows.Row row : rows) {
+            lines.add(HudCard.Line.of(font, row.label(), SBSTheme.TEXT_MUTED, row.value(), colour(row)));
+        }
+        int[] size = measure(panel, style, rows);
+        return new HudCard.Snapshot(List.copyOf(lines), size[0], size[1], version);
     }
 
     public static HudElement element(DianaPanel panel) {
@@ -168,15 +234,23 @@ public final class DianaHud {
      * and scales about; {@code HudLayout.begin}/{@code end} is what makes the card movable, scalable
      * and themed like everything else on screen.
      */
-    private static void drawPlaced(GuiGraphicsExtractor g, HudElement element, DianaPanel panel,
-                                   CardStyle style, List<DianaHudRows.Row> rows) {
-        int[] size = measure(panel, style, rows);
+    private static void drawPlaced(GuiGraphicsExtractor g, HudElement element, CardStyle style,
+                                   HudCard.Snapshot card) {
         HudElement.Bounds bounds = element.defaultBounds(g.guiWidth(), g.guiHeight());
         int x = Math.round(bounds.x());
         int y = Math.round(bounds.y());
-        HudLayout.measure(element, x, y, size[0], size[1]);
+        HudLayout.measure(element, x, y, card.width(), card.height());
         HudLayout.begin(g, element);
-        draw(g, x, y, size[0], size[1], panel, style, rows);
+        Font font = Minecraft.getInstance().font;
+        int lineHeight = font.lineHeight + style.lineGap();
+        HudCard.draw(g, x, y, card.width(), card.height());
+        int left = x + style.padding();
+        int right = x + card.width() - style.padding();
+        int cursor = y + style.padding();
+        for (HudCard.Line line : card.rows()) {
+            HudCard.drawLine(g, font, line, left, right, cursor);
+            cursor += lineHeight;
+        }
         HudLayout.end(g);
     }
 

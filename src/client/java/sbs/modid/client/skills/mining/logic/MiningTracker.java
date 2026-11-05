@@ -8,6 +8,7 @@
 
 package sbs.modid.client.skills.mining.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
@@ -44,6 +45,8 @@ import java.util.regex.Pattern;
  * {@code [SBS][Mining]} log, which prints the widget block it decided was the commission section.
  */
 public final class MiningTracker {
+
+    private static final Pattern NON_DIGITS = Pattern.compile("[^0-9]");
 
     private static final MiningTracker INSTANCE = new MiningTracker();
 
@@ -270,7 +273,7 @@ public final class MiningTracker {
                 if (mc.player != null) {
                     mc.player.sendOverlayMessage(
                             Component.literal("§aCommission done: §f" + commission.name()));
-                    mc.player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 0.8f, 1.5f);
+                    SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 0.8f, 1.5f);
                 }
             }
         }
@@ -412,7 +415,7 @@ public final class MiningTracker {
 
     private static long parseAmount(String raw) {
         try {
-            return Long.parseLong(raw.replaceAll("[^0-9]", ""));
+            return Long.parseLong(NON_DIGITS.matcher(raw).replaceAll(""));
         } catch (NumberFormatException e) {
             return -1L;
         }

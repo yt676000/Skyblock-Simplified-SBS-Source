@@ -69,7 +69,7 @@ public final class VisitorShoppingHud {
     // ------------------------------------------------------------------ the numbers
 
     /** Insta-buy price per item by display name, or {@code null}. Warm caches only. */
-    static Long unitPrice(String name) {
+    public static Long unitPrice(String name) {
         SkyBlockItemCatalog.Entry entry = SkyBlockItemCatalog.getInstance().byName(name);
         if (entry == null) {
             entry = SkyBlockItemCatalog.getInstance().byNormalizedName(name);

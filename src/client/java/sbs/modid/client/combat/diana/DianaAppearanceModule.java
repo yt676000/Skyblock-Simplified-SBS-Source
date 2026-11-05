@@ -108,7 +108,7 @@ public final class DianaAppearanceModule implements SbsModule {
 
         rows.add(SettingRow.button("Move Cards", () -> Minecraft.getInstance().setScreenAndShow(
                         new HudEditorScreen(new HudElement[] {HudElement.DIANA_TRACKER,
-                                HudElement.DIANA_CREATURES}, "Edit Diana Cards")))
+                                HudElement.DIANA_CREATURES, HudElement.DIANA_PROFIT}, "Edit Diana Cards")))
                 .describe("Opens the HUD editor with the two Diana cards, to drag and scale them. "
                         + "Switch on Preview While Editing first to see them outside the Hub."));
 

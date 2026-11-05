@@ -18,8 +18,7 @@ import net.minecraft.client.renderer.state.gui.GuiTextRenderState;
 import net.minecraft.client.renderer.state.gui.pip.PictureInPictureRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import sbs.modid.client.helper.overlayinspector.OverlayInspector;
 
 /**
@@ -37,6 +36,10 @@ import sbs.modid.client.helper.overlayinspector.OverlayInspector;
  *
  * <p>Costs nothing while the inspector is off – every hook is one volatile boolean read, and the
  * stack walk behind {@code record} only ever runs while a player is deliberately inspecting.
+ *
+ * <p>The hooks are {@code @ModifyVariable}s that hand the argument back unchanged rather than
+ * {@code @Inject}s: an inject builds a {@code CallbackInfo} on every call whether the inspector is on
+ * or not, and {@code addGuiElement} runs for every fill of every frame.
  */
 @Mixin(GuiRenderState.class)
 public class GuiRenderCaptureMixin {
@@ -98,43 +101,47 @@ public class GuiRenderCaptureMixin {
         return null;
     }
 
-    @Inject(method = "addGuiElement", at = @At("HEAD"))
-    private void sbsInspectorCapture$element(GuiElementRenderState state, CallbackInfo ci) {
+    @ModifyVariable(method = "addGuiElement", at = @At("HEAD"), argsOnly = true)
+    private GuiElementRenderState sbsInspectorCapture$element(GuiElementRenderState state) {
         if (sbsInspectorCapture$active() && state != null
                 && sbsInspectorCapture$axisAligned(sbsInspectorCapture$poseOf(state))) {
             OverlayInspector.getInstance().record(state.bounds(), sbsInspectorCapture$colorOf(state));
         }
+        return state;
     }
 
-    @Inject(method = "addBlitToCurrentLayer", at = @At("HEAD"))
-    private void sbsInspectorCapture$blit(BlitRenderState state, CallbackInfo ci) {
+    @ModifyVariable(method = "addBlitToCurrentLayer", at = @At("HEAD"), argsOnly = true)
+    private BlitRenderState sbsInspectorCapture$blit(BlitRenderState state) {
         if (sbsInspectorCapture$active() && state != null
                 && sbsInspectorCapture$axisAligned(state.pose())) {
             OverlayInspector.getInstance().record(state.bounds(), state.color());
         }
+        return state;
     }
 
-    @Inject(method = "addText", at = @At("HEAD"))
-    private void sbsInspectorCapture$text(GuiTextRenderState state, CallbackInfo ci) {
+    @ModifyVariable(method = "addText", at = @At("HEAD"), argsOnly = true)
+    private GuiTextRenderState sbsInspectorCapture$text(GuiTextRenderState state) {
         if (sbsInspectorCapture$active() && state != null
                 && sbsInspectorCapture$axisAligned(state.pose)) {
             OverlayInspector.getInstance().record(state.bounds(), SBS_OPAQUE);
         }
+        return state;
     }
 
-    @Inject(method = "addItem", at = @At("HEAD"))
-    private void sbsInspectorCapture$item(GuiItemRenderState state, CallbackInfo ci) {
+    @ModifyVariable(method = "addItem", at = @At("HEAD"), argsOnly = true)
+    private GuiItemRenderState sbsInspectorCapture$item(GuiItemRenderState state) {
         if (sbsInspectorCapture$active() && state != null
                 && sbsInspectorCapture$axisAligned(state.pose())) {
             OverlayInspector.getInstance().record(state.bounds(), SBS_OPAQUE);
         }
+        return state;
     }
 
-    @Inject(method = "addPicturesInPictureState", at = @At("HEAD"))
-    private void sbsInspectorCapture$pictureInPicture(PictureInPictureRenderState state,
-                                                      CallbackInfo ci) {
+    @ModifyVariable(method = "addPicturesInPictureState", at = @At("HEAD"), argsOnly = true)
+    private PictureInPictureRenderState sbsInspectorCapture$pictureInPicture(PictureInPictureRenderState state) {
         if (sbsInspectorCapture$active() && state != null) {
             OverlayInspector.getInstance().record(state.bounds(), SBS_OPAQUE);
         }
+        return state;
     }
 }

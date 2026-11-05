@@ -8,6 +8,7 @@
 
 package sbs.modid.client.helper.inventory.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.item.ItemStack;
@@ -99,7 +100,7 @@ public final class DropProtection {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
             mc.player.sendOverlayMessage(net.minecraft.network.chat.Component.literal(message));
-            mc.player.playSound(SoundEvents.NOTE_BLOCK_BASS.value(), 0.5f, pitch);
+            SbsSounds.play(SoundEvents.NOTE_BLOCK_BASS.value(), 0.5f, pitch);
         }
     }
 

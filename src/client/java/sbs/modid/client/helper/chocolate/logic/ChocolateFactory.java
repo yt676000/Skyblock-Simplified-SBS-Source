@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Reads the open Chocolate Factory menu: what it costs, what it earns, and what has stopped.
@@ -60,6 +61,7 @@ public final class ChocolateFactory {
 
     private static final long SCAN_INTERVAL_MS = 150L;
     private static final long LOG_INTERVAL_MS = 20_000L;
+    private static final Pattern FORMATTING = Pattern.compile(String.valueOf((char) 0x00A7) + ".");
 
     private static final ChocolateFactory INSTANCE = new ChocolateFactory();
 
@@ -343,6 +345,6 @@ public final class ChocolateFactory {
     }
 
     private static String plain(String text) {
-        return text == null ? "" : text.replaceAll(String.valueOf((char) 0x00A7) + ".", "");
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("");
     }
 }

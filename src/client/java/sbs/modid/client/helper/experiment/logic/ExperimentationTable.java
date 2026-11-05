@@ -13,11 +13,11 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemLore;
@@ -32,6 +32,7 @@ import sbs.modid.client.core.mixin.AbstractContainerScreenAccessor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Coordinator for the three Experimentation Table minigame helpers (Enchanting area):
@@ -56,6 +57,9 @@ import java.util.Locale;
 public final class ExperimentationTable {
 
     private static final ExperimentationTable INSTANCE = new ExperimentationTable();
+
+    private static final Pattern NON_LETTERS = Pattern.compile("[^a-z]");
+    private static final Pattern FORMATTING = Pattern.compile("§.");
 
     /** Which minigame (if any) is open. NONE also covers the plain "Experimentation Table" menu. */
     public enum Game { NONE, CHRONOMATRON, ULTRASEQUENCER, SUPERPAIRS }
@@ -91,7 +95,7 @@ public final class ExperimentationTable {
      * to bare letters before matching.
      */
     static Game gameOf(String title) {
-        String norm = title.toLowerCase(Locale.ROOT).replaceAll("[^a-z]", "");
+        String norm = NON_LETTERS.matcher(title.toLowerCase(Locale.ROOT)).replaceAll("");
         // "<Game> ➜ Stakes" and "Superpairs Rewards" name a game but are not its board.
         if (norm.contains("stakes") || norm.contains("rewards")) {
             return Game.NONE;
@@ -109,14 +113,14 @@ public final class ExperimentationTable {
     }
 
     /** Whether the title is any Experimentation Table screen (a game or the selection menu). */
-    private static boolean isExperimentScreen(String title) {
-        String norm = title.toLowerCase(Locale.ROOT).replaceAll("[^a-z]", "");
+    public static boolean isExperimentScreen(String title) {
+        String norm = NON_LETTERS.matcher(title.toLowerCase(Locale.ROOT)).replaceAll("");
         return gameOf(title) != Game.NONE || norm.contains("experiment");
     }
 
     /** Broad match for the diagnostic log, so an unexpected title still surfaces its real name. */
     private static boolean looksExperimentish(String title) {
-        String norm = title.toLowerCase(Locale.ROOT).replaceAll("[^a-z]", "");
+        String norm = NON_LETTERS.matcher(title.toLowerCase(Locale.ROOT)).replaceAll("");
         return norm.contains("experiment") || norm.contains("chrono") || norm.contains("matron")
                 || norm.contains("ultra") || norm.contains("sequenc") || norm.contains("pairs")
                 || norm.contains("superpair");
@@ -124,7 +128,7 @@ public final class ExperimentationTable {
 
     private static String titleOf(Screen screen) {
         return screen == null || screen.getTitle() == null ? ""
-                : screen.getTitle().getString().replaceAll("§.", "").trim();
+                : FORMATTING.matcher(screen.getTitle().getString()).replaceAll("").trim();
     }
 
     // ------------------------------------------------------------------
@@ -136,6 +140,7 @@ public final class ExperimentationTable {
         chronomatron.reset();
         ultrasequencer.reset();
         superpairs.reset();
+        blockedSlot = -1;
         sbs.modid.SkyblockSimplifiedSBS.LOGGER.info("[SBS][Experiment] reset reason={}", reason);
     }
 
@@ -207,6 +212,11 @@ public final class ExperimentationTable {
             default -> false;
         };
         if (active) {
+            // The player's guard settings, applied live (two field writes, no allocation).
+            int limit = cfg().misclickVetoLimit;
+            long stale = cfg().misclickIdleMs;
+            chronomatron.configureGuard(limit, stale);
+            ultrasequencer.configureGuard(limit, stale);
             try (Perf.Section perf = Perf.tick("experiment.scan")) {
                 PlainItem[] board = board(menu);
                 switch (game) {
@@ -259,11 +269,15 @@ public final class ExperimentationTable {
             case CHRONOMATRON -> {
                 if (cfg().chronomatron) {
                     chronomatron.render(g, font, menu, left, top);
+                    renderGuard(g, font, menu, left, top, bounds.skyblockSimplified$imageHeight(),
+                            chronomatron.guardPaused());
                 }
             }
             case ULTRASEQUENCER -> {
                 if (cfg().ultrasequencer) {
                     ultrasequencer.render(g, font, menu, left, top);
+                    renderGuard(g, font, menu, left, top, bounds.skyblockSimplified$imageHeight(),
+                            ultrasequencer.guardPaused());
                 }
             }
             case SUPERPAIRS -> {
@@ -279,13 +293,30 @@ public final class ExperimentationTable {
     // Misclick prevention (Chronomatron / Ultrasequencer only)
     // ------------------------------------------------------------------
 
+    /** How long a refused click is shown (red outline on the slot + "Click blocked" chip). */
+    private static final long BLOCKED_CUE_MS = 600L;
+    private static final Component BLOCKED_TEXT = Component.literal("Click blocked - wrong tile");
+    private static final Component PAUSED_TEXT = Component.literal("Misclick guard paused this round");
+
+    private int blockedSlot = -1;
+    private long blockedAt;
+
     /**
-     * Returns {@code true} to CANCEL a click that would be an out-of-order mistake. Only vetoes
-     * left-clicks on a playable slot of Chronomatron / Ultrasequencer while block-misclicks is on;
-     * a correct click is let through (and advances the solver). Never touches Superpairs.
+     * The misclick guard, called from {@code MultiPlayerGameMode.handleContainerInput} HEAD - the one
+     * funnel EVERY container interaction passes through (left/right/middle click, double-click,
+     * shift-click, number-key swap, Q, drag). Returns {@code true} to CANCEL the input, so a refused
+     * click never becomes a packet.
+     *
+     * <p>It used to sit on the screen's {@code mouseClicked}, which saw only left-clicks and resolved
+     * the slot from the last-rendered hover field instead of the slot vanilla actually clicks. Every
+     * other input type - a right-click, a number key over a tile - reached Hypixel unguarded, and
+     * Hypixel ends the round on any click on a wrong tile. Here the slot is vanilla's own.
+     *
+     * <p>Every correct (or unguarded) input on the board also advances the solver, whichever way it
+     * was made. Never touches Superpairs. Fails open: anything unknown lets the input through.
      */
-    public boolean handleClick(AbstractContainerScreen<?> screen, MouseButtonEvent event) {
-        if (!cfg().enabled || event.button() != 0) {
+    public boolean onContainerInput(int containerId, int slotId, int button, ContainerInput input) {
+        if (!cfg().enabled) {
             return false;
         }
         boolean chrono = game == Game.CHRONOMATRON && cfg().chronomatron;
@@ -293,27 +324,69 @@ public final class ExperimentationTable {
         if (!chrono && !ultra) {
             return false;
         }
-        AbstractContainerMenu menu = screen.getMenu();
-        Slot slot = ((AbstractContainerScreenAccessor) screen).skyblockSimplified$hoveredSlot();
-        if (slot == null) {
-            return false;
+        Screen screen = GuiStateManager.getInstance().getCurrentScreen();
+        if (!(screen instanceof AbstractContainerScreen<?> container)
+                || container.getMenu().containerId != containerId) {
+            return false;   // not the board the solver is reading
         }
-        int index = menu.slots.indexOf(slot);
+        AbstractContainerMenu menu = container.getMenu();
         int upper = Math.max(0, menu.getItems().size() - 36);
-        if (index < 0 || index >= upper) {
-            return false;   // player inventory / outside the board is always free
+        if (!MisclickValve.onBoard(slotId, menu.getItems().size())) {
+            return false;   // player inventory / outside the window is always free
         }
+        long now = System.currentTimeMillis();
+        boolean guard = cfg().blockMisclicks;
         // With the guard off the models only track the click: no veto, no valve, no stand-down.
-        if (cfg().blockMisclicks
-                && !(chrono ? chronomatron.allowsClick(index) : ultrasequencer.allowsClick(index))) {
-            return true;    // wrong slot, guard on: veto (the valve lets the second refusal through)
+        boolean allowed = !guard
+                || (chrono ? chronomatron.allowsClick(slotId, now) : ultrasequencer.allowsClick(slotId, now));
+        // One line per board input: the evidence a "the guard did not block" report needs.
+        sbs.modid.SkyblockSimplifiedSBS.LOGGER.info(
+                "[SBS][Expt] click game={} input={} button={} slot={} upper={} guard={} allowed={} {}",
+                game, input, button, slotId, upper, guard, allowed,
+                chrono ? chronomatron.guardDebug(now) : ultrasequencer.guardDebug(now));
+        if (!allowed) {
+            blockedSlot = slotId;
+            blockedAt = now;
+            return true;
         }
         if (chrono) {
-            chronomatron.onClick(index);
+            chronomatron.onClick(slotId, now);
         } else {
-            ultrasequencer.onClick(index);
+            ultrasequencer.onClick(slotId);
         }
         return false;
+    }
+
+    /**
+     * The guard's own feedback, drawn over the menu: a red outline on a slot whose click was just
+     * refused, and a chip while the guard has stood down for the round. Fail-open must be visible,
+     * or "it gave up" and "it does not work" look the same.
+     */
+    private void renderGuard(GuiGraphicsExtractor g, Font font, AbstractContainerMenu menu, int left, int top,
+                             int imageHeight, boolean paused) {
+        if (!cfg().blockMisclicks) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        Component chip = null;
+        int color = 0;
+        if (blockedSlot >= 0 && now - blockedAt < BLOCKED_CUE_MS && blockedSlot < menu.slots.size()) {
+            Slot s = menu.getSlot(blockedSlot);
+            outline(g, left + s.x, top + s.y, 0xFFFF4040);
+            chip = BLOCKED_TEXT;
+            color = 0xFFFF6060;
+        } else if (paused) {
+            chip = PAUSED_TEXT;
+            color = 0xFFFFC040;
+        }
+        if (chip == null) {
+            return;
+        }
+        int w = font.width(chip);
+        // Above the panel; below it when a tall GUI scale leaves no room above (1280x720 @ 4).
+        int y = top - 12 >= 2 ? top - 12 : top + imageHeight + 4;
+        g.fill(left, y - 2, left + w + 6, y + 10, 0xC0101018);
+        g.text(font, chip, left + 3, y, color);
     }
 
     // ------------------------------------------------------------------
@@ -347,7 +420,7 @@ public final class ExperimentationTable {
     }
 
     private static String strip(String text) {
-        return text == null ? "" : text.replaceAll("§.", "").trim();
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("").trim();
     }
 
     /** Border chrome that is never a playable tile: glass panes and empty slots. */

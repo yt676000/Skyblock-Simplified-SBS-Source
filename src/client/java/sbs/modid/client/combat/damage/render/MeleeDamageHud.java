@@ -11,13 +11,11 @@ package sbs.modid.client.combat.damage.render;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.network.chat.Component;
 import sbs.modid.client.combat.damage.logic.MeleeDamageTracker;
 import sbs.modid.client.combat.damage.model.DamageFormat;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.ui.hud.render.HudCard;
-import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
 import sbs.modid.client.ui.hud.edit.model.HudElement;
 import sbs.modid.client.ui.hud.edit.logic.HudLayout;
@@ -43,6 +41,18 @@ public final class MeleeDamageHud {
     /** Crit colour of the headline (the same green the rest of SBS uses for "good"). */
     private static final int CRIT_COLOR = 0xFF57D977;
 
+    /**
+     * The card as last built, or {@code null} while nothing was hit recently. Rebuilt only when its
+     * key below moves: a new hit, a setting, or the one-second clock the decaying DPS reads.
+     * Render thread only.
+     */
+    private static HudCard.Snapshot card;
+    private static int builtTracker = -1;
+    private static long builtSecond = -1;
+    private static boolean builtShowMax;
+    private static boolean builtShowDps;
+    private static int builtHold = -1;
+
     private MeleeDamageHud() {
     }
 
@@ -53,55 +63,70 @@ public final class MeleeDamageHud {
                 || HudLayout.isHidden(HudElement.MELEE_DAMAGE)) {
             return;
         }
-        MeleeDamageTracker.Snapshot snapshot = MeleeDamageTracker.getInstance().snapshot();
-        if (snapshot == null) {
+        int tracker = MeleeDamageTracker.getInstance().version();
+        long second = System.currentTimeMillis() / 1000L;
+        if (tracker != builtTracker || second != builtSecond || cfg.meleeShowMax != builtShowMax
+                || cfg.meleeShowDps != builtShowDps || cfg.meleeHoldSeconds != builtHold) {
+            builtTracker = tracker;
+            builtSecond = second;
+            builtShowMax = cfg.meleeShowMax;
+            builtShowDps = cfg.meleeShowDps;
+            builtHold = cfg.meleeHoldSeconds;
+            MeleeDamageTracker.Snapshot snapshot = MeleeDamageTracker.getInstance().snapshot();
+            card = snapshot == null ? null : build(snapshot, cfg);
+        }
+        HudCard.Snapshot current = card;
+        if (current == null) {
             return; // nothing hit recently
         }
         HudElement.Bounds bounds = HudElement.MELEE_DAMAGE.defaultBounds(g.guiWidth(), g.guiHeight());
         HudLayout.begin(g, HudElement.MELEE_DAMAGE);
-        draw(g, snapshot, cfg, (int) bounds.x(), (int) bounds.y());
+        draw(g, current, (int) bounds.x(), (int) bounds.y());
         HudLayout.end(g);
     }
 
-    private static void draw(GuiGraphicsExtractor g, MeleeDamageTracker.Snapshot snapshot,
-                             SBSConfig.DamageAttributionSettings cfg, int x, int y) {
+    private static HudCard.Snapshot build(MeleeDamageTracker.Snapshot snapshot,
+                                          SBSConfig.DamageAttributionSettings cfg) {
         Font font = Minecraft.getInstance().font;
         String title = "Melee Damage";
         String headline = DamageFormat.compact(snapshot.last()) + (snapshot.lastCrit() ? " ✧" : "");
 
-        List<String[]> rows = new ArrayList<>(2);
+        List<HudCard.Line> rows = new ArrayList<>(5);
+        rows.add(HudCard.Line.of(font, title, SBSTheme.ACCENT));
+        rows.add(HudCard.Line.of(font, headline, snapshot.lastCrit() ? CRIT_COLOR : SBSTheme.ACCENT_BRIGHT));
         if (cfg.meleeShowMax) {
-            rows.add(new String[] {"Best", DamageFormat.compact(snapshot.best())});
+            rows.add(HudCard.Line.of(font, "Best", SBSTheme.TEXT_MUTED,
+                    DamageFormat.compact(snapshot.best()), SBSTheme.TEXT));
         }
         if (cfg.meleeShowDps) {
-            rows.add(new String[] {"DPS", DamageFormat.compact(snapshot.dps())});
-            rows.add(new String[] {"Hits", String.valueOf(snapshot.count())});
+            rows.add(HudCard.Line.of(font, "DPS", SBSTheme.TEXT_MUTED,
+                    DamageFormat.compact(snapshot.dps()), SBSTheme.TEXT));
+            rows.add(HudCard.Line.of(font, "Hits", SBSTheme.TEXT_MUTED,
+                    String.valueOf(snapshot.count()), SBSTheme.TEXT));
         }
 
-        int contentW = Math.max(font.width(title), font.width(headline));
-        for (String[] row : rows) {
-            contentW = Math.max(contentW, font.width(row[0]) + COLUMN_GAP + font.width(row[1]));
+        int contentW = 0;
+        for (HudCard.Line row : rows) {
+            contentW = Math.max(contentW, row.right() == null ? row.leftWidth() : row.width(COLUMN_GAP));
         }
-
         int lineH = font.lineHeight + LINE_GAP;
         int width = Math.max(MIN_W, PAD * 2 + contentW);
-        int height = PAD * 2 + lineH * (2 + rows.size()) - LINE_GAP;
-        HudLayout.measure(HudElement.MELEE_DAMAGE, x, y, width, height);
+        int height = PAD * 2 + lineH * rows.size() - LINE_GAP;
+        return new HudCard.Snapshot(List.copyOf(rows), width, height, null);
+    }
 
-        HudCard.draw(g, x, y, width, height);
+    private static void draw(GuiGraphicsExtractor g, HudCard.Snapshot card, int x, int y) {
+        Font font = Minecraft.getInstance().font;
+        HudLayout.measure(HudElement.MELEE_DAMAGE, x, y, card.width(), card.height());
 
+        HudCard.draw(g, x, y, card.width(), card.height());
+
+        int lineH = font.lineHeight + LINE_GAP;
         int ix = x + PAD;
-        int rightEdge = x + width - PAD;
+        int rightEdge = x + card.width() - PAD;
         int iy = y + PAD;
-        g.text(font, Component.literal(title), ix, iy, SBSTheme.ACCENT);
-        iy += lineH;
-        g.text(font, Component.literal(headline), ix, iy,
-                snapshot.lastCrit() ? CRIT_COLOR : SBSTheme.ACCENT_BRIGHT);
-        iy += lineH;
-
-        for (String[] row : rows) {
-            g.text(font, Component.literal(row[0]), ix, iy, SBSTheme.TEXT_MUTED);
-            g.text(font, Component.literal(row[1]), rightEdge - font.width(row[1]), iy, SBSTheme.TEXT);
+        for (HudCard.Line line : card.rows()) {
+            HudCard.drawLine(g, font, line, ix, rightEdge, iy);
             iy += lineH;
         }
     }

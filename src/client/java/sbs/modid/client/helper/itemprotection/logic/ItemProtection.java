@@ -8,6 +8,7 @@
 
 package sbs.modid.client.helper.itemprotection.logic;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -660,7 +661,7 @@ public final class ItemProtection {
         if (cfg().denySound) {
             Player player = Minecraft.getInstance().player;
             if (player != null) {
-                player.playSound(SoundEvents.NOTE_BLOCK_BASS.value(), 0.5f, pitch);
+                SbsSounds.play(SoundEvents.NOTE_BLOCK_BASS.value(), 0.5f, pitch);
             }
         }
     }

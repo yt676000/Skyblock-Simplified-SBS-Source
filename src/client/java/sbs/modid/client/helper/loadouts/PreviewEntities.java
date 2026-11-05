@@ -26,12 +26,15 @@ public final class PreviewEntities {
     /** The Armor Sets overlay's armor stand. */
     public static final int ARMOR_STAND_ID = -0x5B5E;
 
+    /** The Player Viewer's loadout and wardrobe cards: the viewed player, never you. */
+    public static final int VIEWER_PLAYER_ID = -0x5B5F;
+
     private PreviewEntities() {
     }
 
     /** Whether this id belongs to one of the GUI preview entities. */
     public static boolean isPreviewId(int id) {
-        return id == LOADOUT_PLAYER_ID || id == ARMOR_STAND_ID;
+        return id == LOADOUT_PLAYER_ID || id == ARMOR_STAND_ID || id == VIEWER_PLAYER_ID;
     }
 
     /** Whether this entity is a GUI preview model (never a real player). */

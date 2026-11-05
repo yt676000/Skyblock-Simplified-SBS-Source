@@ -8,6 +8,7 @@
 
 package sbs.modid.client.combat.slayer.render;
 
+import sbs.modid.client.core.audio.SbsSounds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -44,7 +45,7 @@ public final class SlayerAlerts {
         this.until = System.currentTimeMillis() + SHOW_MS;
         Minecraft minecraft = Minecraft.getInstance();
         if (ConfigManager.getInstance().get().slayer.alertSound && minecraft.player != null) {
-            minecraft.player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.2f);
+            SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.2f);
         }
     }
 

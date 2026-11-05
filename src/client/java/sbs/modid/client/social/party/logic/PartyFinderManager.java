@@ -8,6 +8,8 @@
 
 package sbs.modid.client.social.party.logic;
 
+import sbs.modid.client.core.net.Identity;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
@@ -147,6 +149,18 @@ public final class PartyFinderManager {
                     info("Your SBS party was closed.");
                     return;
                 }
+                if ("not_a_member".equals(error)) {
+                    // The server no longer counts this session as a member: stop polling it.
+                    currentPartyId = null;
+                    info("You are no longer in that SBS party.");
+                    return;
+                }
+                if (sbs.modid.client.core.net.SessionIdentity.isSessionMessage(error)) {
+                    // Handshake failed: retrying in a loop would only repeat it.
+                    currentPartyId = null;
+                    info(error + ".");
+                    return;
+                }
                 // transient network error: back off a touch, then keep polling
                 sleep();
                 pollNext(epoch);
@@ -187,8 +201,9 @@ public final class PartyFinderManager {
 
     /**
      * Leader convenience (config {@code partyFinder.autoInvite}): whenever the roster gains a
-     * member, the leader's client fires the real {@code /party invite <name>} for them – joining
-     * the SBS party automatically pulls people into the Hypixel party too.
+     * member, the leader is told in chat. The Hypixel invite itself is sent only from the
+     * Invite All button, by the leader's own click: a roster change from the server never sends a
+     * command.
      */
     private void autoInviteNewMembers(JsonObject party) {
         java.util.Set<String> current = new java.util.HashSet<>();
@@ -212,8 +227,8 @@ public final class PartyFinderManager {
             return;
         }
         for (String name : current) {
-            if (!previous.contains(name) && !name.equalsIgnoreCase(self)) {
-                sbs.modid.client.core.command.SBSCommands.run("/party invite " + name);
+            if (!previous.contains(name) && !name.equalsIgnoreCase(self) && Identity.isValidName(name)) {
+                info(name + " joined your SBS party - press Invite All to invite them.");
             }
         }
     }

@@ -19,6 +19,7 @@ import net.minecraft.world.item.ItemStack;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.mixin.AbstractContainerScreenAccessor;
 import sbs.modid.client.core.util.NumberDisplay;
+import sbs.modid.client.economy.prices.BackupPriceMarker;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
 
@@ -61,6 +62,8 @@ public final class ContainerValueOverlay {
     private long inventoryValue;
     private int containerUnpriced;
     private int inventoryUnpriced;
+    private boolean containerBackup;
+    private boolean inventoryBackup;
     private boolean hasContainerSlots;
 
     private ContainerValueOverlay() {
@@ -89,8 +92,8 @@ public final class ContainerValueOverlay {
         boolean showContainer = hasContainerSlots && (containerValue > 0 || containerUnpriced > 0);
 
         String containerLabel = "Chest";
-        String containerText = coins(containerValue, containerUnpriced);
-        String inventoryText = coins(inventoryValue, inventoryUnpriced);
+        String containerText = coins(containerValue, containerUnpriced, containerBackup);
+        String inventoryText = coins(inventoryValue, inventoryUnpriced, inventoryBackup);
         int labelW = showContainer
                 ? Math.max(font.width(containerLabel), font.width("Inventory")) : font.width("Inventory");
         int valueW = showContainer
@@ -128,8 +131,9 @@ public final class ContainerValueOverlay {
      * "12.4M coins", or "12.4M+ coins" when part of the total could not be priced – the {@code +}
      * says the real figure is higher, which is the only honest way to show a sum with holes in it.
      */
-    private static String coins(long value, int unpriced) {
-        return NumberDisplay.format(value) + (unpriced > 0 ? "+" : "") + " coins";
+    private static String coins(long value, int unpriced, boolean backup) {
+        return (backup && BackupPriceMarker.enabled() ? BackupPriceMarker.PREFIX : "")
+                + NumberDisplay.format(value) + (unpriced > 0 ? "+" : "") + " coins";
     }
 
     // ------------------------------------------------------------------
@@ -167,6 +171,8 @@ public final class ContainerValueOverlay {
         inventoryValue = inventoryTotal.value();
         containerUnpriced = containerTotal.unpriced();
         inventoryUnpriced = inventoryTotal.unpriced();
+        containerBackup = containerTotal.usesBackup();
+        inventoryBackup = inventoryTotal.usesBackup();
         hasContainerSlots = sawContainerSlot;
     }
 }

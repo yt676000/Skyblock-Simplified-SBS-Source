@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Capture-only logger for the Greenhouse and its mutations, under {@code [SBS][Greenhouse]}.
@@ -44,6 +45,8 @@ import java.util.Set;
  * duplicate them - except the Crop Analyzer, which {@link CropAnalyzerCapture} logs frame by frame. Off, {@link #tick} and {@link #onChat} cost one boolean read.
  */
 public final class GreenhouseCapture {
+
+    private static final Pattern COLOUR_CODE = Pattern.compile("§.");
 
     private static final GreenhouseCapture INSTANCE = new GreenhouseCapture();
 
@@ -85,7 +88,7 @@ public final class GreenhouseCapture {
         if (line == null || line.isBlank()) {
             return false;
         }
-        String lower = line.replaceAll("§.", "").toLowerCase(Locale.ROOT);
+        String lower = COLOUR_CODE.matcher(line).replaceAll("").toLowerCase(Locale.ROOT);
         for (String keyword : KEYWORDS) {
             if (lower.contains(keyword)) {
                 return true;

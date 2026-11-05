@@ -34,6 +34,9 @@ import sbs.modid.client.dungeons.run.logic.DungeonRoomLocator;
 import sbs.modid.client.dungeons.run.logic.DungeonRoomTracker;
 import sbs.modid.client.dungeons.run.logic.DungeonStateManager;
 
+import sbs.modid.client.core.entity.EntityIndex;
+import sbs.modid.client.core.entity.EntityKind;
+import sbs.modid.client.core.entity.Tracked;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -358,6 +361,9 @@ public final class BloodRoomTracker {
 
     private int idleTicks;
 
+    /** Whether last tick's sweep found any summon - what makes "now none" a room clear. */
+    private boolean hadMobs;
+
     private BloodRoomTracker() {
         // Opening signal: the door that lets you into the room. This is where the start-killing wait
         // begins - the room is live from the moment it can be walked into, not from the first mob -
@@ -379,6 +385,16 @@ public final class BloodRoomTracker {
 
     public static BloodRoomTracker getInstance() {
         return INSTANCE;
+    }
+
+    /**
+     * World leave: only what is keyed by entity id - ids restart with the next connection. The room
+     * itself (borders, start and clear times, the announce flags) is kept: a rejoin puts the player
+     * back into the same run, and leaving the dungeon ends the room through the tick's own gate.
+     */
+    public void onWorldChange() {
+        clearFrame();
+        clearEntityState();
     }
 
     private static SBSConfig.BloodSettings cfg() {
@@ -510,17 +526,9 @@ public final class BloodRoomTracker {
 
     private void reset() {
         clearFrame();
-        firstSeen.clear();
-        tagged.clear();
-        names.clear();
-        landed.clear();
-        lastPos.clear();
-        flights.clear();
+        clearEntityState();
         throwsSeen = 0;
-        flown.clear();
-        outsiders.clear();
-        playerGear.clear();
-        markSeen.clear();
+        hadMobs = false;
         roomBorders = null;
         startedAt = 0;
         clearedAt = 0;
@@ -572,93 +580,98 @@ public final class BloodRoomTracker {
         roomBorders = bloodBorders();
         boolean known = roomBorders != null;
 
-        for (Entity entity : level.entitiesForRendering()) {
-            if (!(entity instanceof LivingEntity living)
-                    || living.distanceToSqr(player) > SCAN_RADIUS * SCAN_RADIUS) {
-                continue;
-            }
-            // The Watcher is the room's host, not one of its mobs: he keeps the room open, he anchors
-            // it, and he never gets boxed or pointed at. Checked before players are dropped, because
-            // he may well be one - and looked for every tick, even before the room is known, since
-            // finding him is what makes it known. Only real players are dropped below: a
-            // player-model mob is a fake player and is one of the room's mobs like any other.
-            if (isWatcher(living)) {
-                watcher = true;
-                watcherPos = living.position();
-                // His nametag is a stand of its own, and the thing it is floating over is him -
-                // which without this is a nameless body standing in the middle of the room, i.e.
-                // exactly what a freshly summoned mob looks like. Blacklisting it is what stops the
-                // helper telling you to go and swing at the Watcher.
-                blacklistBelow(level, living);
-                continue;
-            }
-            if (!known || RealPlayers.isRealPlayerEntity(living)) {
-                continue; // the room is not identified yet: nothing else in the dungeon counts
-            }
-            Component custom = living.getCustomName();
-            String raw = custom == null ? "" : custom.getString();
-            String name = raw.isEmpty() ? null : MobHighlightTracker.mobNameInNametag(raw);
-            // Your own entourage, and it is judged on the nametag STAND as well as on the body: a
-            // Witherborn's name floats above it like any mob's, so testing only the body's own name
-            // asked the one entity that never carries one. Whatever the tag names is blacklisted
-            // together with the thing underneath it, and it stays blacklisted.
-            if (isPlayerGear(raw) || isGearEntity(living)) {
-                playerGear.add(living.getId());
-                blacklistBelow(level, living);
-                continue;
-            }
-            if (playerGear.contains(living.getId())) {
-                continue; // proven yours on an earlier tick - a flickering nametag does not undo that
-            }
-            if (!inBloodRoom(living)) {
-                // Another room's mob, seen from inside this one - and remembered: anything that was
-                // ever outside the footprint is not the Watcher's, whatever it is called, and
-                // walking in through the open door later must not get it boxed. Mobs already being
-                // tracked inside are exempt, so a blood mob that chases somebody into the corridor
-                // keeps its box on the way back.
-                if (!firstSeen.containsKey(living.getId())) {
-                    outsiders.add(living.getId());
-                }
-                continue;
-            }
-            if (outsiders.contains(living.getId())) {
-                continue; // walked in from outside: the corridor's mob, not the Watcher's
-            }
-            if (living instanceof ArmorStand stand) {
-                // A skull with no health on it is not a mob at all - it is either the Watcher's
-                // marker for where one is about to appear, or a piece of the room's furniture. Both
-                // go to trackMarks, which tells them apart by whether the thing was ever in the air;
-                // wearing a head only makes it a candidate. (His mobs are skulls too, but they carry
-                // a nametag with health, so they never come through here.)
-                if (name == null || !isMobTag(raw)) {
-                    if (wearsSkull(stand)) {
-                        standingMarks.add(stand);
-                    }
-                    continue; // otherwise a decoration stand, not a mob's nametag
-                }
-                LivingEntity below = MobHighlightTracker.mobBelow(level, stand);
-                if (below == null) {
-                    below = mobFarBelow(level, stand);
-                }
-                if (below != null && below.isAlive()) {
-                    tags.put(below.getId(), name);
+        // Every living entity, through the index: the nametag text and its mob name are cached per name
+        // change there, so the sweep does no getString or regex per entity per tick.
+        for (EntityKind kind : LIVING_KINDS) {
+            List<Tracked> bucket = EntityIndex.bucket(kind);
+            for (int i = 0; i < bucket.size(); i++) {
+                Tracked tracked = bucket.get(i);
+                if (!(tracked.entity instanceof LivingEntity living)
+                        || living.distanceToSqr(player) > SCAN_RADIUS * SCAN_RADIUS) {
                     continue;
                 }
-                // A mob tag with no body under it: the stand IS the mob. The Watcher's are built
-                // that way - a floating head wearing the mob's skin, thrown into the room - and
-                // treating every stand as somebody's nametag is exactly why they were the one thing
-                // in the room that never got boxed.
-                tags.put(stand.getId(), name);
-                bodies.add(stand);
-                continue;
+                // The Watcher is the room's host, not one of its mobs: he keeps the room open, he anchors
+                // it, and he never gets boxed or pointed at. Checked before players are dropped, because
+                // he may well be one - and looked for every tick, even before the room is known, since
+                // finding him is what makes it known. Only real players are dropped below: a
+                // player-model mob is a fake player and is one of the room's mobs like any other.
+                if (isWatcher(tracked, living)) {
+                    watcher = true;
+                    watcherPos = living.position();
+                    // His nametag is a stand of its own, and the thing it is floating over is him -
+                    // which without this is a nameless body standing in the middle of the room, i.e.
+                    // exactly what a freshly summoned mob looks like. Blacklisting it is what stops the
+                    // helper telling you to go and swing at the Watcher.
+                    blacklistBelow(level, living);
+                    continue;
+                }
+                if (!known || RealPlayers.isRealPlayerEntity(living)) {
+                    continue; // the room is not identified yet: nothing else in the dungeon counts
+                }
+                String raw = tracked.raw();
+                String name = tracked.mobName();
+                // Your own entourage, and it is judged on the nametag STAND as well as on the body: a
+                // Witherborn's name floats above it like any mob's, so testing only the body's own name
+                // asked the one entity that never carries one. Whatever the tag names is blacklisted
+                // together with the thing underneath it, and it stays blacklisted.
+                if (isPlayerGear(raw) || isGearEntity(living)) {
+                    playerGear.add(living.getId());
+                    blacklistBelow(level, living);
+                    continue;
+                }
+                if (playerGear.contains(living.getId())) {
+                    continue; // proven yours on an earlier tick - a flickering nametag does not undo that
+                }
+                if (!inBloodRoom(living)) {
+                    // Another room's mob, seen from inside this one - and remembered: anything that was
+                    // ever outside the footprint is not the Watcher's, whatever it is called, and
+                    // walking in through the open door later must not get it boxed. Mobs already being
+                    // tracked inside are exempt, so a blood mob that chases somebody into the corridor
+                    // keeps its box on the way back.
+                    if (!firstSeen.containsKey(living.getId())) {
+                        outsiders.add(living.getId());
+                    }
+                    continue;
+                }
+                if (outsiders.contains(living.getId())) {
+                    continue; // walked in from outside: the corridor's mob, not the Watcher's
+                }
+                if (living instanceof ArmorStand stand) {
+                    // A skull with no health on it is not a mob at all - it is either the Watcher's
+                    // marker for where one is about to appear, or a piece of the room's furniture. Both
+                    // go to trackMarks, which tells them apart by whether the thing was ever in the air;
+                    // wearing a head only makes it a candidate. (His mobs are skulls too, but they carry
+                    // a nametag with health, so they never come through here.)
+                    if (name == null || !isMobTag(raw)) {
+                        if (wearsSkull(stand)) {
+                            standingMarks.add(stand);
+                        }
+                        continue; // otherwise a decoration stand, not a mob's nametag
+                    }
+                    LivingEntity below = MobHighlightTracker.mobBelow(level, stand);
+                    if (below == null) {
+                        below = mobFarBelow(level, stand);
+                    }
+                    if (below != null && below.isAlive()) {
+                        tags.put(below.getId(), name);
+                        continue;
+                    }
+                    // A mob tag with no body under it: the stand IS the mob. The Watcher's are built
+                    // that way - a floating head wearing the mob's skin, thrown into the room - and
+                    // treating every stand as somebody's nametag is exactly why they were the one thing
+                    // in the room that never got boxed.
+                    tags.put(stand.getId(), name);
+                    bodies.add(stand);
+                    continue;
+                }
+                if (!living.isAlive()) {
+                    continue;
+                }
+                if (name != null && isMobTag(raw)) {
+                    tags.put(living.getId(), name); // a mob carrying its own nametag
+                }
+                bodies.add(living);
             }
-            if (!living.isAlive()) {
-                continue;
-            }
-            if (name != null && isMobTag(raw)) {
-                tags.put(living.getId(), name); // a mob carrying its own nametag
-            }
-            bodies.add(living);
         }
 
         // The blacklist is applied once more at the end, because the sweep visits entities in no
@@ -690,9 +703,14 @@ public final class BloodRoomTracker {
 
         for (LivingEntity body : bodies) {
             int id = body.getId();
-            long first = firstSeen.computeIfAbsent(id, key -> now);
-            long waited = now - first;
             String tag = tags.get(id);
+            Long seen = firstSeen.get(id);
+            if (seen == null) {
+                seen = now;
+                firstSeen.put(id, now);
+                BloodTimingProbe.getInstance().onSummonSpawned(id, tag);
+            }
+            long waited = now - seen;
             // Being in the room is the whole qualification: it is the Watcher's room, and he is the
             // only one who puts anything in it.
             if (tag != null) {
@@ -716,8 +734,8 @@ public final class BloodRoomTracker {
             // that was never seen landing stays violet, and it is one number for all of them.
             boolean ready = landed.contains(id)
                     || (drop == null && !held && (body.onGround() || waited >= SUMMON_TRAVEL_MS));
-            if (ready) {
-                landed.add(id);
+            if (ready && landed.add(id)) {
+                BloodTimingProbe.getInstance().onSummonHittable(id, names.get(id));
             }
             boolean visible = !lineOfSightOnly || player.hasLineOfSight(body);
             String name = names.getOrDefault(id, "");
@@ -750,6 +768,12 @@ public final class BloodRoomTracker {
         readyCount = live;
         spawningCount = pending;
         target = found.isEmpty() || !found.get(0).ready() ? null : found.get(0);
+        // The moment the room is empty again is what the Watcher checks for - logged for the
+        // re-measurement of his timing (BloodTimingProbe).
+        if (hadMobs && found.isEmpty()) {
+            BloodTimingProbe.getInstance().onRoomClear();
+        }
+        hadMobs = !found.isEmpty();
         if (!found.isEmpty() || watcher) {
             lastAliveAt = now;
         } else if (lastAliveAt != 0 && now - lastAliveAt > IDLE_END_MS) {
@@ -973,7 +997,9 @@ public final class BloodRoomTracker {
     /** Ends an entity's flight for good: it is on the ground, and the ground is where it stays. */
     private void land(int id) {
         flights.remove(id);
-        landed.add(id);
+        if (landed.add(id)) {
+            BloodTimingProbe.getInstance().onSummonHittable(id, names.get(id));
+        }
     }
 
     /** Inside the blood room, for one of its entities. */
@@ -1061,16 +1087,47 @@ public final class BloodRoomTracker {
 
     /** Where the Watcher is standing, or null when he is not in range - the room-finding sweep. */
     private static Vec3 watcherNearby(ClientLevel level, LocalPlayer player) {
-        for (Entity entity : level.entitiesForRendering()) {
-            if (!(entity instanceof LivingEntity living)
-                    || living.distanceToSqr(player) > SCAN_RADIUS * SCAN_RADIUS) {
-                continue;
-            }
-            if (isWatcher(living)) {
-                return living.position();
+        for (EntityKind kind : LIVING_KINDS) {
+            List<Tracked> bucket = EntityIndex.bucket(kind);
+            for (int i = 0; i < bucket.size(); i++) {
+                Tracked tracked = bucket.get(i);
+                if (!(tracked.entity instanceof LivingEntity living)
+                        || living.distanceToSqr(player) > SCAN_RADIUS * SCAN_RADIUS) {
+                    continue;
+                }
+                if (isWatcher(tracked, living)) {
+                    return living.position();
+                }
             }
         }
         return null;
+    }
+
+    /** The index buckets that hold living entities (stands are living too). */
+    private static final EntityKind[] LIVING_KINDS = {EntityKind.LIVING, EntityKind.PLAYER, EntityKind.ARMOR_STAND};
+
+    /**
+     * {@link #isWatcher(LivingEntity)} on the index's cached name: the nametag's mob name is computed
+     * once per name change, and the display-name test only needs a fresh string for an entity
+     * without a custom name (whose display name is then its type or profile name).
+     */
+    private static boolean isWatcher(Tracked tracked, LivingEntity living) {
+        String name = tracked.mobName();
+        if (name != null && containsIgnoreCase(name, "watcher")) {
+            return true;
+        }
+        String display = tracked.name() != null ? tracked.raw() : living.getName().getString();
+        return containsIgnoreCase(display, "the watcher");
+    }
+
+    private static boolean containsIgnoreCase(String text, String lowerNeedle) {
+        int max = text.length() - lowerNeedle.length();
+        for (int i = 0; i <= max; i++) {
+            if (text.regionMatches(true, i, lowerNeedle, 0, lowerNeedle.length())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1146,18 +1203,24 @@ public final class BloodRoomTracker {
         doorTimed = false;
         lastAliveAt = System.currentTimeMillis();
         watcherPos = null;
+        clearEntityState();
+        throwsSeen = 0;
+        hadMobs = false;
+        roomBorders = null;
+    }
+
+    /** Everything keyed by an entity id. */
+    private void clearEntityState() {
         firstSeen.clear();
         tagged.clear();
         names.clear();
         landed.clear();
         lastPos.clear();
         flights.clear();
-        throwsSeen = 0;
         flown.clear();
         outsiders.clear();
         playerGear.clear();
         markSeen.clear();
-        roomBorders = null;
     }
 
     /** The room is done: freeze the clock and report the clear time once. */

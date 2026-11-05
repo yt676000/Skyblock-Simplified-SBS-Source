@@ -162,6 +162,11 @@ public final class TabListRenderer {
         for (PlayerInfo info : entries) {
             Component name = overlay.getNameForDisplay(info);
             boolean player = TabWidgets.isPlayer(info);
+            // Hide Low-Level Players: a player row below the chosen level is left out (asked 2026-10-17).
+            if (sbs.modid.client.helper.hideplayers.logic.PlayerLevels.shouldHideInTab(name.getString(),
+                    info.getProfile() == null ? null : info.getProfile().name(), player)) {
+                continue;
+            }
             // The face is part of the row's width, and only some rows have one - so it is measured
             // per row rather than added once to the total, or the widget columns sit 10px short.
             nameW = Math.max(nameW, headWidth(cfg, player) + font.width(name));

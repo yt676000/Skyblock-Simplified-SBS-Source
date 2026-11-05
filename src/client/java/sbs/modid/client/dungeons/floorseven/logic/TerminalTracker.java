@@ -151,6 +151,12 @@ public final class TerminalTracker {
         progress.put(kind, new Progress(doneCount, totalCount));
         perPlayer.merge(player, 1, Integer::sum);
         lastEventMs = System.currentTimeMillis();
+        if (kind == Kind.DEVICE) {
+            // The Simon Says order belongs to the device just finished; the next section's device
+            // must not inherit it.
+            SimonSaysTracker.getInstance().onDeviceCompleted(player);
+            ShootTargetTracker.getInstance().onDeviceCompleted();
+        }
         // Only the local player's own activation carries a solve time and may be announced - every
         // other name in this stream belongs to somebody else's terminal.
         if (player.toLowerCase(Locale.ROOT).equals(selfName())) {

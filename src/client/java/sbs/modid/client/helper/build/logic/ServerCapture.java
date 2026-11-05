@@ -11,10 +11,12 @@ package sbs.modid.client.helper.build.logic;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.server.level.ServerLevel;
+import sbs.modid.client.core.async.SbsExecutors;
 import sbs.modid.client.core.build.logic.WorldCapture;
 import sbs.modid.client.core.build.model.Schematic;
 import sbs.modid.client.core.build.model.SchematicHeader;
 import sbs.modid.client.core.build.model.Selection;
+import sbs.modid.client.core.world.WorldTransitions;
 
 import java.util.function.Consumer;
 
@@ -46,10 +48,14 @@ public final class ServerCapture {
             return;
         }
         var dimension = minecraft.level.dimension();
+        // Move, stack and cut plan an edit against the level the result lands in: a capture of a
+        // world that was left while the server thread read it must not become an edit of the next.
+        long generation = WorldTransitions.generation();
         server.execute(() -> {
             ServerLevel level = server.getLevel(dimension);
             Schematic captured = level == null ? null : WorldCapture.capture(level, box, header, level.registryAccess());
-            minecraft.execute(() -> done.accept(captured));
+            minecraft.execute(() -> SbsExecutors.applyIfCurrent(generation, "build capture",
+                    () -> done.accept(captured)));
         });
     }
 }

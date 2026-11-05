@@ -13,6 +13,8 @@ import net.minecraft.network.chat.Component;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.dev.DevMode;
 
+import java.util.regex.Pattern;
+
 /**
  * Central gate + sink for all dungeon debug output.
  *
@@ -23,6 +25,7 @@ import sbs.modid.client.core.dev.DevMode;
 public final class DungeonDebug {
 
     private static final String SECTION_SIGN = String.valueOf((char) 0x00A7);
+    private static final Pattern FORMATTING = Pattern.compile(SECTION_SIGN + ".");
 
     private DungeonDebug() {
     }
@@ -46,6 +49,6 @@ public final class DungeonDebug {
     }
 
     private static String strip(String text) {
-        return text == null ? "" : text.replaceAll(SECTION_SIGN + ".", "");
+        return text == null ? "" : FORMATTING.matcher(text).replaceAll("");
     }
 }

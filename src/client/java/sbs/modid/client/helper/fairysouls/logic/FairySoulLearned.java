@@ -300,6 +300,11 @@ public final class FairySoulLearned {
     /** Positions already logged as implausible, so the 2s scan does not repeat the line forever. */
     private final java.util.Set<Long> rejectedLogged = new java.util.HashSet<>();
 
+    /** Forgets the logged positions: a new world may log each one once more, and the set stays bounded. */
+    public synchronized void onWorldChange() {
+        rejectedLogged.clear();
+    }
+
     /**
      * Records a seen soul; returns true when it is new. Positions are exact, so exact-match. A head
      * wearing the soul skin away from every curated soul is refused and logged: either Hypixel moved
