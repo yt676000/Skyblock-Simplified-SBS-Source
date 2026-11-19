@@ -1,3 +1,4 @@
+sbs.modid.client.combat.bestiary.BestiaryStarDecorator
 sbs.modid.client.core.api.ApiHighlightDecorator
 sbs.modid.client.core.item.ItemOverlayDecorator
 sbs.modid.client.dungeons.chest.DungeonChestDecorator

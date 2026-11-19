@@ -1479,6 +1479,10 @@ public final class SBSConfig {
         @Shareable(Kind.BOOL)
         public boolean hollowsMinimapRotate = false;
 
+        /** Crystal Hollows minimap: show the whole Hollows standing still, only your arrow moves. */
+        @Shareable(Kind.BOOL)
+        public boolean hollowsMinimapFixed = false;
+
         /** Crystal Hollows map and minimap: draw the cells you have stood in. */
         @Shareable(Kind.BOOL)
         public boolean hollowsShowTrail = true;
@@ -2730,8 +2734,24 @@ public final class SBSConfig {
         /** Master toggle for the Bestiary Tracker module. */
         public boolean enabled = true;
 
-        /** The mob to keep pinned on the HUD (name, matched loosely). Empty = nothing pinned. */
+        /**
+         * The single free-text pin from before the ★ button. Moved once into {@link #pins} for the
+         * profile in play, then cleared - kept only so an old config migrates.
+         */
         public String pinnedMob = "";
+
+        /** Pinned mobs per SkyBlock profile, in HUD order (profile -> pins). */
+        public Map<String, List<BestiaryPin>> pins = new LinkedHashMap<>();
+
+        /** Whether a newly pinned mob starts with "Highlight in world" on. */
+        public boolean highlightDefault = false;
+
+        /** The box colour Mob Highlight uses for pinned Bestiary mobs. */
+        public sbs.modid.client.combat.mobhighlight.model.HighlightColor highlightColor =
+                sbs.modid.client.combat.mobhighlight.model.HighlightColor.YELLOW;
+
+        /** HUD rows shown before the rest fold into "+N more". */
+        public int maxRows = 5;
 
         /**
          * Baseline per mob, saved from the last Bestiary menu read (normalized name -> entry). This
@@ -2747,6 +2767,20 @@ public final class SBSConfig {
         public long kills;
         public long maxKills = -1;
         public boolean maxed;
+        /** The tier on the item name ("Zombie 12"), 0 when the name carried none. */
+        public int tier;
+        /** Progress inside the current tier; -1 when the lore did not show it. */
+        public long tierKills = -1;
+        public long tierNeeded = -1;
+        /** When the menu was last read for this mob (epoch ms), 0 = never. */
+        public long readAt;
+    }
+
+    /** One pinned Bestiary mob: normalized key, the name as the menu shows it, and its highlight flag. */
+    public static final class BestiaryPin {
+        public String key = "";
+        public String name = "";
+        public boolean highlight;
     }
 
     /** Party Overlay module: a keybindable screen of party-command buttons + a favourites invite list. */
@@ -2814,7 +2848,7 @@ public final class SBSConfig {
          * who never asked for it.
          */
         @Shareable(Kind.BOOL)
-        public boolean enabled = true;
+        public boolean enabled = false;
 
         /** Name the block the crosshair rests on. */
         @Shareable(Kind.BOOL)
@@ -9516,6 +9550,100 @@ public static final class CaseOpeningSettings {
          * {@code else if} chain and the waypoint key is tested first, so the capture never fired.
          */
         public int questStateKey = 322;
+
+        /** Local Flip Finder: flips from the flip program on this PC or the LAN. */
+        public LocalFlipSettings localFlips = new LocalFlipSettings();
+
+        /** Lowball: appraisal of hovered / traded items through the local flip program. */
+        public LowballSettings lowball = new LowballSettings();
+    }
+
+    /**
+     * Lowball (developer page). Read by {@code economy/lowball}; items are sent only to the address
+     * the player typed, which must be on this PC or the LAN, with the token as a header.
+     */
+    public static final class LowballSettings {
+        /** Off: no keys, no tooltip lines, no requests. */
+        public boolean enabled = false;
+
+        /** Base address of the flip program (same program as the Local Flip Finder). */
+        public String url = "http://127.0.0.1:3020";
+
+        /** Sent as {@code X-SBS-Token}; blank falls back to the Local Flip Finder's token. */
+        public String token = "";
+
+        /**
+         * The four offer discounts, percent (0-50; 0 = that offer is off). A new field rather than
+         * the old {@code discount1}/{@code discount2}: their saved 20/25 would otherwise have become
+         * the first two of four and doubled up with the new 20/25 defaults.
+         */
+        public int[] offerDiscounts = {10, 15, 20, 25};
+
+        /** Where an answer shows: 0 window, 1 tooltip (single items; trades go to chat), 2 chat. */
+        public int display = 0;
+
+        /** The trade key appraises the other player's side of /trade. */
+        public boolean tradeAppraiseAll = true;
+
+        /** Clicking an offer suggests "/msg <partner> <offer>?" instead of copying it. */
+        public boolean suggestMsg = false;
+
+        /** Appraise the hovered slot (GLFW L). */
+        public int appraiseSlotKey = 76;
+
+        /** Appraise the trade window (GLFW L; with the same key as the slot key it needs Shift). */
+        public int appraiseTradeKey = 76;
+    }
+
+    /**
+     * The Local Flip Finder (developer page). Read by {@code economy/localflips}; nothing here is
+     * sent anywhere except the token, as a header, to the address the player typed.
+     */
+    public static final class LocalFlipSettings {
+        /** Off: no connection and no thread. */
+        public boolean enabled = false;
+
+        /** Base address of the flip program; only loopback and private LAN addresses are used. */
+        public String url = "http://127.0.0.1:3020";
+
+        /** Sent as {@code X-SBS-Token} when not blank. Never logged, never drawn in clear. */
+        public String token = "";
+
+        /** One chat line per new SOFORT find that clears the thresholds. */
+        public boolean chatAlerts = true;
+
+        /** A short sound with that line. */
+        public boolean sound = true;
+
+        /** A toast with that line. */
+        public boolean toast = false;
+
+        /** Finds below this net profit are not alerted, and are drawn greyed in the window. */
+        public int minProfit = 500_000;
+
+        /** Finds below this safety (percent) are not alerted; bids carry no safety and pass. */
+        public int minSafety = 0;
+
+        /** Show the flip list section below the SOFORT finds. */
+        public boolean showList = true;
+
+        /** Include bid auctions in the flip list. */
+        public boolean showBids = true;
+
+        /** Opens the flip window (0 = unbound). */
+        public int openOverlayKey = 0;
+
+        /** Opens the newest still-valid SOFORT find (0 = unbound). */
+        public int openNewestKey = 0;
+
+        /** Window sort: 0 profit, 1 profit per day, 2 safety, 3 newest. */
+        public int sort = 3;
+
+        /** Window filter: hide finds below this net profit (0 = show all). */
+        public long filterMinProfit = 0;
+
+        /** Window filter: show only the SOFORT section. */
+        public boolean filterSofortOnly = false;
     }
 
     public static final class ScrollableTooltipsSettings {

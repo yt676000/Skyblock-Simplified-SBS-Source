@@ -12,6 +12,9 @@ import it.unimi.dsi.fastutil.longs.LongArrayList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.Display;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.level.block.Block;
@@ -29,7 +32,9 @@ import sbs.modid.client.dungeons.run.logic.DungeonRoomMatcher;
 import sbs.modid.client.dungeons.run.logic.DungeonRoomTracker;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Creeper Beams: boxes the lit lanterns that belong together, one colour and number per pair.
@@ -71,6 +76,19 @@ public final class CreeperBeamsSolver implements PuzzleStrategy {
     private final BlockPos.MutableBlockPos cursorPos = new BlockPos.MutableBlockPos();
     /** Every sea lantern / prismarine position the scan found, as {@link BlockPos#asLong}. */
     private final LongArrayList beamBlocks = new LongArrayList();
+    /** Every dyed block (wool, concrete, glass, terracotta) the scan found, as {@link BlockPos#asLong}. */
+    private final LongArrayList colourBlocks = new LongArrayList();
+    /** Dye colour per block / item type ("red", "lime", ...), "" when not dyed; filled lazily. */
+    private static final Map<Block, String> BLOCK_COLOUR = new IdentityHashMap<>();
+    private static final Map<Item, String> ITEM_COLOUR = new IdentityHashMap<>();
+    private static final String[] DYED_SUFFIXES = {"_stained_glass", "_concrete", "_wool", "_terracotta"};
+    /** The coloured pair markers the room shows right now. */
+    private List<Marker> markers = List.of();
+
+    /** One coloured marker: the room colours both lanterns of a pair alike (2026-10-19 screenshots). */
+    private record Marker(Vec3 centre, String colour) {
+    }
+
     /** Per {@link #beamBlocks} entry: currently a sea lantern (lit, still to connect). */
     private boolean[] lit = new boolean[0];
 
@@ -130,6 +148,8 @@ public final class CreeperBeamsSolver implements PuzzleStrategy {
                     Block block = level.getBlockState(cursorPos).getBlock();
                     if (block == Blocks.SEA_LANTERN || block == Blocks.PRISMARINE) {
                         beamBlocks.add(cursorPos.asLong());
+                    } else if (!blockColour(block).isEmpty()) {
+                        colourBlocks.add(cursorPos.asLong());
                     }
                 }
             }
@@ -152,6 +172,11 @@ public final class CreeperBeamsSolver implements PuzzleStrategy {
                 dirty = true;
             }
         }
+        List<Marker> nowMarkers = findMarkers(level, borders);
+        if (!nowMarkers.equals(markers)) {
+            markers = nowMarkers;
+            dirty = true;
+        }
         Vec3 found = findCreeper(borders);
         // Horizontal only: the creeper bobs up and down by ~1.5 blocks (2026-10-16 log), and every
         // bob used to re-pair, re-draw and log. It stands on one spot; a real move is sideways.
@@ -159,6 +184,54 @@ public final class CreeperBeamsSolver implements PuzzleStrategy {
             creeper = found;
             dirty = true;
         }
+    }
+
+    /**
+     * The coloured markers in the room: dyed blocks from the scan still standing, plus block and item
+     * display entities of a dye colour. Which of the two the room uses is unconfirmed; both are read
+     * and the log line says how many were found.
+     */
+    private List<Marker> findMarkers(ClientLevel level, DungeonRoomBorders.Borders borders) {
+        List<Marker> out = new ArrayList<>();
+        for (int i = 0, n = colourBlocks.size(); i < n; i++) {
+            cursorPos.set(colourBlocks.getLong(i));
+            String colour = blockColour(level.getBlockState(cursorPos).getBlock());
+            if (!colour.isEmpty()) {
+                out.add(new Marker(Vec3.atCenterOf(cursorPos), colour));
+            }
+        }
+        List<Tracked> others = EntityIndex.bucket(EntityKind.OTHER);
+        for (int i = 0, n = others.size(); i < n; i++) {
+            Entity entity = others.get(i).entity;
+            String colour = "";
+            if (entity instanceof Display.BlockDisplay display) {
+                colour = blockColour(display.getBlockState().getBlock());
+            } else if (entity instanceof Display.ItemDisplay display) {
+                colour = itemColour(display.getItemStack().getItem());
+            }
+            if (!colour.isEmpty() && borders.contains(entity.blockPosition())) {
+                out.add(new Marker(entity.getBoundingBox().getCenter(), colour));
+            }
+        }
+        return out;
+    }
+
+    private static String blockColour(Block block) {
+        return BLOCK_COLOUR.computeIfAbsent(block, b -> dyeOf(BuiltInRegistries.BLOCK.getKey(b).getPath()));
+    }
+
+    private static String itemColour(Item item) {
+        return ITEM_COLOUR.computeIfAbsent(item, i -> dyeOf(BuiltInRegistries.ITEM.getKey(i).getPath()));
+    }
+
+    /** "red_wool" -> "red"; anything not a dyed wool / concrete / glass / terracotta -> "". */
+    private static String dyeOf(String path) {
+        for (String suffix : DYED_SUFFIXES) {
+            if (path.endsWith(suffix)) {
+                return path.substring(0, path.length() - suffix.length());
+            }
+        }
+        return "";
     }
 
     private static double horizontalSq(Vec3 a, Vec3 b) {
@@ -185,6 +258,9 @@ public final class CreeperBeamsSolver implements PuzzleStrategy {
 
     /** Runs only on a change: pairs the lit lanterns, rebuilds the highlight list, logs once. */
     private void recompute(DungeonRoomBorders.Borders borders) {
+        if (creeper != null && recomputeFromMarkers()) {
+            return;
+        }
         List<BlockPos> lanterns = new ArrayList<>();
         int prismarine = 0;
         for (int i = 0; i < beamBlocks.size(); i++) {
@@ -224,6 +300,50 @@ public final class CreeperBeamsSolver implements PuzzleStrategy {
         // reach is not part of the answer (asked 2026-10-16, replacing the white "all others").
         highlights = List.copyOf(out);
         log(borders, lanterns, prismarine, pairs);
+    }
+
+    /**
+     * Joins the markers the room itself colours alike (asked 2026-10-19: connect the blocks that
+     * are marked). Two markers of one colour are a pair when the line between them runs through the
+     * creeper, which keeps same-coloured decoration out. Only lines are added - the room's markers
+     * are left exactly as they look. {@code false} when no marker pair exists, so the lantern rule runs.
+     */
+    private boolean recomputeFromMarkers() {
+        BeamPairing.Point min = new BeamPairing.Point(creeper.x - HIT_HALF_WIDTH, creeper.y - HIT_HALF_HEIGHT,
+                creeper.z - HIT_HALF_WIDTH);
+        BeamPairing.Point max = new BeamPairing.Point(creeper.x + HIT_HALF_WIDTH, creeper.y + HIT_HALF_HEIGHT,
+                creeper.z + HIT_HALF_WIDTH);
+        List<PuzzleHighlight> out = new ArrayList<>();
+        StringBuilder sb = new StringBuilder(128).append("markers=").append(markers.size()).append(" pairs=[");
+        for (int i = 0; i < markers.size(); i++) {
+            Marker a = markers.get(i);
+            for (int j = i + 1; j < markers.size(); j++) {
+                Marker b = markers.get(j);
+                if (!a.colour().equals(b.colour())
+                        || !BeamPairing.segmentHitsBox(point(a.centre()), point(b.centre()), min, max)) {
+                    continue;
+                }
+                int p = out.size();
+                int color = p == 0 ? PuzzleSettings.argb(PuzzleType.CREEPER_BEAMS)
+                        : PAIR_COLORS[(p - 1) % PAIR_COLORS.length];
+                out.add(PuzzleHighlight.line(a.centre(), b.centre(), color, null));
+                sb.append(p == 0 ? "" : " ").append(a.colour());
+            }
+        }
+        if (out.isEmpty()) {
+            return false;
+        }
+        highlights = List.copyOf(out);
+        String line = sb.append(']').toString();
+        if (!line.equals(lastLogged)) {
+            lastLogged = line;
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Puzzle] creeper beams: {}", line);
+        }
+        return true;
+    }
+
+    private static BeamPairing.Point point(Vec3 v) {
+        return new BeamPairing.Point(v.x, v.y, v.z);
     }
 
     private void log(DungeonRoomBorders.Borders borders, List<BlockPos> lanterns, int prismarine,
@@ -286,6 +406,8 @@ public final class CreeperBeamsSolver implements PuzzleStrategy {
     @Override
     public void reset() {
         beamBlocks.clear();
+        colourBlocks.clear();
+        markers = List.of();
         lit = new boolean[0];
         scanY = Integer.MIN_VALUE;
         scanTopY = 0;

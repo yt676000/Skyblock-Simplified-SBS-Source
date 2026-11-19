@@ -199,8 +199,14 @@ public final class EssenceShopReader {
             if (perk == null || found.containsKey(perk.key())) {
                 continue;   // not a perk, or a perk already read from an earlier slot
             }
-            int fromLore = PerkLevelReader.fromLore(lore, perk.maxLevel());
-            if (fromLore >= 0) {
+            // The name + UNLOCKED / "Click to unlock!" pair is what the live shops show, so it
+            // goes first; the generic lore patterns could otherwise pick a number out of a perk's
+            // description ("Kuudra Infernal Tier: 100").
+            int fromState = PerkLevelReader.fromNameAndState(lore, nameLevel, perk.maxLevel());
+            int fromLore = fromState >= 0 ? -1 : PerkLevelReader.fromLore(lore, perk.maxLevel());
+            if (fromState >= 0) {
+                found.put(perk.key(), PerkRow.known(perk, fromState, LevelSource.NAME));
+            } else if (fromLore >= 0) {
                 found.put(perk.key(), PerkRow.known(perk, fromLore, LevelSource.LORE));
             } else if (nameLevel > 0) {
                 found.put(perk.key(),

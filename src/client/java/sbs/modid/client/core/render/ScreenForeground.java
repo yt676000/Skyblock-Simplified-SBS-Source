@@ -167,6 +167,8 @@ public final class ScreenForeground {
                                 .renderTopMost(container, g, mouseX, mouseY);
                         case MISSING_SHARDS -> sbs.modid.client.skills.hunting.ui.MissingShardsOverlay
                                 .getInstance().renderTopMost(container, g, mouseX, mouseY);
+                        case LOWBALL -> sbs.modid.client.economy.lowball.ui.LowballWindow.getInstance()
+                                .render(container, g, mouseX, mouseY);
                     }
                 });
             }

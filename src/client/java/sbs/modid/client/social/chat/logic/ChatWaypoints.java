@@ -153,7 +153,7 @@ public final class ChatWaypoints {
      * (only when the letter stands alone – a player called <b>Alex</b> must still be recognised) and
      * the one inside a clock time ("see you at 20:30").
      */
-    static int senderColon(String text) {
+    public static int senderColon(String text) {
         for (int i = 0; i < text.length(); i++) {
             if (text.charAt(i) != ':') {
                 continue;
@@ -219,7 +219,7 @@ public final class ChatWaypoints {
      * ("Guild > [VIP] Alex [Officer]" → "Alex"), then the last name-shaped token wins – which is the
      * player in every Hypixel channel format ("Party > [MVP+] Steve", "From [MVP++] Notch").
      */
-    static String senderOf(String prefix) {
+    public static String senderOf(String prefix) {
         String stripped = BRACKET_TAG.matcher(FORMATTING.matcher(prefix).replaceAll("")).replaceAll("");
         Matcher matcher = IGN.matcher(stripped);
         String last = "";

@@ -137,6 +137,12 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
             cir.setReturnValue(true);
             return;
         }
+        // The Bestiary ★ pins a mob to the HUD; the star click (and Shift+Right-click on the mob)
+        // never reaches the slot, so Hypixel does not open the mob's page for it.
+        if (sbs.modid.client.combat.bestiary.BestiaryStarDecorator.handleClick(self, event)) {
+            cir.setReturnValue(true);
+            return;
+        }
         if (sbs.modid.client.helper.loadouts.LoadoutsOverlay.getInstance().handleClick(self, event)) {
             cir.setReturnValue(true);
             return;
@@ -213,6 +219,7 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
                         .getInstance().handleClick(self, event);
                 case MISSING_SHARDS -> sbs.modid.client.skills.hunting.ui.MissingShardsOverlay
                         .getInstance().handleClick(self, event);
+                case LOWBALL -> sbs.modid.client.economy.lowball.ui.LowballWindow.getInstance().handleClick(self, event);
             };
             if (consumed) {
                 sbs.modid.client.ui.window.FloatingWindows.raise(layer);
@@ -249,6 +256,10 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
         }
         // Sack Overlay scrollbar thumb.
         if (sbs.modid.client.helper.sacks.SackOverlay.getInstance().handleDrag(self, event.y())) {
+            cir.setReturnValue(true);
+            return;
+        }
+        if (sbs.modid.client.economy.lowball.ui.LowballWindow.getInstance().handleDrag(self, event)) {
             cir.setReturnValue(true);
             return;
         }
@@ -332,6 +343,10 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
             return;
         }
         if (sbs.modid.client.economy.auctions.ui.AhFlipsOverlay.getInstance().handleRelease(event)) {
+            cir.setReturnValue(true);
+            return;
+        }
+        if (sbs.modid.client.economy.lowball.ui.LowballWindow.getInstance().handleRelease(event)) {
             cir.setReturnValue(true);
             return;
         }
@@ -462,6 +477,7 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
                         .getInstance().handleScroll(self, mouseX, mouseY, scrollY);
                 case MISSING_SHARDS -> sbs.modid.client.skills.hunting.ui.MissingShardsOverlay
                         .getInstance().handleScroll(self, mouseX, mouseY, scrollY);
+                case LOWBALL -> sbs.modid.client.economy.lowball.ui.LowballWindow.getInstance().handleScroll(self, mouseX, mouseY, scrollY);
             };
             if (consumed) {
                 cir.setReturnValue(true);

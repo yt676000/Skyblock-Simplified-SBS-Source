@@ -894,6 +894,7 @@ public class HudMixin {
     private void skyblockSimplified$dungeonPuzzles(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
         try (sbs.modid.client.core.perf.Perf.Section perf = sbs.modid.client.core.perf.Perf.hud("hud.dungeonPuzzles")) {
             sbs.modid.client.dungeons.puzzle.render.PuzzleRenderer.render(g);
+            sbs.modid.client.dungeons.puzzle.render.QuizHud.render(g);
         }
     }
 

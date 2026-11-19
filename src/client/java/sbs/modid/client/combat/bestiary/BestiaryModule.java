@@ -8,6 +8,7 @@
 
 package sbs.modid.client.combat.bestiary;
 
+import sbs.modid.client.combat.mobhighlight.model.HighlightColor;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.ui.hud.edit.ui.HudEditorScreen;
@@ -46,7 +47,7 @@ public final class BestiaryModule implements SbsModule {
 
     @Override
     public String description() {
-        return "Pin a mob: shows the kills left to max its Bestiary (read from the Bestiary menu)";
+        return "Pin mobs with a ★ in the Bestiary menu: their progress stays on the HUD, optionally highlighted";
     }
 
     @Override
@@ -67,24 +68,51 @@ public final class BestiaryModule implements SbsModule {
         return List.of(
                 SettingRow.toggle("Bestiary Tracker", () -> cfg().enabled,
                         () -> { cfg().enabled = !cfg().enabled; save(); })
-                        .describe("Shows a small card with how many kills you still need to max "
-                                + "the Bestiary of one chosen mob. Open the Bestiary menu once so "
-                                + "it can read your current count; after that it counts your kills "
-                                + "live."),
-                SettingRow.label("Open the Bestiary menu once to save the count, then it tracks kills live"),
+                        .describe("Shows a card with the Bestiary progress of the mobs you pinned "
+                                + "with the ★ in the Bestiary menu. Opening the menu reads your "
+                                + "counts; the tab list's Bestiary widget, or your kills nearby, keep "
+                                + "them live."),
+                SettingRow.label("Pin mobs with the ★ on their item in the Bestiary menu"),
 
-                // The mob to keep on the HUD; matched loosely by name.
-                SettingRow.text("Pin Mob", "mob name (e.g. Zombie)", 32,
-                        () -> cfg().pinnedMob == null ? "" : cfg().pinnedMob,
-                        v -> { cfg().pinnedMob = v == null ? "" : v.trim(); save(); })
-                        .describe("The mob the card tracks. Type its name the way the Bestiary "
-                                + "shows it, e.g. Zombie or Enderman - part of the name is enough."),
+                SettingRow.button("Pinned Mobs", () -> open(new BestiaryPinsScreen(
+                        sbs.modid.client.core.api.GuiStateManager.getInstance().getCurrentScreen())))
+                        .describe("The mobs on the card, in order: drag to reorder, switch "
+                                + "\"Highlight in world\" per mob, or unpin."),
+                SettingRow.toggle("Highlight New Pins", () -> cfg().highlightDefault,
+                        () -> { cfg().highlightDefault = !cfg().highlightDefault; save(); })
+                        .describe("Whether a mob you pin starts out boxed in the world (when in "
+                                + "sight, like Mob Highlight). Change it per mob in Pinned Mobs."),
+                SettingRow.options("Highlight Colour", BestiaryModule::colorNames,
+                        () -> cfg().highlightColor.displayName(),
+                        v -> { cfg().highlightColor = colorNamed(v); save(); })
+                        .describe("The box colour for pinned mobs, so they stand apart from "
+                                + "Mob Highlight's own picks."),
+                SettingRow.rangeSlider("Rows on the Card", 1, 10, () -> cfg().maxRows,
+                        v -> { cfg().maxRows = v; save(); }, "")
+                        .describe("How many pinned mobs the card lists; the rest show as \"+N more\"."),
 
                 SettingRow.button("Move / Resize Overlay", () -> open(new HudEditorScreen(
                         new HudElement[] {HudElement.BESTIARY_TRACKER}, "Edit Bestiary Tracker")))
                         .describe("Opens the editor where you drag the Bestiary card anywhere on "
                                 + "the screen and scale it."),
                 SettingRow.label("Shows while a mob is pinned"));
+    }
+
+    private static List<String> colorNames() {
+        List<String> names = new java.util.ArrayList<>();
+        for (HighlightColor color : HighlightColor.values()) {
+            names.add(color.displayName());
+        }
+        return names;
+    }
+
+    private static HighlightColor colorNamed(String name) {
+        for (HighlightColor color : HighlightColor.values()) {
+            if (color.displayName().equals(name)) {
+                return color;
+            }
+        }
+        return HighlightColor.YELLOW;
     }
 
     private static void open(net.minecraft.client.gui.screens.Screen screen) {

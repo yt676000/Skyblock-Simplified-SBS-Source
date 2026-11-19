@@ -333,11 +333,46 @@ public final class Route {
         if (current.isEmpty()) {
             return;
         }
-        // The identity check alone would count a re-published marker as a new goal; the search
-        // restarts then, but the path is kept until it finishes, so nothing blinks.
+        // A publisher re-sending the same places as new objects is not a new goal: adopt the fresh
+        // objects so the identity checks hold and the labels stay current, instead of restarting
+        // the search on every publish.
+        if (current != goals && samePlaces(current, goals)) {
+            adopt(current);
+        }
         if (target != null && !current.contains(target)) {
             arrived = false;
         }
+    }
+
+    /** Swaps {@link #goals} and {@link #target} for the equal-place objects in {@code current}. */
+    private void adopt(List<Waypoint> current) {
+        if (target != null) {
+            for (Waypoint waypoint : current) {
+                if (waypoint.x == target.x && waypoint.y == target.y && waypoint.z == target.z) {
+                    target = waypoint;
+                    break;
+                }
+            }
+        }
+        goals = List.copyOf(current);
+    }
+
+    /** Same block positions, in any order - see {@link #seen}. Package-private for the tests. */
+    static boolean samePlaces(List<Waypoint> a, List<Waypoint> b) {
+        if (a.size() != b.size() || a.isEmpty()) {
+            return false;
+        }
+        Map<BlockPos, Integer> counts = new HashMap<>();
+        for (Waypoint waypoint : a) {
+            counts.merge(waypoint.pos(), 1, Integer::sum);
+        }
+        for (Waypoint waypoint : b) {
+            Integer left = counts.computeIfPresent(waypoint.pos(), (k, n) -> n - 1);
+            if (left == null || left < 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** The source has no goals this tick: starts (or continues) the grace period. */

@@ -39,12 +39,10 @@ import java.util.List;
  * killed out of order fails the room ("PUZZLE FAIL! &lt;player&gt; killed a Blaze in the wrong order!").
  * Boxes the next blaze strongly and the rest faintly. Reads and draws; never shoots or aims.
  *
- * <p><b>The direction is the player's setting ({@code blazeHighestFirst}), not detected.</b> The
- * variant is told apart by the room's chest - bottom: lowest first, top: highest first - and this
- * solver does find that chest on entry and work the rule out, but only <b>logs</b> it next to the
- * setting. The rule comes from the wiki and has not been watched in a run; until one run confirms it,
- * a detected direction that silently overrode the player's choice would be an unverified guess
- * deciding which blaze fails the room.
+ * <p><b>The direction comes from the room's chest</b> - bottom: lowest first, top: highest first
+ * (confirmed in the maintainer's runs, see {@link #roomDirection}). The player's setting
+ * ({@code blazeHighestFirst}) is only the fallback while the chest has not been found; the search
+ * retries until it is, because on entry its chunk is often not loaded yet.
  *
  * <p>Runs only in the room {@link DungeonRoomTracker} identifies as Higher or Lower, so a slayer or
  * floor blaze elsewhere is never boxed.
@@ -63,13 +61,24 @@ public final class BlazeSolver implements PuzzleStrategy {
 
     /** Y of the room's one chest, found on entry; {@code Integer.MIN_VALUE} when not exactly one. */
     private int chestY = Integer.MIN_VALUE;
-    private boolean chestSearched;
+    /** Chests seen by the last search, for the log when it is not exactly one. */
+    private int chestCount;
+    /** Ticks until the chest is looked for again while it has not been found. */
+    private int chestRetry;
+    private boolean chestMissLogged;
     private boolean directionLogged;
     /** The chest rule's verdict for this room, or {@code null} when it does not decide. */
     private Direction decided;
     private boolean readLogged;
     /** Whether this room has shown two or more read blazes at once - then a lone one is the last. */
     private boolean sawPuzzle;
+
+    /**
+     * Ticks between chest searches while none is found. Searching only on the first tick - before
+     * the chest's chunk or the room borders were there - fell back to the setting for the whole
+     * room and failed it (maintainer's run 2026-10-18).
+     */
+    private static final int CHEST_RETRY_TICKS = 10;
 
     /** How far sideways a health tag may stand from its blaze. */
     private static final double TAG_REACH = 1.0;
@@ -84,8 +93,8 @@ public final class BlazeSolver implements PuzzleStrategy {
 
     @Override
     public void onTick(Minecraft minecraft) {
-        if (!chestSearched) {
-            chestSearched = true;
+        if (chestY == Integer.MIN_VALUE && !directionLogged && --chestRetry <= 0) {
+            chestRetry = CHEST_RETRY_TICKS;
             chestY = findChestY(minecraft.level);
         }
 
@@ -217,7 +226,7 @@ public final class BlazeSolver implements PuzzleStrategy {
      * block entities of the chunks under the room's footprint - a handful of maps, once per entry -
      * rather than the room's blocks.
      */
-    private static int findChestY(ClientLevel level) {
+    private int findChestY(ClientLevel level) {
         DungeonRoomBorders.Borders borders = DungeonRoomTracker.getInstance().borders();
         if (level == null || borders == null) {
             return Integer.MIN_VALUE;
@@ -239,6 +248,7 @@ public final class BlazeSolver implements PuzzleStrategy {
                 }
             }
         }
+        chestCount = count;
         return count == 1 ? found : Integer.MIN_VALUE;
     }
 
@@ -255,12 +265,16 @@ public final class BlazeSolver implements PuzzleStrategy {
         if (blazes.size() < 2) {
             return setting;   // not enough blazes standing to judge their height range yet
         }
-        directionLogged = true;
         if (chestY == Integer.MIN_VALUE) {
-            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Puzzle] Blaze room: chest not found (need exactly one) "
-                    + "- using the setting {}", setting);
+            // Not latched: the search keeps retrying and the rule takes over once the chest is found.
+            if (!chestMissLogged) {
+                chestMissLogged = true;
+                SkyblockSimplifiedSBS.LOGGER.info("[SBS][Puzzle] Blaze room: {} chest(s) found (need exactly one) "
+                        + "- using the setting {} until it is", chestCount, setting);
+            }
             return setting;
         }
+        directionLogged = true;
         double minY = Double.MAX_VALUE;
         double maxY = -Double.MAX_VALUE;
         for (Entity blaze : blazes) {
@@ -308,7 +322,9 @@ public final class BlazeSolver implements PuzzleStrategy {
         parsedNames.clear();
         parsedHealth.clear();
         chestY = Integer.MIN_VALUE;
-        chestSearched = false;
+        chestCount = 0;
+        chestRetry = 0;
+        chestMissLogged = false;
         directionLogged = false;
         decided = null;
         readLogged = false;

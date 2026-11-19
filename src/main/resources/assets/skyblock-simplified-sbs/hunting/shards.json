@@ -1,6 +1,6 @@
 {
  "schemaVersion": 1,
- "dataVersion": 2,
+ "dataVersion": 3,
  "generatedAt": "2026-10-06T00:00:00Z",
  "source": "api.hypixel.net/v2/skyblock/bazaar (keyless) SHARD_* products",
  "levelling": {},
@@ -457,6 +457,11 @@
    "canonicalId": "ATTRIBUTE_SHARD_FLITTER;1"
   },
   {
+   "name": "FLORA",
+   "displayName": "Flora",
+   "canonicalId": "ATTRIBUTE_SHARD_FLORA;1"
+  },
+  {
    "name": "FLUFFLING",
    "displayName": "Fluffling",
    "canonicalId": "ATTRIBUTE_SHARD_FLUFFLING;1"
@@ -465,6 +470,11 @@
    "name": "FLY",
    "displayName": "Fly",
    "canonicalId": "ATTRIBUTE_SHARD_FLY;1"
+  },
+  {
+   "name": "FOLF",
+   "displayName": "Folf",
+   "canonicalId": "ATTRIBUTE_SHARD_FOLF;1"
   },
   {
    "name": "FOXTROT",
@@ -990,6 +1000,11 @@
    "name": "OSEDAX",
    "displayName": "Osedax",
    "canonicalId": "ATTRIBUTE_SHARD_OSEDAX;1"
+  },
+  {
+   "name": "PACKRAT_SKULL",
+   "displayName": "Packrat Skull",
+   "canonicalId": "ATTRIBUTE_SHARD_PACKRAT_SKULL;1"
   },
   {
    "name": "PANDARAI",

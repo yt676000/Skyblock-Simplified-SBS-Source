@@ -10,6 +10,7 @@
     "ChatNameClickMixin",
     "ChatPriceListenerMixin",
     "ChatScreenMixin",
+    "ClickCommandMixin",
     "ChatSelectionMixin",
     "ChatTabBarMixin",
     "ChatTabsMixin"

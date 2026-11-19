@@ -24,40 +24,53 @@ import net.minecraft.world.item.component.ItemLore;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.api.GuiStateManager;
 import sbs.modid.client.core.config.ConfigManager;
+import sbs.modid.client.core.config.ProfileContext;
 import sbs.modid.client.core.config.SBSConfig;
+import sbs.modid.client.core.tab.TabWidgets;
 import sbs.modid.client.core.util.NumberParse;
 import sbs.modid.client.combat.mobhighlight.logic.MobHighlightTracker;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Tracks how many kills remain to <b>max</b> the Bestiary of a chosen mob, read straight from the
- * in-game <b>Bestiary menu</b> (there is no chat/API signal per kill, so the menu lore is the source).
+ * Tracks the Bestiary progress of the pinned mobs, read straight from the in-game <b>Bestiary
+ * menu</b> and kept live from the tab list's Bestiary widget (or, for a mob the widget does not
+ * list, a client-side kill count).
  *
  * <p>While a container whose title contains "Bestiary" is open, every mob item's lore is parsed for
- * its total kills and the kills required to max it, keyed by the (normalized) mob name. The module's
- * pinned mob is then shown on the HUD as "N kills to max". Re-opening the menu refreshes the numbers.
+ * its total kills, the kills required to max it and the progress inside its tier, keyed by the
+ * (normalized) mob name. The pins themselves live in {@link BestiaryPins}, per profile, toggled by
+ * the ★ {@link BestiaryStarDecorator} draws on those items.
  *
  * <p><b>Best-guess lore parsing.</b> Hypixel does not document the lore shape, so the regexes here are
  * a first pass. The whole lore of an unparsed mob item is logged (throttled, {@code [SBS][Bestiary]})
  * so the exact "kills / needed" line can be pinned down from a real menu and the patterns tuned in one
- * pass, exactly like the mod's other menu-scraping trackers.
+ * pass, exactly like the mod's other menu-scraping trackers. The tab widget rows are logged the same
+ * way, once per change ({@code [SBS][Bestiary] tab: …}).
  */
 public final class BestiaryTracker {
 
     private static final BestiaryTracker INSTANCE = new BestiaryTracker();
 
-    /** "Overall Progress: 45% (12,345/50,000)" – total kills toward max and the max requirement. */
+    /**
+     * "Overall Progress: 45.1%" then "11,267/25k" – total kills toward max and the max requirement.
+     * The live menu abbreviates (25k, 2.5k) and puts a decimal percentage first, so the pair is the
+     * first number directly followed by a slash, and both sides keep their suffix.
+     */
     private static final Pattern OVERALL = Pattern.compile(
-            "(?i)overall progress[^0-9]*([0-9,]+)\\s*/\\s*([0-9,]+)");
-    /** A generic "12,345/50,000" progress pair (fallback when there is no Overall Progress line). */
-    private static final Pattern PAIR = Pattern.compile("([0-9,]+)\\s*/\\s*([0-9,]+)");
+            "(?i)overall progress[^/]*?([0-9][0-9.,]*[kKmMbB]?)\\s*/\\s*([0-9][0-9.,]*[kKmMbB]?)");
+    /** A generic "1,267/2.5k" progress pair (fallback when there is no Overall Progress line). */
+    private static final Pattern PAIR = Pattern.compile(
+            "([0-9][0-9.,]*[kKmMbB]?)\\s*/\\s*([0-9][0-9.,]*[kKmMbB]?)");
     /** "Kills: 12,345" – the mob's total kills. */
     private static final Pattern KILLS = Pattern.compile("(?i)\\bkills?:?\\s*([0-9,]+)");
     /** A trailing tier marker on a mob item name ("Zombie 5" / "Zombie IX" -> "Zombie"). */
@@ -66,22 +79,20 @@ public final class BestiaryTracker {
 
     private static final char SECTION_SIGN = (char) 0x00A7;
     private static final long SCAN_INTERVAL_MS = 500;
+    /** The player inventory under every chest menu: never Bestiary items (Milestones has "bestiary" too). */
+    private static final int PLAYER_INVENTORY_SLOTS = 36;
 
-    /** One tracked mob: total kills, the kills needed to max it (-1 unknown), and the maxed flag. */
-    public record Mob(String name, long kills, long maxKills, boolean maxed) {
-        /** Kills remaining to max, or 0 when maxed / already past. {@code -1} when the max is unknown. */
-        public long remaining() {
-            if (maxed) {
-                return 0;
-            }
-            return maxKills < 0 ? -1 : Math.max(0, maxKills - kills);
-        }
+    /** One mob read from the menu: totals, tier and tier progress (-1 = unknown), maxed flag. */
+    public record Mob(String name, long kills, long maxKills, boolean maxed,
+                      int tier, long tierKills, long tierNeeded) {
     }
 
     /** Kills counted live since the last menu read, per normalized mob name (runtime only, not saved). */
-    private final Map<String, Integer> sessionKills = new HashMap<>();
+    private final Map<String, Long> sessionKills = new HashMap<>();
     /** Pinned-mob instances currently near the player: entity id -> when it was last seen close. */
     private final Map<Integer, Long> nearby = new HashMap<>();
+    /** The tab widget's latest row per normalized mob name - only mobs it lists right now. */
+    private final Map<String, BestiaryTab.Row> tabRows = new HashMap<>();
 
     /** Blocks around the player to watch for the pinned mob dying. */
     private static final double KILL_RADIUS = 16.0;
@@ -89,11 +100,30 @@ public final class BestiaryTracker {
     private static final long KILL_FRESH_MS = 1_200L;
     /** Drop a tracked mob we have not seen for this long without counting it (walked away / unloaded). */
     private static final long TRACK_STALE_MS = 5_000L;
+    /** A jump larger than this between two tab reads is a different mob or a reset, not kills. */
+    private static final long MAX_TAB_STEP = 10_000L;
+
+    /** Bumped whenever a number the HUD shows may have changed. */
+    private int revision;
+    /** Scratch for {@link #detectKills}: instances seen this tick (client thread only). */
+    private final Map<Integer, String> seen = new HashMap<>();
 
     private long lastScanAt;
     private long lastLogAt;
-    /** The pinned mob's lore as last logged, so the line is written once per change, not per scan. */
-    private String lastPinnedLore = "";
+    private int tabRevision = -1;
+    private List<String> lastTabSection = List.of();
+    /** Pinned mobs' lore as last logged, so each is written once per change, not per scan. */
+    private final Map<String, String> lastPinnedLore = new HashMap<>();
+
+    /** Mob slots of the open Bestiary island page (slot index -> mob name), for the ★. */
+    private final Map<Integer, String> starSlots = new HashMap<>();
+    private int starContainerId = Integer.MIN_VALUE;
+
+    /** Bumped on every pin change; Mob Highlight re-reads {@link #highlightNames} only then. */
+    private int pinsVersion;
+    private String pinsProfile;
+    private int highlightVersion = -1;
+    private Set<String> highlightNames = Set.of();
 
     private BestiaryTracker() {
     }
@@ -108,14 +138,16 @@ public final class BestiaryTracker {
      */
     public void onWorldChange() {
         nearby.clear();
+        tabRows.clear();
+        tabRevision = -1;
     }
 
-    private static sbs.modid.client.core.config.SBSConfig.BestiarySettings cfg() {
+    private static SBSConfig.BestiarySettings cfg() {
         return ConfigManager.getInstance().get().bestiary;
     }
 
     /** Upper-cased, alphanumeric-only key so "Zombie", "zombie", "ZOMBIE" all match. */
-    private static String normalize(String value) {
+    static String normalize(String value) {
         return value == null ? "" : NON_ALNUM.matcher(value.toUpperCase(Locale.ROOT)).replaceAll("");
     }
 
@@ -144,67 +176,184 @@ public final class BestiaryTracker {
         return j == key.length();
     }
 
-    private String pinRaw;
-    private String pinKey = "";
+    // ------------------------------------------------------------------ pins
 
-    /** The normalized pinned mob, re-derived only when the config value changes. */
-    private String pinKey() {
-        String raw = cfg().pinnedMob;
-        if (!java.util.Objects.equals(raw, pinRaw)) {
-            pinRaw = raw;
-            pinKey = normalize(raw);
-        }
-        return pinKey;
+    private static String profile() {
+        String profile = ProfileContext.getInstance().profile();
+        return profile == null ? "" : profile;
     }
 
-    // ------------------------------------------------------------------ menu scan
+    /** The current profile's pins, in HUD order. Mutate only through the methods below. */
+    public List<SBSConfig.BestiaryPin> pins() {
+        String profile = profile();
+        if (!profile.equals(pinsProfile)) {
+            pinsProfile = profile;
+            pinsVersion++;
+        }
+        return BestiaryPins.of(cfg(), profile);
+    }
+
+    /** Allocation-free: the ★ asks this per mob slot per frame. */
+    public boolean isPinned(String name) {
+        return pinnedKey(pins(), name) != null;
+    }
+
+    /** ★ click: pins or unpins {@code name} on the current profile and saves. */
+    public boolean togglePin(String name) {
+        boolean pinned = BestiaryPins.toggle(cfg(), profile(), name);
+        pinsChanged();
+        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bestiary] {} '{}' ({} pinned)",
+                pinned ? "pinned" : "unpinned", name, pins().size());
+        return pinned;
+    }
+
+    /** Saves after the pin list was edited (order, highlight, unpin) and lets Mob Highlight re-read it. */
+    public void pinsChanged() {
+        pinsVersion++;
+        ConfigManager.getInstance().save();
+    }
 
     /**
-     * Called every client tick. Counts kills of the pinned mob near the player (so the HUD keeps
-     * ticking up between menu opens) and, throttled, re-reads the open Bestiary menu to re-anchor the
-     * saved baseline.
+     * Lower-cased names of the pinned mobs with "Highlight in world" on, for Mob Highlight. The same
+     * instance until a pin changes, so the caller can compare by identity.
+     */
+    public Set<String> highlightNames() {
+        if (!cfg().enabled) {
+            return Set.of();
+        }
+        List<SBSConfig.BestiaryPin> pins = pins();
+        if (highlightVersion != pinsVersion) {
+            highlightVersion = pinsVersion;
+            Set<String> names = new HashSet<>();
+            for (SBSConfig.BestiaryPin pin : pins) {
+                if (pin.highlight && !pin.name.isBlank()) {
+                    names.add(pin.name.trim().toLowerCase(Locale.ROOT));
+                }
+            }
+            highlightNames = Set.copyOf(names);
+        }
+        return highlightNames;
+    }
+
+    // ------------------------------------------------------------------ tick
+
+    /**
+     * Called every client tick. Keeps the pinned mobs live (tab widget, else a nearby kill count)
+     * and, throttled, re-reads the open Bestiary menu to re-anchor the saved baseline.
      */
     public void onClientTick() {
         if (!cfg().enabled || Minecraft.getInstance().player == null) {
             return;
         }
+        if (ProfileContext.getInstance().known() && BestiaryPins.migrate(cfg(), profile())) {
+            pinsChanged();
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bestiary] moved the old Pin Mob text into the pin list");
+        }
         long now = System.currentTimeMillis();
+        readTab();
         detectKills(now);   // every tick - kills happen faster than the menu-scan throttle
-        if (now - lastScanAt < SCAN_INTERVAL_MS) {
+        if (now - lastScanAt >= SCAN_INTERVAL_MS) {
+            lastScanAt = now;
+            scanMenu(now);
+        }
+        BestiaryHud.refresh(revision, pinsVersion);
+    }
+
+    /**
+     * The tab widget, re-read only when the tab changed. Kills between two reads of the same mob are
+     * added to its live count; a tier-up adds the rest of the old tier plus the new tier's count.
+     */
+    private void readTab() {
+        int revision = TabWidgets.revision();
+        if (revision == tabRevision) {
             return;
         }
-        lastScanAt = now;
-        scanMenu(now);
+        tabRevision = revision;
+        List<String> section = BestiaryTab.section(TabWidgets.lines());
+        if (!section.equals(lastTabSection)) {
+            lastTabSection = List.copyOf(section);
+            revision++;
+            if (!section.isEmpty()) {
+                SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bestiary] tab: {}", String.join(" | ", section));
+            }
+        }
+        Map<String, BestiaryTab.Row> next = new HashMap<>();
+        for (String line : section) {
+            BestiaryTab.Row row = BestiaryTab.parseRow(line);
+            if (row == null) {
+                continue;
+            }
+            String key = normalize(row.name());
+            BestiaryTab.Row previous = tabRows.get(key);
+            long gained = tabStep(previous, row);
+            if (gained > 0) {
+                sessionKills.merge(key, gained, Long::sum);
+                revision++;
+            }
+            next.put(key, row);
+        }
+        tabRows.clear();
+        tabRows.putAll(next);
+    }
+
+    /** Kills between two tab reads of one mob; 0 when they cannot be compared. */
+    static long tabStep(BestiaryTab.Row previous, BestiaryTab.Row row) {
+        if (previous == null || previous.maxed()) {
+            return 0;
+        }
+        long gained;
+        if (row.maxed()) {
+            gained = previous.needed() - previous.kills();
+        } else if (row.tier() == previous.tier()) {
+            gained = row.kills() - previous.kills();
+        } else if (row.tier() == previous.tier() + 1) {
+            gained = previous.needed() - previous.kills() + row.kills();
+        } else {
+            return 0;
+        }
+        return gained > 0 && gained <= MAX_TAB_STEP ? gained : 0;
     }
 
     private void scanMenu(long now) {
         Screen screen = GuiStateManager.getInstance().getCurrentScreen();
         if (!(screen instanceof AbstractContainerScreen<?> container)) {
+            starSlots.clear();
             return;
         }
         String title = strip(screen.getTitle() != null ? screen.getTitle().getString() : "");
         if (!title.toLowerCase(Locale.ROOT).contains("bestiary")) {
+            starSlots.clear();
             return;
         }
         AbstractContainerMenu menu = container.getMenu();
+        boolean islandPage = BestiaryStarDecorator.isIslandPage(title);
+        starSlots.clear();
+        starContainerId = menu.containerId;
         int matched = 0;
         boolean changed = false;
         String unparsedSample = null;
-        for (int i = 0; i < menu.slots.size(); i++) {
+        int top = Math.max(0, menu.slots.size() - PLAYER_INVENTORY_SLOTS);
+        for (int i = 0; i < top; i++) {
             ItemStack stack = menu.getSlot(i).getItem();
             if (stack == null || stack.isEmpty()) {
                 continue;
             }
             Mob mob = parse(stack);
             if (mob != null) {
-                changed |= saveBaseline(mob);
+                changed |= saveBaseline(mob, now);
                 matched++;
+                if (islandPage) {
+                    starSlots.put(i, mob.name());
+                }
             } else if (unparsedSample == null) {
                 String lore = fullLore(stack);
                 if (lore.toLowerCase(Locale.ROOT).contains("kill")) {
                     unparsedSample = strip(stack.getHoverName().getString()) + " :: " + lore;
                 }
             }
+        }
+        if (matched > 0) {
+            revision++;   // read times moved (and session counts re-anchored) even when no total did
         }
         if (changed) {
             ConfigManager.getInstance().save();   // persist the baseline so it survives a relog
@@ -219,33 +368,46 @@ public final class BestiaryTracker {
         }
     }
 
+    /** The mob slots of the open island page (slot index -> mob name); empty for any other menu. */
+    public Map<Integer, String> starSlots(int containerId) {
+        return containerId == starContainerId ? starSlotsView : Map.of();
+    }
+
+    private final Map<Integer, String> starSlotsView = java.util.Collections.unmodifiableMap(starSlots);
+
     /**
      * Writes a mob's menu numbers into the saved baseline (normalized name -> entry). The menu total
      * is authoritative, so the live self-count for that mob restarts from zero here. Returns whether
      * anything actually changed (so the config is only written when needed).
      */
-    private boolean saveBaseline(Mob mob) {
+    private boolean saveBaseline(Mob mob, long now) {
         String key = normalize(mob.name());
         SBSConfig.BestiaryEntry entry = cfg().saved.computeIfAbsent(key, k -> new SBSConfig.BestiaryEntry());
         boolean changed = entry.kills != mob.kills() || entry.maxKills != mob.maxKills()
-                || entry.maxed != mob.maxed() || !mob.name().equals(entry.name);
+                || entry.maxed != mob.maxed() || !mob.name().equals(entry.name) || entry.tier != mob.tier()
+                || entry.tierKills != mob.tierKills() || entry.tierNeeded != mob.tierNeeded();
         entry.name = mob.name();
         entry.kills = mob.kills();
         entry.maxKills = mob.maxKills();
         entry.maxed = mob.maxed();
-        sessionKills.put(key, 0);   // baseline just re-anchored - the menu already counts these kills
+        entry.tier = mob.tier();
+        entry.tierKills = mob.tierKills();
+        entry.tierNeeded = mob.tierNeeded();
+        // Not a "change": the read time rides along with the next save instead of forcing one per scan.
+        entry.readAt = now;
+        sessionKills.put(key, 0L);   // baseline just re-anchored - the menu already counts these kills
         return changed;
     }
 
     /**
-     * Best-effort self-count: while a pinned mob is set, watch for instances of it dying near the
-     * player and add each to the live count. A kill is "an instance we were tracking close is now
-     * gone" (removed / dead); a mob that simply walked away is pruned without counting. Fuzzy by
-     * nature (client-side proximity), but it self-corrects every time the Bestiary menu is re-opened.
+     * Best-effort self-count for pinned mobs the tab widget does not list: watch for instances dying
+     * near the player and add each to the live count. A kill is "an instance we were tracking close
+     * is now gone" (removed / dead); a mob that simply walked away is pruned without counting. Fuzzy
+     * by nature (client-side proximity), but it self-corrects every time the Bestiary menu is re-opened.
      */
     private void detectKills(long now) {
-        String pin = pinKey();
-        if (pin.isEmpty()) {
+        List<SBSConfig.BestiaryPin> pins = pins();
+        if (pins.isEmpty()) {
             nearby.clear();
             return;
         }
@@ -258,43 +420,59 @@ public final class BestiaryTracker {
         // Find pinned-mob instances via their health nametag stands near the player.
         List<ArmorStand> stands = level.getEntitiesOfClass(ArmorStand.class,
                 player.getBoundingBox().inflate(KILL_RADIUS), ArmorStand::hasCustomName);
-        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        seen.clear();
         for (ArmorStand stand : stands) {
             String name = stand.getCustomName() == null ? null
                     : MobHighlightTracker.mobNameInNametag(stand.getCustomName().getString());
-            if (name == null || !normalizedEquals(name, pin)) {
-                continue;
+            String key = name == null ? null : pinnedKey(pins, name);
+            if (key == null || tabRows.containsKey(key)) {
+                continue;   // not pinned, or the tab widget already counts it exactly
             }
             LivingEntity mob = MobHighlightTracker.mobBelow(level, stand);
             if (mob != null) {
-                seen.add(mob.getId());
+                seen.put(mob.getId(), key);
                 nearby.put(mob.getId(), now);
+                nearbyKey.put(mob.getId(), key);
             }
         }
-        int counted = 0;
         Iterator<Map.Entry<Integer, Long>> it = nearby.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<Integer, Long> e = it.next();
-            if (seen.contains(e.getKey())) {
+            if (seen.containsKey(e.getKey())) {
                 continue;   // still here this tick
             }
             Entity ent = level.getEntity(e.getKey());
             boolean gone = !(ent instanceof LivingEntity le) || !le.isAlive() || le.isDeadOrDying();
             if (gone && now - e.getValue() <= KILL_FRESH_MS) {
                 it.remove();
-                counted++;
+                String key = nearbyKey.remove(e.getKey());
+                if (key != null) {
+                    long total = sessionKills.merge(key, 1L, Long::sum);
+                    revision++;
+                    if (now - lastLogAt > 3_000L) {
+                        lastLogAt = now;
+                        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bestiary] +1 {} (session {})", key, total);
+                    }
+                }
             } else if (now - e.getValue() > TRACK_STALE_MS || gone) {
                 it.remove();   // walked off / unloaded, or gone but too stale to trust as a kill
+                nearbyKey.remove(e.getKey());
             }
         }
-        if (counted > 0) {
-            sessionKills.merge(pin, counted, Integer::sum);
-            if (now - lastLogAt > 3_000L) {
-                lastLogAt = now;
-                SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bestiary] +{} {} (session {})",
-                        counted, cfg().pinnedMob, sessionKills.getOrDefault(pin, 0));
+    }
+
+    /** Tracked instance -> the pin it belongs to. */
+    private final Map<Integer, String> nearbyKey = new HashMap<>();
+
+    /** The key of the pin {@code name} belongs to, or {@code null}. */
+    private static String pinnedKey(List<SBSConfig.BestiaryPin> pins, String name) {
+        for (int i = 0, n = pins.size(); i < n; i++) {
+            String key = pins.get(i).key;
+            if (normalizedEquals(name, key)) {
+                return key;
             }
         }
+        return null;
     }
 
     /** Parses one Bestiary mob item, or {@code null} when its lore carries no kill numbers. */
@@ -305,66 +483,122 @@ public final class BestiaryTracker {
         }
         boolean maxed = lore.toLowerCase(Locale.ROOT).contains("maxed");
 
+        long[] read = readNumbers(lore);
+        long kills = read[0];
+        long maxKills = read[1];
+        long tierKills = read[2];
+        long tierNeeded = read[3];
+        boolean viaOverall = read[4] == 1;
+        if (kills < 0 && !maxed) {
+            return null; // nothing usable on this item
+        }
+        String rawName = strip(stack.getHoverName().getString()).trim();
+        String name = cleanName(rawName);
+        if (name.isEmpty()) {
+            return null;
+        }
+        Matcher tierMatcher = TRAILING_TIER.matcher(rawName);
+        int tier = tierMatcher.find() ? BestiaryTab.tier(tierMatcher.group(1)) : 0;
+        // A pinned mob's whole lore and what was read from it, once per change: the lore shape is
+        // not on record, and this line is what the patterns get tuned on.
+        String key = normalize(name);
+        if (isPinnedKey(key) && !lore.equals(lastPinnedLore.get(key))) {
+            lastPinnedLore.put(key, lore);
+            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bestiary] pinned '{}' read tier={} kills={} max={} tier={}/{} "
+                            + "maxed={} via {} | lore: {}", name, tier, kills, maxKills, tierKills, tierNeeded,
+                    maxed, viaOverall ? "Overall Progress" : "fallback", lore.replace('\n', '|'));
+        }
+        return new Mob(name, Math.max(0, kills), maxKills, maxed, tier, tierKills, tierNeeded);
+    }
+
+    /**
+     * The numbers of one mob's lore: {kills, maxKills, tierKills, tierNeeded, viaOverall (1/0)},
+     * -1 where a number is missing.
+     */
+    static long[] readNumbers(String lore) {
         long kills = -1;
         long maxKills = -1;
+        long tierKills = -1;
+        long tierNeeded = -1;
         Matcher overall = OVERALL.matcher(lore);
-        if (overall.find()) {
+        boolean viaOverall = overall.find();
+        Matcher pair = PAIR.matcher(lore);
+        if (viaOverall) {
             kills = parseNum(lore, overall.start(1), overall.end(1));
             maxKills = parseNum(lore, overall.start(2), overall.end(2));
+            // The tier pair: the first progress pair that is not the overall one.
+            while (pair.find()) {
+                if (pair.start() < overall.start(1) || pair.start() >= overall.end(2)) {
+                    tierKills = parseNum(lore, pair.start(1), pair.end(1));
+                    tierNeeded = parseNum(lore, pair.start(2), pair.end(2));
+                    break;
+                }
+            }
         } else {
             Matcher killsMatcher = KILLS.matcher(lore);
             if (killsMatcher.find()) {
                 kills = parseNum(lore, killsMatcher.start(1), killsMatcher.end(1));
             }
             // Fallback max: the largest denominator of any "x/y" progress pair on the item.
-            Matcher pair = PAIR.matcher(lore);
             while (pair.find()) {
                 maxKills = Math.max(maxKills, parseNum(lore, pair.start(2), pair.end(2)));
             }
         }
-        if (kills < 0 && !maxed) {
-            return null; // nothing usable on this item
+        return new long[]{kills, maxKills, tierKills, tierNeeded, viaOverall ? 1 : 0};
+    }
+
+    private boolean isPinnedKey(String key) {
+        for (SBSConfig.BestiaryPin pin : pins()) {
+            if (pin.key.equals(key)) {
+                return true;
+            }
         }
-        String name = cleanName(strip(stack.getHoverName().getString()));
-        if (name.isEmpty()) {
-            return null;
-        }
-        // The pinned mob's whole lore and what was read from it, once per change: "kills to max"
-        // disagreed with the menu on 2026-10-18 and the lore shape is not on record.
-        if (!pinKey().isEmpty() && normalizedEquals(name, pinKey()) && !lore.equals(lastPinnedLore)) {
-            lastPinnedLore = lore;
-            SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bestiary] pinned '{}' read kills={} max={} maxed={} via {} | lore: {}",
-                    name, kills, maxKills, maxed, overall.reset().find() ? "Overall Progress" : "fallback",
-                    lore.replace('\n', '|'));
-        }
-        return new Mob(name, Math.max(0, kills), maxKills, maxed);
+        return false;
     }
 
     // ------------------------------------------------------------------ HUD read model
 
-    /**
-     * The pinned mob's snapshot - the saved menu baseline plus any kills self-counted since - or
-     * {@code null} when nothing is pinned / it was never read from the menu.
-     */
-    public Mob pinned() {
-        String pin = cfg().pinnedMob;
-        if (pin == null || pin.isBlank()) {
-            return null;
-        }
-        String key = normalize(pin);
-        SBSConfig.BestiaryEntry entry = cfg().saved.get(key);
+    /** Progress of one pin: the saved menu baseline, kept live by the tab widget or the kill count. */
+    public BestiaryProgress progress(SBSConfig.BestiaryPin pin) {
+        SBSConfig.BestiaryEntry entry = cfg().saved.get(pin.key);
+        String name = entry != null && !entry.name.isEmpty() ? entry.name : pin.name;
+        BestiaryTab.Row tab = tabRows.get(pin.key);
         if (entry == null) {
-            return null;
+            if (tab == null) {
+                return new BestiaryProgress(name, 0, -1, -1, -1, -1, false);
+            }
+            return new BestiaryProgress(name, tab.tier(), tab.kills(), tab.needed(), -1, -1, tab.maxed());
         }
-        long kills = entry.kills + sessionKills.getOrDefault(key, 0);
-        boolean maxed = entry.maxed || (entry.maxKills > 0 && kills >= entry.maxKills);
-        return new Mob(entry.name.isEmpty() ? pin.trim() : entry.name, kills, entry.maxKills, maxed);
+        long session = sessionKills.getOrDefault(pin.key, 0L);
+        long kills = entry.kills + session;
+        if (tab != null) {
+            return new BestiaryProgress(name, tab.tier(), tab.kills(), tab.needed(), kills, entry.maxKills,
+                    entry.maxed || tab.maxed());
+        }
+        long tierKills = entry.tierKills < 0 ? -1
+                : entry.tierNeeded > 0 ? Math.min(entry.tierNeeded, entry.tierKills + session) : entry.tierKills;
+        return new BestiaryProgress(name, entry.tier, tierKills, entry.tierNeeded, kills, entry.maxKills,
+                entry.maxed);
     }
 
-    /** The pinned mob name (raw), for the HUD's "not loaded yet" prompt. Empty when unset. */
-    public String pinnedName() {
-        String pin = cfg().pinnedMob;
-        return pin == null ? "" : pin.trim();
+    /** Whether the tab widget lists this pin right now (its numbers are live, not from the last menu read). */
+    public boolean isLive(SBSConfig.BestiaryPin pin) {
+        return tabRows.containsKey(pin.key);
+    }
+
+    /** When the menu last read this pin, 0 if never. */
+    public long readAt(SBSConfig.BestiaryPin pin) {
+        SBSConfig.BestiaryEntry entry = cfg().saved.get(pin.key);
+        return entry == null ? 0 : entry.readAt;
+    }
+
+    /** For tests and the settings list: the pins' current rows, in order. */
+    public List<BestiaryProgress> rows() {
+        List<BestiaryProgress> out = new ArrayList<>();
+        for (SBSConfig.BestiaryPin pin : pins()) {
+            out.add(progress(pin));
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ helpers
@@ -390,10 +624,11 @@ public final class BestiaryTracker {
 
     /** The digits of {@code [start, end)} as one number, separators ignored (0 when none). */
     private static long parseNum(String text, int start, int end) {
-        return NumberParse.parseDigits(text, start, end, 0);
+        // parseLong, not parseDigits: "2.5k" is 2,500, not 25.
+        return NumberParse.parseLong(text, start, end, 0);
     }
 
-    private static String strip(String text) {
+    static String strip(String text) {
         if (text == null || text.isEmpty()) {
             return "";
         }

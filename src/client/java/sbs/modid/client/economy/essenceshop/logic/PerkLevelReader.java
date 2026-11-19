@@ -41,7 +41,8 @@ public final class PerkLevelReader {
      * shortfall computed from a price is worse than no shortfall at all.
      */
     private static final Pattern BALANCE = Pattern.compile(
-            "(?:you have|you own|your balance|balance|owned)\\D{0,24}?([\\d,]+)",
+            "(?:you have|you own|your balance|balance|owned|your [a-z ]{1,24}?essence\\s*:)"
+                    + "\\D{0,24}?([\\d,]+)",
             Pattern.CASE_INSENSITIVE);
 
     /** A trailing level on a perk name: "Forbidden Strength III" / "Forbidden Strength 3". */
@@ -88,6 +89,31 @@ public final class PerkLevelReader {
                 if (level >= 0 && level <= maxLevel) {
                     return level;
                 }
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * The level a perk is at, read from its name together with the line saying whether that level
+     * is owned - or {@code -1} when the lore carries neither marker.
+     *
+     * <p>Read off live shops (2026-10-19): an owned perk ends in {@code UNLOCKED} and its name
+     * carries the level it is at, while a buyable one ends in {@code Click to unlock!} and its name
+     * carries the level it would <i>buy</i> - "Midas Lure II" there means level 1. Taking that name
+     * at face value put every unfinished perk one level too high.
+     */
+    public static int fromNameAndState(List<String> lore, int nameLevel, int maxLevel) {
+        if (lore == null || nameLevel <= 0) {
+            return -1;
+        }
+        for (String line : lore) {
+            String bare = line.trim().toLowerCase(Locale.ROOT);
+            if (bare.equals("unlocked")) {
+                return Math.min(nameLevel, maxLevel);
+            }
+            if (bare.startsWith("click to unlock")) {
+                return Math.min(nameLevel - 1, maxLevel);
             }
         }
         return -1;

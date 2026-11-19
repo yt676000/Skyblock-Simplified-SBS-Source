@@ -159,6 +159,15 @@ public final class PuzzleSolversModule implements SbsModule {
                     .describe("Also draws a faint red box on the two chests without the reward. "
                             + "Default off."));
         }
+        if (type == PuzzleType.QUIZ) {
+            rows.add(SettingRow.button("Edit Quiz GUI", () -> net.minecraft.client.Minecraft.getInstance()
+                            .setScreenAndShow(new sbs.modid.client.ui.hud.edit.ui.HudEditorScreen(
+                                    new sbs.modid.client.ui.hud.edit.model.HudElement[] {
+                                            sbs.modid.client.ui.hud.edit.model.HudElement.QUIZ_TIMER},
+                                    "Edit Quiz GUI")))
+                    .describe("Opens the editor where you drag the next-question countdown card "
+                            + "anywhere on the screen and scale it."));
+        }
         if (type == PuzzleType.ICE_FILL) {
             rows.add(SettingRow.toggle("Ice Fill: One Line", () -> cfg().puzzleIceFillLine,
                             () -> { cfg().puzzleIceFillLine = !cfg().puzzleIceFillLine; save(); })

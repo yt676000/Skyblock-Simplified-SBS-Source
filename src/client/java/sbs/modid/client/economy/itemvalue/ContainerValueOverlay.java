@@ -65,6 +65,9 @@ public final class ContainerValueOverlay {
     private boolean containerBackup;
     private boolean inventoryBackup;
     private boolean hasContainerSlots;
+    /** Manage Auctions only: what the own listings bring if all sell, -1 elsewhere. */
+    private long ifSoldValue = -1;
+    private int ifSoldListings;
 
     private ContainerValueOverlay() {
     }
@@ -94,12 +97,19 @@ public final class ContainerValueOverlay {
         String containerLabel = "Chest";
         String containerText = coins(containerValue, containerUnpriced, containerBackup);
         String inventoryText = coins(inventoryValue, inventoryUnpriced, inventoryBackup);
+        boolean showIfSold = ifSoldValue >= 0;
+        String ifSoldLabel = "If sold (" + ifSoldListings + ")";
+        String ifSoldText = NumberDisplay.format(ifSoldValue) + " coins";
         int labelW = showContainer
                 ? Math.max(font.width(containerLabel), font.width("Inventory")) : font.width("Inventory");
         int valueW = showContainer
                 ? Math.max(font.width(containerText), font.width(inventoryText)) : font.width(inventoryText);
+        if (showIfSold) {
+            labelW = Math.max(labelW, font.width(ifSoldLabel));
+            valueW = Math.max(valueW, font.width(ifSoldText));
+        }
 
-        int lines = showContainer ? 2 : 1;
+        int lines = (showContainer ? 2 : 1) + (showIfSold ? 1 : 0);
         int w = PAD * 2 + labelW + 8 + valueW;
         int h = PAD * 2 + lines * font.lineHeight + (lines - 1) * LINE_GAP;
 
@@ -118,6 +128,10 @@ public final class ContainerValueOverlay {
             textY += font.lineHeight + LINE_GAP;
         }
         drawRow(g, font, "Inventory", inventoryText, x, textY, w, inventoryUnpriced);
+        if (showIfSold) {
+            textY += font.lineHeight + LINE_GAP;
+            drawRow(g, font, ifSoldLabel, ifSoldText, x, textY, w, 0);
+        }
     }
 
     private void drawRow(GuiGraphicsExtractor g, Font font, String label, String value,
@@ -174,5 +188,22 @@ public final class ContainerValueOverlay {
         containerBackup = containerTotal.usesBackup();
         inventoryBackup = inventoryTotal.usesBackup();
         hasContainerSlots = sawContainerSlot;
+
+        // Manage Auctions: BIN price, top bid, or starting bid of every own listing, summed.
+        ifSoldValue = -1;
+        ifSoldListings = 0;
+        if (screen.getTitle() != null && sbs.modid.client.economy.auctions.logic.OwnAuctionsValue
+                .isManageAuctions(screen.getTitle().getString().replaceAll("\u00a7.", ""))) {
+            long sum = 0;
+            for (ItemStack stack : containerStacks) {
+                long value = sbs.modid.client.economy.auctions.logic.OwnAuctionsValue
+                        .listingValue(sbs.modid.client.economy.prices.ItemPriceKey.lore(stack));
+                if (value >= 0) {
+                    sum += value;
+                    ifSoldListings++;
+                }
+            }
+            ifSoldValue = sum;
+        }
     }
 }

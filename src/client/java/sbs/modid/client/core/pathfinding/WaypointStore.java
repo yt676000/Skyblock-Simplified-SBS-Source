@@ -64,6 +64,12 @@ public final class WaypointStore {
         if (source == null) {
             return;
         }
+        List<Waypoint> before = new ArrayList<>();
+        for (Waypoint waypoint : TRANSIENT) {
+            if (source.equals(waypoint.source)) {
+                before.add(waypoint);
+            }
+        }
         boolean removed = TRANSIENT.removeIf(waypoint -> source.equals(waypoint.source));
         boolean added = waypoints != null && !waypoints.isEmpty();
         if (added) {
@@ -71,8 +77,38 @@ public final class WaypointStore {
         }
         if (removed || added) {
             rebuild();
-            PathfindingManager.getInstance().invalidate();
+            // A publisher re-sending the same places (a commission's progress label ticking, every
+            // half second) must not throw every route away: that restarted a search per publish.
+            if (!sameRouting(before, added ? waypoints : List.of())) {
+                PathfindingManager.getInstance().invalidate();
+            }
         }
+    }
+
+    /**
+     * Whether two marker sets would route identically: the same positions, dimensions and
+     * routability, in any order. Labels, colours and other display fields do not count.
+     */
+    static boolean sameRouting(List<Waypoint> a, List<Waypoint> b) {
+        if (a.size() != b.size()) {
+            return false;
+        }
+        Map<String, Integer> counts = new HashMap<>();
+        for (Waypoint waypoint : a) {
+            counts.merge(routingKey(waypoint), 1, Integer::sum);
+        }
+        for (Waypoint waypoint : b) {
+            Integer left = counts.computeIfPresent(routingKey(waypoint), (k, n) -> n - 1);
+            if (left == null || left < 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String routingKey(Waypoint waypoint) {
+        return waypoint.x + "," + waypoint.y + "," + waypoint.z + "," + waypoint.dimension + ","
+                + waypoint.routable;
     }
 
     /** Drops every transient waypoint owned by {@code source}. */

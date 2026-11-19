@@ -121,16 +121,22 @@ public final class StoragePreview {
 
     /** Contents for a hovered stack: session caches first, embedded backpack NBT as fallback. */
     private List<ItemStack> contentsFor(ItemStack stack) {
-        if (stack == lastHovered) {
+        int indexRevision = StorageIndex.getInstance().revision();
+        if (stack == lastHovered && indexRevision == lastIndexRevision) {
             return lastContents;
         }
+        lastIndexRevision = indexRevision;
         String name = stripCodes(stack.getHoverName().getString()).trim();
         String lower = name.toLowerCase(Locale.ROOT);
         List<ItemStack> contents = null;
 
         if (lower.contains("ender chest")) {
             Matcher m = FIRST_NUMBER.matcher(lower);
-            contents = enderChestPages.get(m.find() ? Integer.parseInt(m.group(1)) : 1);
+            int page = m.find() ? Integer.parseInt(m.group(1)) : 1;
+            contents = enderChestPages.get(page);
+            if (contents == null) {
+                contents = persisted("ender_chest:" + page);
+            }
         } else if (lower.contains("backpack")) {
             String key = SkyblockItem.normalizeName(name);
             contents = backpacks.get(key);
@@ -141,6 +147,12 @@ public final class StoragePreview {
                         contents = entry.getValue();
                         break;
                     }
+                }
+            }
+            if (contents == null) {
+                Matcher m = FIRST_NUMBER.matcher(lower);
+                if (m.find()) {
+                    contents = persisted("backpack:" + m.group(1));
                 }
             }
             if (contents == null) {
@@ -157,6 +169,27 @@ public final class StoragePreview {
         lastHovered = stack;
         lastContents = contents;
         return contents;
+    }
+
+    /** Index revision the hover cache was filled at: a capture or a cache load invalidates it. */
+    private int lastIndexRevision = -1;
+
+    /**
+     * The page as last captured by {@link StorageIndex}, which is persisted per profile. The session
+     * maps above only know what was opened since the game started, so without this every preview
+     * was gone after a relog until each page was opened again. Empty slots become {@code null}, the
+     * session caches' marker for "nothing here".
+     */
+    private static List<ItemStack> persisted(String id) {
+        StorageIndex.Snapshot snapshot = StorageIndex.getInstance().snapshot(id);
+        if (snapshot == null || snapshot.items().isEmpty()) {
+            return null;
+        }
+        List<ItemStack> out = new ArrayList<>(snapshot.items().size());
+        for (ItemStack item : snapshot.items()) {
+            out.add(item == null || item.isEmpty() ? null : item);
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------

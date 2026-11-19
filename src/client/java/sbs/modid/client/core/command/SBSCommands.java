@@ -237,6 +237,24 @@ public final class SBSCommands {
                 return true;
             }
 
+            // /sbs lowball [copy <offer>] (dev mode) - appraise the held item through the local flip
+            // program; "copy" is what a clicked offer runs. Never sends anything to the server.
+            if (sub[0].equalsIgnoreCase("lowball")) {
+                // DEV-ONLY: dev command handling
+                if (!sbs.modid.client.economy.lowball.logic.Lowball.active()) {
+                    return true;   // silent, like every other dev path
+                }
+                String rest = sub.length > 1 ? sub[1].trim() : "";
+                if (rest.equalsIgnoreCase("last")) {
+                    sbs.modid.client.economy.lowball.logic.Lowball.reopenLast();
+                } else if (rest.toLowerCase(java.util.Locale.ROOT).startsWith("copy ")) {
+                    sbs.modid.client.economy.lowball.logic.Lowball.copy(rest.substring(5));
+                } else {
+                    sbs.modid.client.economy.lowball.logic.Lowball.appraiseHeld();
+                }
+                return true;
+            }
+
             // /sbs perf [dump [label]|reset|slow <ms>] (dev mode) - the performance KPI overlay, a report
             // to Development_Stuff/perf/, a reset of the rolling numbers, and the slow-frame simulator.
             if (sub[0].equalsIgnoreCase("perf")) {
@@ -409,7 +427,7 @@ public final class SBSCommands {
                 return true;
             }
 
-            // /sbs chmap [mark <label>|unmark [label]] - the schematic Crystal Hollows map, and the
+            // /sbs chmap [mark <label>|unmark [label]|share [what] [channel]|add x y z label] - the schematic Crystal Hollows map, and the
             // player's own markers on it. Markers stay on this PC.
             if (sub[0].equalsIgnoreCase("chmap")) {
                 handleHollowsMap(sub.length > 1 ? sub[1].trim() : "");
@@ -1356,8 +1374,17 @@ public final class SBSCommands {
                     " " + tracker.mark(rest)));
             case "unmark" -> minecraft.execute(() -> sbs.modid.client.social.chat.logic.SBSChat.send(
                     " " + tracker.unmark(rest)));
+            case "share" -> minecraft.execute(() -> {
+                String feedback = tracker.share(rest);
+                if (feedback != null) {
+                    sbs.modid.client.social.chat.logic.SBSChat.send(" " + feedback);
+                }
+            });
+            case "add" -> minecraft.execute(() -> sbs.modid.client.social.chat.logic.SBSChat.send(
+                    " " + tracker.markAt(rest)));
             default -> sbs.modid.client.social.chat.logic.SBSChat.send(
-                    " Usage: /sbs chmap, /sbs chmap mark <label>, /sbs chmap unmark [label]");
+                    " Usage: /sbs chmap, /sbs chmap mark <label>, /sbs chmap unmark [label],"
+                            + " /sbs chmap share [structure|all] [pc|ac|gc|cc]");
         }
     }
 

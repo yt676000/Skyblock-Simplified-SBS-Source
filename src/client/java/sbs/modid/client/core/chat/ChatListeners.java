@@ -112,6 +112,9 @@ final class ChatListeners {
         // Nothing without a sender colon (senderColon); the coordinate patterns have no literal.
         add(l, "ChatWaypoints", ANY_ISLAND, any(":"), (p, r, m) ->
                 sbs.modid.client.social.chat.logic.ChatWaypoints.getInstance().onChat(r));
+        // Crystal Hollows coordinates from other players: a clickable "add to map" line, no auto-add.
+        add(l, "HollowsChatShare", ANY_ISLAND, any(":"), (p, r, m) ->
+                sbs.modid.client.helper.map.logic.HollowsMapTracker.getInstance().onChat(r));
         // Its own two checks: "Hoppity's Hunt has begun" / the "HOPPITY'S HUNT" prefix.
         add(l, "HoppityChat", ANY_ISLAND, any("Hoppity's Hunt has begun", "HOPPITY'S HUNT"), (p, r, m) -> {
             var hoppity = sbs.modid.client.helper.hoppity.logic.HoppityChat.getInstance().onChat(r);

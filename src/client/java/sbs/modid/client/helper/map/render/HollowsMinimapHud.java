@@ -61,7 +61,10 @@ public final class HollowsMinimapHud {
         }
         Font font = Minecraft.getInstance().font;
         int size = Math.max(48, Math.min(256, cfg.hollowsMinimapSize));
-        int radius = Math.max(16, cfg.hollowsMinimapRadius);
+        boolean fixed = cfg.hollowsMinimapFixed;
+        boolean rotate = cfg.hollowsMinimapRotate && !fixed;
+        int radius = fixed ? (HollowsGeometry.MAX - HollowsGeometry.MIN) / 2 + 1
+                : Math.max(16, cfg.hollowsMinimapRadius);
         HudElement.Bounds b = HudElement.CH_MINIMAP.defaultBounds(g.guiWidth(), g.guiHeight());
         int x = Math.round(b.x());
         int y = Math.round(b.y());
@@ -73,8 +76,12 @@ public final class HollowsMinimapHud {
         MapViewport vp = VIEWPORT;
         vp.setCanvas(x + 1, y + 1, size - 2, size - 2);
         vp.setScale((size / 2.0 - 1) / radius);
-        vp.setCenter(player.getX(), player.getZ());
-        vp.setRotation(cfg.hollowsMinimapRotate ? MapViewport.rotationFacingUp(player.getYRot()) : 0);
+        if (fixed) {
+            vp.setCenter(HollowsGeometry.CENTER, HollowsGeometry.CENTER);
+        } else {
+            vp.setCenter(player.getX(), player.getZ());
+        }
+        vp.setRotation(rotate ? MapViewport.rotationFacingUp(player.getYRot()) : 0);
 
         HollowsTrail.Layer layer = HollowsTrail.Layer.of(player.getBlockY());
         g.enableScissor(x + 1, y + 1, x + size - 1, y + size - 1);
@@ -105,14 +112,17 @@ public final class HollowsMinimapHud {
             sbs.modid.client.ui.render.SciFiRender.ring(g, (int) Math.round(p[0]) - 6,
                     (int) Math.round(p[1]) - 6, 12, 12, 6, 0xFF57D977);
         }
-        if (cfg.hollowsMinimapRotate) {
+        if (rotate) {
             // Where north is, since the square no longer says.
             double[] north = clampToEdge(vp, player.getX(), player.getZ() - radius * 4.0, size, null);
             g.centeredText(font, Component.literal("N"), (int) Math.round(north[0]),
                     (int) Math.round(north[1]) - font.lineHeight / 2, 0xFFE0E6EC);
         }
         double[] dir = vp.screenDirection(player.getYRot());
-        HollowsMapPainter.playerArrow(g, vp.canvasCenterX(), vp.canvasCenterY(), dir[0], dir[1], 5, 0x57D977);
+        double[] at = fixed ? clampToEdge(vp, player.getX(), player.getZ(), size, null)
+                : new double[]{vp.canvasCenterX(), vp.canvasCenterY()};
+        HollowsMapPainter.playerArrow(g, (int) Math.round(at[0]), (int) Math.round(at[1]), dir[0], dir[1], 5,
+                0x57D977);
         g.disableScissor();
         HudLayout.end(g);
     }

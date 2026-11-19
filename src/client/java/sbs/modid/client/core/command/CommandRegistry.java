@@ -216,8 +216,9 @@ public final class CommandRegistry {
         sbs(l, "keybind", List.of("keybinds"), "", "", "Opens the keybind editor: keys that run commands.", GENERAL);
         sbs(l, "map", List.of(), "[place]", "<text>",
                 "Opens the island maps; with a place name, travels straight there.", QOL, "/sbs map bazaar");
-        sbs(l, "chmap", List.of(), "[mark <label>|unmark [label]]", "mark|unmark",
-                "Opens the Crystal Hollows map; mark/unmark place or remove your own markers (kept on this PC).",
+        sbs(l, "chmap", List.of(), "[mark <label>|unmark [label]|share [structure|all] [pc|ac|gc|cc]]", "mark|unmark|share",
+                "Opens the Crystal Hollows map; mark/unmark place or remove your own markers (kept on this PC);"
+                        + " share posts found structures to party chat (or ac/gc/cc).",
                 QOL, "/sbs chmap mark Fairy");
         sbs(l, "where", List.of("location", "area"), "", "",
                 "Says which island and area the mod thinks you are in, and why.", GENERAL);
@@ -363,6 +364,8 @@ public final class CommandRegistry {
         dev(l, "sbs", "questcapture", List.of("qc"), "[...]", "Records questline dialogue to a file.");
         dev(l, "sbs", "perf", List.of(), "[dump [label]|reset|slow <ms>]",
                 "Performance KPI overlay, report to Development_Stuff/perf, reset, slow-tick test.");
+        dev(l, "sbs", "lowball", List.of(), "[last|copy <offer>]",
+                "Appraises the held item through the local flip program and suggests offers.");
         dev(l, "sbs", "terminaltest", List.of(), "", "Runs the terminal solvers against test boards.");
         dev(l, "sbs", "probe", List.of(), "[arm|off|status]", "Writes the open menu to a file, verbatim.");
         dev(l, "sbs", "priceprobe", List.of(), "", "Shows every price lookup for the item under the cursor.");

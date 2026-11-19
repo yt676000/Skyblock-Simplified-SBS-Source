@@ -99,6 +99,11 @@ public final class MobHighlightTracker {
     /** The selection as last seen, lower-cased; rebuilt only when the config set changes. */
     private final Set<String> wantedSource = new LinkedHashSet<>();
     private final Set<String> wanted = new HashSet<>();
+    /** The player's own selection, lower-cased - {@link #wanted} minus the Bestiary pins. */
+    private final Set<String> ownWanted = new HashSet<>();
+    /** Pinned Bestiary mobs to box (already lower-cased; compared by identity, the tracker keeps one instance). */
+    private Set<String> bestiarySource = Set.of();
+    private Set<String> bestiaryWanted = Set.of();
     private int wantedVersion;
 
     /** Lower-cased and display type names per entity type, re-read when the language changes. */
@@ -109,6 +114,7 @@ public final class MobHighlightTracker {
     private final IntOpenHashSet boxed = new IntOpenHashSet();
     private final ArrayList<Entity> pickEntities = new ArrayList<>();
     private final ArrayList<String> pickLabels = new ArrayList<>();
+    private final ArrayList<Boolean> pickBestiary = new ArrayList<>();
     private List<MobHighlightRenderer.Target> published = List.of();
     private int tick;
 
@@ -139,16 +145,22 @@ public final class MobHighlightTracker {
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = minecraft.level;
         LocalPlayer player = minecraft.player;
-        if (!settings.enabled || settings.selectedMobs.isEmpty() || level == null || player == null) {
+        // Pinned Bestiary mobs with "Highlight in world" ride on the same detector, in their own
+        // colour, and are boxed even while Mob Highlight itself is off.
+        Set<String> bestiary = sbs.modid.client.combat.bestiary.BestiaryTracker.getInstance().highlightNames();
+        boolean own = settings.enabled && !settings.selectedMobs.isEmpty();
+        if ((!own && bestiary.isEmpty()) || level == null || player == null) {
             pickEntities.clear();
             pickLabels.clear();
+            pickBestiary.clear();
             publish();
             return;
         }
-        refreshWanted(settings.selectedMobs);
+        refreshWanted(own ? settings.selectedMobs : Set.of(), bestiary);
 
         pickEntities.clear();
         pickLabels.clear();
+        pickBestiary.clear();
         boxed.clear();
 
         // Pass 1: SkyBlock mobs by their nametag stand (only those in clear line of sight). The
@@ -256,6 +268,9 @@ public final class MobHighlightTracker {
     private void pick(Entity entity, String label) {
         pickEntities.add(entity);
         pickLabels.add(label);
+        // A Bestiary box only when the player's own selection does not already want this mob.
+        pickBestiary.add(!bestiarySource.isEmpty() && !matchesWanted(ownWanted, label)
+                && matchesWanted(bestiaryWanted, label));
     }
 
     /** Hands the renderer a new list only when this tick's picks differ from the last one. */
@@ -264,14 +279,15 @@ public final class MobHighlightTracker {
         boolean same = published.size() == n;
         for (int i = 0; same && i < n; i++) {
             MobHighlightRenderer.Target target = published.get(i);
-            same = target.entity() == pickEntities.get(i) && target.label().equals(pickLabels.get(i));
+            same = target.entity() == pickEntities.get(i) && target.label().equals(pickLabels.get(i))
+                    && target.bestiary() == pickBestiary.get(i);
         }
         if (same) {
             return;
         }
         List<MobHighlightRenderer.Target> next = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
-            next.add(new MobHighlightRenderer.Target(pickEntities.get(i), pickLabels.get(i)));
+            next.add(new MobHighlightRenderer.Target(pickEntities.get(i), pickLabels.get(i), pickBestiary.get(i)));
         }
         published = List.copyOf(next);
         MobHighlightRenderer.getInstance().setTargets(published);
@@ -297,16 +313,21 @@ public final class MobHighlightTracker {
     }
 
     /** Lower-cased selection for O(1), case-insensitive matching; rebuilt only when it changed. */
-    private void refreshWanted(Set<String> selected) {
-        if (wantedSource.equals(selected)) {
+    private void refreshWanted(Set<String> selected, Set<String> bestiary) {
+        if (bestiary == bestiarySource && wantedSource.equals(selected)) {
             return;
         }
         wantedSource.clear();
         wantedSource.addAll(selected);
-        wanted.clear();
+        ownWanted.clear();
         for (String name : selected) {
-            wanted.add(name.toLowerCase(Locale.ROOT));
+            ownWanted.add(name.toLowerCase(Locale.ROOT));
         }
+        bestiarySource = bestiary;
+        bestiaryWanted = bestiary;
+        wanted.clear();
+        wanted.addAll(ownWanted);
+        wanted.addAll(bestiary);
         wantedVersion++;
     }
 

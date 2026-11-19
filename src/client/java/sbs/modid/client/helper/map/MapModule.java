@@ -198,6 +198,10 @@ public final class MapModule implements SbsModule {
                         () -> { cfg().hollowsMinimapRotate = !cfg().hollowsMinimapRotate; save(); })
                         .describe("Turns the minimap so the way you face is up, with an N on the edge. "
                                 + "Off keeps north up. Default off."),
+                SettingRow.toggle("Fixed Minimap (Whole Hollows)", () -> cfg().hollowsMinimapFixed,
+                        () -> { cfg().hollowsMinimapFixed = !cfg().hollowsMinimapFixed; save(); })
+                        .describe("Shows the whole Crystal Hollows standing still, north up, and moves "
+                                + "only your arrow across it. Radius and rotation are ignored. Default off."),
                 SettingRow.toggle("Show Explored Trail", () -> cfg().hollowsShowTrail,
                         () -> { cfg().hollowsShowTrail = !cfg().hollowsShowTrail; save(); })
                         .describe("Shades the 8x8 cells you have stood in this lobby, upper cave and "

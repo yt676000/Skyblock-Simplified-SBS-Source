@@ -43,8 +43,12 @@ public final class MobHighlightRenderer {
 
     private static final MobHighlightRenderer INSTANCE = new MobHighlightRenderer();
 
-    /** One entity to box this frame, with the SkyBlock mob name to show above it. */
-    public record Target(Entity entity, String label) {
+    /**
+     * One entity to box this frame, with the SkyBlock mob name to show above it. {@code bestiary}:
+     * boxed only because it is a pinned Bestiary mob - drawn in the Bestiary colour, and still drawn
+     * while Mob Highlight itself is off.
+     */
+    public record Target(Entity entity, String label, boolean bestiary) {
     }
 
     /** Entities to box this frame (swapped wholesale by the tracker each client tick). */
@@ -71,9 +75,6 @@ public final class MobHighlightRenderer {
             return;
         }
         SBSConfig.MobHighlightSettings settings = ConfigManager.getInstance().get().mobHighlight;
-        if (!settings.enabled) {
-            return;
-        }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null || minecraft.level == null) {
             return;
@@ -82,13 +83,15 @@ public final class MobHighlightRenderer {
         Vec3 camPos = camera.position();
         Matrix4fc viewProjection = FrameCamera.viewProjection();
         Font font = minecraft.font;
-        int color = settings.color.argb();
+        int ownColor = settings.color.argb();
+        int bestiaryColor = ConfigManager.getInstance().get().bestiary.highlightColor.argb();
 
         for (Target target : current) {
             Entity entity = target.entity();
-            if (!entity.isAlive()) {
+            if (!entity.isAlive() || (!target.bestiary() && !settings.enabled)) {
                 continue;
             }
+            int color = target.bestiary() ? bestiaryColor : ownColor;
             AABB box = entity.getBoundingBox();
             drawBoxEdges(g, viewProjection, camPos,
                     box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, color);

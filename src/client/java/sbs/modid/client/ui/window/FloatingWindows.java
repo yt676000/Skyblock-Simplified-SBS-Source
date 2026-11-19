@@ -49,13 +49,16 @@ public final class FloatingWindows {
         ESSENCE_SHOP,
 
         /** The shopping list beside the Attribute Menu (Hunting). */
-        MISSING_SHARDS
+        MISSING_SHARDS,
+
+        /** The Lowball appraisal window (developer mode). */
+        LOWBALL
     }
 
     private static final List<Layer> order = new ArrayList<>(
             List.of(Layer.RECIPE, Layer.BROWSERS, Layer.VALUE, Layer.AUCTIONS, Layer.FLIPS,
                     Layer.FORGE, Layer.AH_FLIPS, Layer.CALCULATOR, Layer.GARDEN_PLOTS,
-                    Layer.ESSENCE_SHOP, Layer.MISSING_SHARDS));
+                    Layer.ESSENCE_SHOP, Layer.MISSING_SHARDS, Layer.LOWBALL));
 
     /**
      * True while the container GUI itself was clicked last: the windows then render <b>behind</b>

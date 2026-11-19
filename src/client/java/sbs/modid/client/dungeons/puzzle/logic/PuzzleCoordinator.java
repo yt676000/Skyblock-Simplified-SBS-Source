@@ -111,8 +111,14 @@ public final class PuzzleCoordinator {
     // initialised below this line is still null when it runs (the puzzle chat was dead for it).
     private static final PuzzleCoordinator INSTANCE = new PuzzleCoordinator();
 
+    /**
+     * Kept apart from the room switch: its answer waypoint and next-question countdown outlive the
+     * room (the waypoint is meant to be found from outside it), so a room change does not reset it.
+     */
+    private final QuizSolver quiz = new QuizSolver();
+
     private PuzzleCoordinator() {
-        register(new QuizSolver());
+        register(quiz);
         register(new ThreeWeirdosSolver());
         register(new BlazeSolver());
         register(new TicTacToeRoom());
@@ -186,7 +192,7 @@ public final class PuzzleCoordinator {
         if (!java.util.Objects.equals(room, lastRoom)) {
             // Reset first: resetAll() clears lastRoom, and doing it after the assignment left
             // lastRoom null for good - no solver ever ran its onTick (fixed 2026-10-15).
-            resetAll("room change");
+            resetRooms("room change");
             lastRoom = room;
             waitingLogged = false;
             npcChatLogged = false;
@@ -375,17 +381,54 @@ public final class PuzzleCoordinator {
      * failed - the cases are deliberately indistinguishable from the renderer's side, so there is one
      * way to draw nothing. A failed room is included: the penalty is taken and an answer drawn over it
      * only invites a teammate to click a finished room.
+     *
+     * <p>The one exception to "only the room you stand in": the Quiz answer waypoint is drawn from
+     * anywhere in the dungeon, so it can be walked to from outside the room.
      */
     public List<PuzzleHighlight> highlights() {
         if (!cfg().puzzleSolver) {
             return List.of();
         }
         PuzzleStrategy active = activeStrategy();
-        if (active == null || !enabled(active.type())
-                || PuzzleTabReader.getInstance().finished(active.type())) {
+        if (active == null || active == quiz) {
+            return quizLive() ? quiz.highlights() : List.of();
+        }
+        if (!enabled(active.type()) || PuzzleTabReader.getInstance().finished(active.type())) {
             return List.of();
         }
-        return active.highlights();
+        List<PuzzleHighlight> room = active.highlights();
+        List<PuzzleHighlight> quizMark = quizLive() ? quiz.highlights() : List.of();
+        if (quizMark.isEmpty()) {
+            return room;
+        }
+        List<PuzzleHighlight> both = new java.util.ArrayList<>(room.size() + quizMark.size());
+        both.addAll(room);
+        both.addAll(quizMark);
+        return both;
+    }
+
+    /** Whether the Quiz solver is on and its room not yet solved or failed. */
+    private boolean quizLive() {
+        return enabled(PuzzleType.QUIZ) && !PuzzleTabReader.getInstance().finished(PuzzleType.QUIZ);
+    }
+
+    /**
+     * Milliseconds until Oruo's next question for the Quiz HUD card, {@code 0} when none is due or
+     * the Quiz solver is off.
+     */
+    public long quizNextQuestionMs() {
+        return cfg().puzzleSolver && quizLive() ? quiz.nextQuestionMs() : 0;
+    }
+
+    /** A room change: every solver but the Quiz, whose state outlives the room. */
+    private void resetRooms(String reason) {
+        lastRoom = null;
+        for (PuzzleStrategy strategy : strategies.values()) {
+            if (strategy != quiz) {
+                strategy.reset();
+            }
+        }
+        SkyblockSimplifiedSBS.LOGGER.debug("[SBS][Puzzle] room solvers reset: {}", reason);
     }
 
     private void resetAll(String reason) {

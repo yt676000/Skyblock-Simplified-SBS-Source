@@ -234,6 +234,9 @@ public final class TickTasks {
                 TickTask.of("tick.AutoRequeue", ALWAYS,
                         () -> sbs.modid.client.dungeons.requeue.logic.AutoRequeue.getInstance().onClientTick()),
                 // Lobbies and limbo after a kick are exactly where it works.
+                // Local Flip Finder: starts/stops its connection and expires finds; one config read while off.
+                TickTask.of("tick.LocalFlipFinder", ALWAYS,
+                        () -> sbs.modid.client.economy.localflips.logic.LocalFlipFinder.getInstance().tick()),
                 TickTask.of("tick.RejoinTimer", ALWAYS,
                         () -> sbs.modid.client.helper.rejoin.RejoinTimer.getInstance().onClientTick()),
                 TickTask.of("tick.ReminderTracker", PLAYER,

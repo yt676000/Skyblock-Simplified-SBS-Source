@@ -213,6 +213,10 @@ public final class PathfindingManager {
     /** Called once per client tick from {@code GuiTrackingMixin}. */
     public void tick(Minecraft minecraft) {
         lastTickNanos = 0;
+        // One deadline for the whole manager: goal sync, every route's slice, the deep search and
+        // starting a new search all come out of the same {@link #TIME_BUDGET_NANOS}.
+        long tickStart = System.nanoTime();
+        long deadline = tickStart + TIME_BUDGET_NANOS;
         PathLog.flush(System.currentTimeMillis());
         if (!PathRouting.routing()) {
             if (!routes.isEmpty()) {
@@ -229,7 +233,7 @@ public final class PathfindingManager {
         sync(PathRouting.goals(player.blockPosition()), System.currentTimeMillis());
         plan();
 
-        stepSearches();
+        stepSearches(deadline);
 
         // Maintain the rest; start at most one new search per tick so they stagger.
         Vec3 position = player.position();
@@ -247,18 +251,20 @@ public final class PathfindingManager {
             // Walking the route consumes it rather than dragging a tail behind the player.
             route.trimWalkedPart(position);
             route.checkBlocked(position, System.currentTimeMillis());
-            if (!startedOne && route.needsRecompute(block, position, current, mobility, tolerance(),
-                    verticalTolerance(mobility))) {
+            if (!startedOne && System.nanoTime() < deadline
+                    && route.needsRecompute(block, position, current, mobility, tolerance(),
+                            verticalTolerance(mobility))) {
                 route.startSearch(level, searchStart(player, level, mobility), current, mobility,
                         cfg().maxNodes, cfg().maxFall, JumpPads.getInstance().forIsland(
                                 sbs.modid.client.core.location.SkyBlockLocation.island()));
                 startedOne = true;
             }
         }
+        lastTickNanos = System.nanoTime() - tickStart;
     }
 
     /** Advances every running search, in priority order, within the one shared budget. */
-    private void stepSearches() {
+    private void stepSearches(long deadline) {
         List<Route> running = new ArrayList<>();
         for (Route route : routes.values()) {
             if (!route.paused() && route.searching()) {
@@ -270,11 +276,13 @@ public final class PathfindingManager {
         }
         int[] slices = RoutePlanner.slices(nodeBudget, running.size());
         long started = System.nanoTime();
-        // The node budget is the plan; the deadline is the guarantee. A run of expensive nodes
-        // outpaces the slow calibration, and without the hard stop one tick ran 170+ ms.
-        long deadline = started + TIME_BUDGET_NANOS;
+        // The node budget is the plan; the deadline (from {@link #tick}) is the guarantee. A run of
+        // expensive nodes outpaces the slow calibration, and without the hard stop one tick ran 170+ ms.
         int spent = 0;
         for (int i = 0; i < running.size(); i++) {
+            if (System.nanoTime() >= deadline) {
+                break;   // the rest wait for the next tick; priority order means the primary went first
+            }
             spent += running.get(i).step(slices[i], deadline);
         }
         long elapsed = System.nanoTime() - started;

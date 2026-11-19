@@ -572,6 +572,12 @@ public enum HudElement {
         @Override protected Bounds computeBounds(int gw, int gh) { return new Bounds(gw / 2f + 100, gh / 2f + 64, 132, 56); }
     },
 
+    // Quiz card (Dungeons puzzle): the countdown to Oruo's next question. Under the crosshair - read
+    // while standing at the buttons, waiting to click. Self-measuring.
+    QUIZ_TIMER("quiz_timer", "Quiz Next Question") {
+        @Override protected Bounds computeBounds(int gw, int gh) { return new Bounds(gw / 2f - 50, gh / 2f + 24, 100, 21); }
+    },
+
     // Spirit Bear card (Dungeons): lantern-ring progress and the bear countdown, F4/M4 boss room
     // only. Same column as the blood card - it is the other thing read mid-fight. Self-measuring.
     SPIRIT_BEAR("spirit_bear", "Spirit Bear") {
@@ -835,6 +841,7 @@ public enum HudElement {
             case ABILITY_TIMERS -> "ability_timers";
             case BLOOD_HELPER -> "blood_helper";
             case SPIRIT_BEAR -> "spirit_bear";
+            case QUIZ_TIMER -> "puzzle_solvers";
             case KUUDRA -> "kuudra";
             case AUTO_REQUEUE -> "auto_requeue";
             case HUNTING_SESSION -> "hunting_session";

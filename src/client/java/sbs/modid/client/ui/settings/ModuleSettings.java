@@ -561,6 +561,128 @@ public final class ModuleSettings {
                         .describe("Opens Development_Stuff/scanner in your file browser."));
     }
 
+    /**
+     * The Local Flip Finder's rows on the Developer page (economy/localflips). Only reachable in
+     * developer mode, because the page itself is.
+     */
+    private static List<SettingRow> localFlipRows() {
+        return List.of(
+                SettingRow.label("— Local Flip Finder (Lokaler Flip-Finder) —"),
+                SettingRow.toggle("Local Flip Finder", () -> cfg().dev.localFlips.enabled,
+                                () -> { cfg().dev.localFlips.enabled = !cfg().dev.localFlips.enabled; save(); })
+                        .describe("Connects to the flip program on this PC or your LAN and shows its "
+                                + "finds in the flip window and in chat. Only opens an auction when you "
+                                + "click; buying is yours. Off: no connection, no thread. Default: off."),
+                SettingRow.text("Flip Program Address", "http://127.0.0.1:3020", 200,
+                                () -> cfg().dev.localFlips.url,
+                                value -> { cfg().dev.localFlips.url = value; save(); })
+                        .describe("Where the flip program listens. Only addresses on this PC or the LAN "
+                                + "are used; anything else is refused. Default: http://127.0.0.1:3020."),
+                SettingRow.maskedText("Flip Program Token", "optional", 200,
+                                () -> cfg().dev.localFlips.token,
+                                value -> { cfg().dev.localFlips.token = value; save(); }, () -> false)
+                        .describe("Sent as the X-SBS-Token header when set - needed when the program is "
+                                + "opened to the LAN. Never logged or shown. Default: empty."),
+                SettingRow.button("Test Connection",
+                                sbs.modid.client.economy.localflips.logic.LocalFlipFinder::testConnection)
+                        .describe("Asks the program's /health once and says in chat whether it answered, "
+                                + "how fast, and whether it needs a token."),
+                SettingRow.button("Open Flip Window", () -> open(
+                                new sbs.modid.client.economy.localflips.ui.LocalFlipsScreen()))
+                        .describe("The window with every find, its numbers and an Open button."),
+                SettingRow.keybind("Open Flip Window Key", () -> cfg().dev.localFlips.openOverlayKey,
+                                key -> { cfg().dev.localFlips.openOverlayKey = key; save(); })
+                        .describe("A key that opens the flip window. Default: unbound."),
+                SettingRow.keybind("Open Newest Find Key", () -> cfg().dev.localFlips.openNewestKey,
+                                key -> { cfg().dev.localFlips.openNewestKey = key; save(); })
+                        .describe("A key that opens the auction of the newest SOFORT find that is still "
+                                + "valid - one /viewauction per press. Default: unbound."),
+                SettingRow.toggle("Flip Chat Alerts", () -> cfg().dev.localFlips.chatAlerts,
+                                () -> { cfg().dev.localFlips.chatAlerts = !cfg().dev.localFlips.chatAlerts; save(); })
+                        .describe("One chat line per new SOFORT find with [OPEN] and [COPY]. Each auction "
+                                + "once, also across reconnects. Default: on."),
+                SettingRow.soundToggle("Flip Alert Sound", () -> cfg().dev.localFlips.sound,
+                                () -> { cfg().dev.localFlips.sound = !cfg().dev.localFlips.sound; save(); })
+                        .describe("A short sound with each alert. Default: on."),
+                SettingRow.toggle("Flip Alert Toast", () -> cfg().dev.localFlips.toast,
+                                () -> { cfg().dev.localFlips.toast = !cfg().dev.localFlips.toast; save(); })
+                        .describe("A toast in the corner with each alert. Default: off."),
+                SettingRow.intField("Alert Min Profit", 0, 2_000_000_000, () -> cfg().dev.localFlips.minProfit,
+                                value -> { cfg().dev.localFlips.minProfit = value; save(); }, "coins")
+                        .describe("Finds below this net profit are not alerted, and are drawn greyed in "
+                                + "the window. Default: 500000."),
+                SettingRow.rangeSlider("Alert Min Safety", 0, 100, () -> cfg().dev.localFlips.minSafety,
+                                value -> { cfg().dev.localFlips.minSafety = value; save(); }, "%")
+                        .describe("Finds below this safety are not alerted. Bids carry no safety and are "
+                                + "never held back by it. Default: 0 %."),
+                SettingRow.toggle("Show Flip List", () -> cfg().dev.localFlips.showList,
+                                () -> { cfg().dev.localFlips.showList = !cfg().dev.localFlips.showList; save(); })
+                        .describe("The program's flip list below the SOFORT finds. Default: on."),
+                SettingRow.toggle("Show Bid Auctions", () -> cfg().dev.localFlips.showBids,
+                                () -> { cfg().dev.localFlips.showBids = !cfg().dev.localFlips.showBids; save(); })
+                        .describe("Bid auctions in the flip list, with the most worth bidding. Default: on."));
+    }
+
+    /**
+     * Lowball's rows on the Developer page (economy/lowball). Only reachable in developer mode,
+     * because the page itself is.
+     */
+    private static List<SettingRow> lowballRows() {
+        return List.of(
+                SettingRow.label("— Lowball —"),
+                SettingRow.toggle("Enable Lowball", () -> cfg().dev.lowball.enabled,
+                                () -> { cfg().dev.lowball.enabled = !cfg().dev.lowball.enabled; save(); })
+                        .describe("Appraises items through the flip program (fast mode must be running) and "
+                                + "suggests lowball offers. Never sends, trades or buys anything. Default: off."),
+                SettingRow.text("Lowball Server URL", "http://127.0.0.1:3020", 200,
+                                () -> cfg().dev.lowball.url,
+                                value -> { cfg().dev.lowball.url = value; save(); })
+                        .describe("Where the flip program listens. Only addresses on this PC or the LAN "
+                                + "are used. Default: http://127.0.0.1:3020."),
+                SettingRow.maskedText("Lowball Token", "optional", 200,
+                                () -> cfg().dev.lowball.token,
+                                value -> { cfg().dev.lowball.token = value; save(); }, () -> false)
+                        .describe("Sent as X-SBS-Token. Empty: the Local Flip Finder's token is used. "
+                                + "Never logged or shown. Default: empty."),
+                lowballDiscountRow(0, 10),
+                lowballDiscountRow(1, 15),
+                lowballDiscountRow(2, 20),
+                lowballDiscountRow(3, 25),
+                SettingRow.segmented("Lowball Display", List.of("Window", "Tooltip", "Chat"),
+                                () -> Math.max(0, Math.min(2, cfg().dev.lowball.display)),
+                                index -> { cfg().dev.lowball.display = index; save(); })
+                        .describe("Window: a movable window that stays until closed (/sbs lowball last "
+                                + "reopens it). Tooltip: lines on the item until you leave the slot "
+                                + "(trades go to chat). Chat: chat lines. Default: Window."),
+                SettingRow.toggle("Trade Window: Appraise All", () -> cfg().dev.lowball.tradeAppraiseAll,
+                                () -> { cfg().dev.lowball.tradeAppraiseAll = !cfg().dev.lowball.tradeAppraiseAll; save(); })
+                        .describe("The trade key appraises every item on the other player's side of /trade "
+                                + "in one request. Default: on."),
+                SettingRow.toggle("Suggest /msg With Offer", () -> cfg().dev.lowball.suggestMsg,
+                                () -> { cfg().dev.lowball.suggestMsg = !cfg().dev.lowball.suggestMsg; save(); })
+                        .describe("Clicking an offer in a trade puts \"/msg <player> <offer>?\" into the chat "
+                                + "box for you to send; off: it copies the offer. Default: off."),
+                SettingRow.keybind("Appraise Slot Key", () -> cfg().dev.lowball.appraiseSlotKey,
+                                key -> { cfg().dev.lowball.appraiseSlotKey = key; save(); })
+                        .describe("Over a slot in any container: appraise that item. Default: L."),
+                SettingRow.keybind("Appraise Trade Key", () -> cfg().dev.lowball.appraiseTradeKey,
+                                key -> { cfg().dev.lowball.appraiseTradeKey = key; save(); })
+                        .describe("In /trade: appraise the other side. When it is the same key as "
+                                + "Appraise Slot it needs Shift. Default: Shift+L."));
+    }
+
+    /** One of Lowball's four offer discount sliders; 0 switches that offer off. */
+    private static SettingRow lowballDiscountRow(int index, int defaultPct) {
+        return SettingRow.rangeSlider("Offer Discount " + (index + 1), 0, 50,
+                        () -> sbs.modid.client.economy.lowball.logic.Lowball.discountPct(index),
+                        value -> {
+                            sbs.modid.client.economy.lowball.logic.Lowball.setDiscountPct(index, value);
+                            save();
+                        }, "%")
+                .describe("One offer this far below the value; 0 = off. With all four off the program "
+                        + "uses its own 10/15/20/25 %. Default: " + defaultPct + " %.");
+    }
+
     /** Guards "Reset All Screen Opacity" - it drops every per-screen value at once. */
     private static final ConfirmClick SCREEN_OPACITY_RESET = new ConfirmClick();
     private static final ConfirmClick BACKUP_PRICES_CLEAR = new ConfirmClick();
@@ -3165,7 +3287,7 @@ public final class ModuleSettings {
                                     + "them for Hypixel, which is case-sensitive there."),
                     SettingRow.label("Your own shortcuts always win over a built-in of the same name"));
 
-            case ModuleManager.DEVELOPER_ID -> concat(layoutRecorderRows(), serverScannerRows(), List.of(
+            case ModuleManager.DEVELOPER_ID -> concat(layoutRecorderRows(), serverScannerRows(), localFlipRows(), lowballRows(), List.of(
                     SettingRow.button("Scanned Rooms...", () -> open(
                             new sbs.modid.client.core.dev.ScannedRoomsScreen(
                                     sbs.modid.client.core.api.GuiStateManager.getInstance().getCurrentScreen())))

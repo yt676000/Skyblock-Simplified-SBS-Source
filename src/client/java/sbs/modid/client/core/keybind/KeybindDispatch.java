@@ -93,6 +93,8 @@ public final class KeybindDispatch {
         sbs.modid.client.ui.hud.edit.command.HudEditorKeybind.onKeyPressed(code);
 
         sbs.modid.client.economy.forge.command.ForgeKeybinds.onKeyPressed(code);
+        // Local Flip Finder (developer mode only; both keys unbound by default).
+        sbs.modid.client.economy.localflips.command.LocalFlipKeybinds.onKeyPressed(code);
 
         sbs.modid.client.skills.hunting.HuntingKeybinds.onKeyPressed(code);
 

@@ -163,6 +163,7 @@ public final class ConfigManager {
                         migrateHighlightNames(loaded);
                         migrateDianaHud(loaded);
                         migrateChatSpamFilters(loaded);
+                        migrateLocalFlips(loaded);
                         if (loaded.dungeons != null) {
                             sbs.modid.client.dungeons.puzzle.logic.PuzzleSettings.migrateSilverfish(loaded.dungeons);
                         }
@@ -190,7 +191,7 @@ public final class ConfigManager {
     }
 
     /** The newest round of shipped defaults; bump when a new one has to reach existing configs. */
-    private static final int SHIPPED_DEFAULTS = 2;
+    private static final int SHIPPED_DEFAULTS = 3;
 
     /**
      * Adopts the current shipped defaults into a config that predates them - once, ever.
@@ -217,6 +218,12 @@ public final class ConfigManager {
         // Tab-List back on for everyone who had deliberately turned them off.
         if (adopted < 2 && config.convenience != null) {
             config.convenience.keepMousePosition = true;
+        }
+
+        // Round 3: Looking At off. Its initialiser said "off by default" in the javadoc but shipped
+        // true, so every existing config has it on without anyone having asked for it.
+        if (adopted < 3 && config.lookingAt != null) {
+            config.lookingAt.enabled = false;
         }
 
         if (adopted >= 1) {
@@ -305,6 +312,27 @@ public final class ConfigManager {
      * Only a {@code true} carries over - {@code false} is what a missing key means anyway - and the
      * boxed fields are nulled so the next write drops them from config.json.
      */
+    /**
+     * Gives configs written before the Local Flip Finder existed its block. Gson already fills an
+     * absent block from the initialiser; this covers an explicit {@code null} (a hand-edited file),
+     * and a missing {@code dev} group, so no reader ever has to null-check them.
+     */
+    static void migrateLocalFlips(SBSConfig config) {
+        if (config.dev == null) {
+            config.dev = new SBSConfig.DevSettings();
+        }
+        if (config.dev.localFlips == null) {
+            config.dev.localFlips = new SBSConfig.LocalFlipSettings();
+        }
+        SBSConfig.LocalFlipSettings flips = config.dev.localFlips;
+        if (flips.url == null || flips.url.isBlank()) {
+            flips.url = new SBSConfig.LocalFlipSettings().url;
+        }
+        if (flips.token == null) {
+            flips.token = "";
+        }
+    }
+
     @SuppressWarnings("deprecation")
     static void migrateChatSpamFilters(SBSConfig config) {
         SBSConfig.BetterChatSettings chat = config.betterChat;

@@ -20,17 +20,18 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p><b>Nearly nothing needs to be here, and that is by design.</b> The general rule - upper-case
  * the display name, collapse everything non-alphanumeric to underscores - already lands on the id
- * for all 320 shards in the catalogue, because the catalogue's own name index compares
+ * for nearly every shard in the catalogue, because the catalogue's own name index compares
  * letters-and-digits-only in lower case. Punctuation, capitalisation and spacing therefore cannot
  * cause a miss on their own. What this table is for is the case the general rule cannot reach: a
  * display name whose <i>words</i> differ from its id's.
  *
- * <p><b>It ships empty, on purpose.</b> No such name is known. Writing speculative entries would be
- * worse than having none: an override that maps a correctly-resolving name onto the wrong shard is
- * silent, permanent and points the player at a shard they do not need. So the table starts empty and
- * {@link #noteUnmatched} logs, once per name, every display name that reached a shard-shaped screen
- * and resolved to nothing - which is the evidence an entry is written from, and it costs one trip
- * into the menu rather than a session of guessing.
+ * <p><b>Every entry is evidenced.</b> Each one was read off a live Hunting Box and Attribute Menu
+ * (2026-10-19): the in-game name on the left, and on the right the Bazaar product that shard
+ * still trades under, the only catalogue entry left unclaimed for it. Writing speculative entries
+ * would be worse than having none: an override that maps a correctly-resolving name onto the wrong
+ * shard is silent, permanent and points the player at a shard they do not need. {@link #noteUnmatched} logs,
+ * once per name, every display name that reached a shard-shaped screen and resolved to nothing -
+ * which is the evidence an entry is written from.
  *
  * <p><b>Adding one</b> is a single line in {@link #OVERRIDES}: the display name as Hypixel writes it
  * on the left, the catalogue's own {@code name} on the right. Both are normalised here, so the
@@ -39,12 +40,18 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ShardNameOverrides {
 
     /**
-     * Display name (as seen) to catalogue name (as filed).
+     * Display name (as seen) to catalogue name (as filed), keyed by {@link #normalise}.
      *
-     * <p>Empty until a live client produces a name that does not resolve. See the class comment for
-     * why an unverified entry is worse than a missing one.
+     * <p>Hypixel renamed these in game and kept the old Bazaar product, so the name normalises onto
+     * a product that does not exist and the shard both drops out of the catalogue and prices as
+     * unknown. See the class comment for why an unverified entry is worse than a missing one.
      */
-    private static final Map<String, String> OVERRIDES = Map.of();
+    private static final Map<String, String> OVERRIDES = Map.of(
+            normalise("Zealot Bruiser"), "BRUISER",
+            normalise("Abyssal Lanternfish"), "ABYSSAL_LANTERN",
+            normalise("Wither Spectre"), "WITHER_SPECTER",
+            normalise("Loch Emperor"), "SEA_EMPEROR",
+            normalise("Packrat"), "PACKRAT_SKULL");
 
     /** Names already logged as unmatched, so one broken name is one line rather than one per tick. */
     private static final Set<String> LOGGED = ConcurrentHashMap.newKeySet();

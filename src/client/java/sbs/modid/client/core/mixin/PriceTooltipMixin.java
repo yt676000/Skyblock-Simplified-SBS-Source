@@ -93,6 +93,15 @@ public abstract class PriceTooltipMixin {
             cir.setReturnValue(current);
         }
 
+        // Lowball appraisal (developer mode), sharing this handler for the same reason. Self-gating:
+        // nothing unless this exact stack was just appraised with the tooltip option on.
+        List<Component> withLowball = sbs.modid.client.economy.lowball.logic.Lowball.decorate(
+                current, (ItemStack) (Object) this);
+        if (withLowball != current) {
+            current = withLowball;
+            cir.setReturnValue(current);
+        }
+
         // Museum Helper's "Museum: not donated · +N XP", sharing this handler for the same reason.
         // Self-gating: nothing unless the item's museum category has been fully seen and it is missing.
         List<Component> withMuseum = sbs.modid.client.helper.museum.render.MuseumTooltip.decorate(

@@ -10,9 +10,12 @@ package sbs.modid.client.dungeons.puzzle.logic;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.ButtonBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.AABB;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.dungeons.puzzle.model.PuzzleHighlight;
@@ -35,10 +38,13 @@ import java.util.List;
  * <ul>
  *   <li>an SBS line of its own in chat naming the option, with the row's certainty. Hypixel's lines
  *       are never edited or suppressed;</li>
- *   <li>a box on the <b>button</b> under the floating label carrying that option's text, when
- *       exactly one label nearby matches. The room database records no button positions, so the
- *       label finds the button; the wrong options are never drawn.</li>
+ *   <li>a waypoint on the <b>block between that option's buttons</b>, under the floating label
+ *       carrying its text, when exactly one label nearby matches. The room database records no
+ *       button positions, so the label finds the buttons; the wrong options are never drawn. The
+ *       waypoint stays until the question is answered, also outside the room.</li>
  * </ul>
+ *
+ * <p>The countdown to the next question is its own HUD card ({@code QuizHud}), not a world label.
  *
  * <p><b>Silent when unsure:</b> a question the table does not know (logged in full under
  * {@code [SBS][Quiz] unknown question:} so the table can grow), a rule that does not pick exactly one
@@ -65,8 +71,6 @@ public final class QuizSolver implements PuzzleStrategy {
     /** The answer as shown in chat, for the waypoint's label. */
     private String answerText;
     private AABB target;
-    /** The last answer button found; the countdown label hangs there, the buttons stand together. */
-    private AABB lastButton;
 
     private long lastScan;
     private String lastUnknownLogged = "";
@@ -146,26 +150,28 @@ public final class QuizSolver implements PuzzleStrategy {
         }
         // Two labels carrying the same answer text means the read is ambiguous, and an ambiguous
         // read is worth exactly as much as no read at all here.
-        AABB button = matches == 1 ? buttonUnder(minecraft.level, found) : null;
-        if (matches == 1 && !java.util.Objects.equals(button, target)) {
+        if (matches == 0) {
+            // Out of label range - the player left the room. The waypoint found earlier stays.
+            return;
+        }
+        AABB block = matches == 1 ? answerBlock(minecraft.level, found) : null;
+        if (matches == 1 && !java.util.Objects.equals(block, target)) {
             SkyblockSimplifiedSBS.LOGGER.info("[SBS][Quiz] answer label at {} -> {}",
                     BlockPos.containing(found.getCenter()).toShortString(),
-                    button == null ? "no button nearby, nothing drawn" : "button at "
-                            + BlockPos.containing(button.getCenter()).toShortString());
+                    block == null ? "no button nearby, nothing drawn" : "answer block at "
+                            + BlockPos.containing(block.getCenter()).toShortString());
         }
-        target = button;
-        if (button != null) {
-            lastButton = button;
-        }
+        target = block;
     }
 
     /**
-     * The one button the answer label stands over: the nearest button block within
-     * {@link #BUTTON_REACH} sideways and a few blocks below to one above the label's foot. The
-     * maintainer asked for the button alone (2026-10-16); boxing the whole floating label drew a
-     * two-block box. No button there - nothing drawn, never the label as a fallback.
+     * The block the answer's buttons sit on: the middle block when two buttons flank one block,
+     * otherwise the block the nearest button is attached to. The maintainer asked for this block
+     * instead of the button (2026-10-19). The nearest button is searched within
+     * {@link #BUTTON_REACH} sideways and a few blocks below to one above the label's foot. No button
+     * there - nothing drawn, never the label as a fallback.
      */
-    private static AABB buttonUnder(net.minecraft.client.multiplayer.ClientLevel level, AABB label) {
+    private static AABB answerBlock(net.minecraft.client.multiplayer.ClientLevel level, AABB label) {
         BlockPos foot = BlockPos.containing(label.getCenter().x, label.minY, label.getCenter().z);
         BlockPos best = null;
         double bestDist = Double.MAX_VALUE;
@@ -185,47 +191,49 @@ public final class QuizSolver implements PuzzleStrategy {
                 }
             }
         }
-        return best == null ? null : new AABB(best);
+        if (best == null) {
+            return null;
+        }
+        for (Direction side : Direction.Plane.HORIZONTAL) {
+            if (level.getBlockState(best.relative(side, 2)).getBlock() instanceof ButtonBlock
+                    && !level.getBlockState(best.relative(side)).isAir()) {
+                return new AABB(best.relative(side));
+            }
+        }
+        return new AABB(supportOf(level.getBlockState(best), best));
     }
 
-    @Override
-    public List<PuzzleHighlight> highlights() {
-        List<PuzzleHighlight> out = new ArrayList<>(1);
-        if (target != null) {
-            // The waypoint: the button, and its label drawn on screen so it reads through walls.
-            out.add(PuzzleHighlight.answer(target.inflate(0.02), PuzzleSettings.argb(PuzzleType.QUIZ),
-                    answerText == null ? null : "§a✔ " + answerText));
-            return out;
-        }
-        long remaining = timer.remainingMs(System.currentTimeMillis());
-        AABB anchor = countdownAnchor();
-        if (remaining > 0 && anchor != null) {
-            String seconds = String.format(java.util.Locale.ROOT, "%.1f", remaining / 1000.0);
-            out.add(PuzzleHighlight.context(anchor, 0x00FFFFFF, "§eNext question in " + seconds + "s"));
-        }
-        return out;
+    /** The block a button is attached to. */
+    private static BlockPos supportOf(BlockState button, BlockPos at) {
+        return switch (button.getValue(BlockStateProperties.ATTACH_FACE)) {
+            case FLOOR -> at.below();
+            case CEILING -> at.above();
+            case WALL -> at.relative(button.getValue(BlockStateProperties.HORIZONTAL_FACING).getOpposite());
+        };
     }
 
     /**
-     * Where the countdown label hangs: over the last answer button (the three stand together), or
-     * before the first question the room's centre at eye height. A zero-size box, so only the label
-     * shows.
+     * The answer waypoint: the block, with its label and distance projected on screen so it reads
+     * through walls. The coordinator keeps drawing it after the player leaves the room.
      */
-    private AABB countdownAnchor() {
-        net.minecraft.world.phys.Vec3 at;
-        if (lastButton != null) {
-            at = lastButton.getCenter().add(0, 1.5, 0);
-        } else {
-            sbs.modid.client.dungeons.run.logic.DungeonRoomBorders.Borders borders =
-                    sbs.modid.client.dungeons.run.logic.DungeonRoomTracker.getInstance().borders();
-            Minecraft mc = Minecraft.getInstance();
-            if (borders == null || mc.player == null) {
-                return null;
-            }
-            at = new net.minecraft.world.phys.Vec3((borders.min().getX() + borders.max().getX() + 1) / 2.0,
-                    mc.player.getEyeY(), (borders.min().getZ() + borders.max().getZ() + 1) / 2.0);
+    @Override
+    public List<PuzzleHighlight> highlights() {
+        if (target == null) {
+            return List.of();
         }
-        return new AABB(at, at);
+        String label = answerText == null ? "§a✔ Answer" : "§a✔ " + answerText;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null) {
+            label += " §7" + (int) Math.sqrt(target.getCenter().distanceToSqr(mc.player.position())) + "m";
+        }
+        List<PuzzleHighlight> out = new ArrayList<>(1);
+        out.add(PuzzleHighlight.answer(target.inflate(0.02), PuzzleSettings.argb(PuzzleType.QUIZ), label));
+        return out;
+    }
+
+    /** Milliseconds until Oruo's next question, {@code 0} when no countdown runs. Read by the HUD card. */
+    public long nextQuestionMs() {
+        return timer.remainingMs(System.currentTimeMillis());
     }
 
     @Override
@@ -235,7 +243,6 @@ public final class QuizSolver implements PuzzleStrategy {
         answerKey = null;
         answerText = null;
         target = null;
-        lastButton = null;
         lastScan = 0;
         lastUnknownLogged = "";
     }

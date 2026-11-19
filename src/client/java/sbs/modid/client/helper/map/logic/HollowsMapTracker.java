@@ -188,6 +188,126 @@ public final class HollowsMapTracker implements HollowsDetector.Listener {
         return "Removed " + count + " marker(s) called '" + label.strip() + "'.";
     }
 
+    // ------------------------------------------------------------------ chat sharing
+
+    /** Chat channels {@code /sbs chmap share} may post to. */
+    private static final List<String> CHANNELS = List.of("pc", "ac", "gc", "cc");
+
+    /**
+     * {@code /sbs chmap share [structure|all] [pc|ac|gc|cc]}: posts the found structures to a chat
+     * channel (party by default). Returns the feedback line, or {@code null} when it was sent.
+     */
+    public String share(String args) {
+        if (store.current() == null) {
+            return "Structures can only be shared on the Crystal Hollows.";
+        }
+        String what = "all";
+        String channel = "pc";
+        for (String word : args == null ? new String[0] : args.strip().split("\\s+")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            if (CHANNELS.contains(word.toLowerCase(java.util.Locale.ROOT))) {
+                channel = word.toLowerCase(java.util.Locale.ROOT);
+            } else {
+                what = what.equals("all") ? word : what + " " + word;
+            }
+        }
+        List<KnownStructure> found = known().stream().filter(KnownStructure::confirmed).toList();
+        if (!what.equalsIgnoreCase("all")) {
+            var wanted = HollowsChatShare.structureNamed(what);
+            if (wanted == null) {
+                return "Unknown structure '" + what + "'. Try temple, divan, queen, city, khazad,"
+                        + " grotto, lair, nucleus or all.";
+            }
+            found = found.stream().filter(s -> s.structure() == wanted).toList();
+        }
+        String line = HollowsChatShare.format(found);
+        if (line.isEmpty()) {
+            return "No confirmed structure to share in this lobby yet.";
+        }
+        var player = Minecraft.getInstance().player;
+        if (player == null) {
+            return "Not in game.";
+        }
+        player.connection.sendCommand(channel + " " + line);
+        return null;
+    }
+
+    /** {@code /sbs chmap add <x> <y> <z> <label>}, the click target of a shared chat line. */
+    public String markAt(String args) {
+        HollowsLobbyMap map = store.current();
+        if (map == null) {
+            return "Markers can only be placed on the Crystal Hollows.";
+        }
+        String[] parts = args == null ? new String[0] : args.strip().split("\\s+", 4);
+        if (parts.length < 4) {
+            return "Usage: /sbs chmap add <x> <y> <z> <label>";
+        }
+        int x;
+        int y;
+        int z;
+        try {
+            x = Integer.parseInt(parts[0]);
+            y = Integer.parseInt(parts[1]);
+            z = Integer.parseInt(parts[2]);
+        } catch (NumberFormatException e) {
+            return "Usage: /sbs chmap add <x> <y> <z> <label>";
+        }
+        String label = parts[3].strip();
+        for (HollowsMarker existing : map.markers()) {
+            if (existing.x() == x && existing.y() == y && existing.z() == z
+                    && existing.label().equalsIgnoreCase(label)) {
+                return "'" + label + "' is already on the map.";
+            }
+        }
+        if (!map.addMarker(label, x, y, z, System.currentTimeMillis())) {
+            return "This lobby already has " + HollowsLobbyMap.MAX_MARKERS
+                    + " markers - remove one with /sbs chmap unmark <label>.";
+        }
+        dirty = true;
+        return "Added '" + label + "' at " + x + ", " + y + ", " + z + " to the Crystal Hollows map.";
+    }
+
+    /**
+     * Every chat line with a sender, on the Hollows: Hollows coordinates in it get a clickable
+     * "add to map" line. Nothing is added without the click.
+     */
+    public void onChat(String rawText) {
+        if (!enabled() || store.current() == null || rawText == null) {
+            return;
+        }
+        int colon = sbs.modid.client.social.chat.logic.ChatWaypoints.senderColon(rawText);
+        if (colon < 0) {
+            return;
+        }
+        String sender = sbs.modid.client.social.chat.logic.ChatWaypoints.senderOf(rawText.substring(0, colon));
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player != null && sender.equalsIgnoreCase(minecraft.player.getGameProfile().name())) {
+            return;
+        }
+        List<HollowsChatShare.Entry> entries = HollowsChatShare.parse(rawText.substring(colon + 1));
+        if (entries.isEmpty()) {
+            return;
+        }
+        // Deferred: this runs inside the chat-add call.
+        minecraft.execute(() -> {
+            var line = net.minecraft.network.chat.Component.literal("Hollows spots from " + sender + ": ");
+            for (HollowsChatShare.Entry entry : entries) {
+                String label = entry.structure() != null ? entry.structure().displayName() : sender;
+                String command = "/sbs chmap add " + entry.x() + " " + entry.y() + " " + entry.z() + " " + label;
+                line.append(net.minecraft.network.chat.Component.literal("[+ " + label + "] ")
+                        .withStyle(net.minecraft.network.chat.Style.EMPTY.withColor(0x55FF55)
+                                .withClickEvent(new net.minecraft.network.chat.ClickEvent.RunCommand(command))
+                                .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
+                                        net.minecraft.network.chat.Component.literal("Add a marker at "
+                                                + entry.x() + " " + entry.y() + " " + entry.z()
+                                                + " to the Crystal Hollows map")))));
+            }
+            sbs.modid.client.social.chat.logic.SBSChat.send(line);
+        });
+    }
+
     /** The target key a marker is known by - shared with the map screen so a click can toggle it. */
     public static String markerKey(HollowsMarker marker) {
         return "M:" + marker.label() + "@" + marker.x() + "," + marker.y() + "," + marker.z();
