@@ -25,6 +25,14 @@ public final class Backoff {
     private Backoff() {
     }
 
+    /** Over Radmin VPN: 3 s, then doubling up to 30 s - a remote host is away for longer. */
+    public static long vpnDelayMs(int failures) {
+        if (failures <= 0) {
+            return 0;
+        }
+        return Math.min(30_000L, 3_000L << Math.min(failures - 1, 4));
+    }
+
     /** Delay before the next attempt, after {@code failures} consecutive failures (1 = the first). */
     public static long delayMs(int failures) {
         if (failures <= 0) {

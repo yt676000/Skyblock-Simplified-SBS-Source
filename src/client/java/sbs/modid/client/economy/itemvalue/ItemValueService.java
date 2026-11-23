@@ -111,6 +111,11 @@ public final class ItemValueService {
         for (ItemModifiers.Part part : parts) {
             Row row = new Row(part.label, part.isBook() ? null : part.itemId);
             row.localNow = localNow(part);
+            EnchantMarketRules.Upgrade upgrade = part.isBook()
+                    ? EnchantMarketRules.upgradeFor(part.enchantKey, part.enchantTier) : null;
+            if (upgrade != null) {
+                row.note = upgrade.note(part.enchantTier);   // the no-token table shows it too
+            }
             rows.add(row);
             if (part.itemId == null && !part.isBook()) {
                 row.failed = true;      // a component we recognised but cannot map to a market item
@@ -154,58 +159,52 @@ public final class ItemValueService {
     /**
      * Book pricing under the {@link EnchantMarketRules}: stacking enchants are ONE base book
      * (they level by gameplay, e.g. Champion X ≠ 512 books); tiers above an enchant's combine
-     * limit are drop/craft-only (Smite VII = Smite VI + Severed Hand) and count only as their own
-     * book's market price; everything else evaluates every existing tier k ≤ T as {@code 2^(T-k)}
+     * limit are drop-only and count only as their own book's market price; upgrade-item tiers
+     * (Smite VII = Smite VI + Severed Hand) are the required book plus the item, competing with
+     * their own book; everything else evaluates every existing tier k ≤ T as {@code 2^(T-k)}
      * books and keeps the cheapest.
      */
     private void resolveBook(Row row, ItemModifiers.Part part) {
         catalogue().thenAccept(ids -> {
-            record Candidate(String id, double factor) {
-            }
-            List<Candidate> candidates = new ArrayList<>();
-            if (EnchantMarketRules.isStacking(part.enchantKey)) {
-                for (int k = 1; k <= part.enchantTier && candidates.isEmpty(); k++) {
-                    String id = bookId(part.enchantKey, k, ids);
-                    if (id != null) {
-                        candidates.add(new Candidate(id, 1));
-                        row.note = "T" + k + " book, levels by use";
-                    }
-                }
-            } else if (part.enchantTier > EnchantMarketRules.maxCombinableTier(part.enchantKey)) {
-                String id = bookId(part.enchantKey, part.enchantTier, ids);
-                if (id != null) {
-                    candidates.add(new Candidate(id, 1));
-                }
-            } else {
-                for (int k = 1; k <= part.enchantTier; k++) {
-                    String id = bookId(part.enchantKey, k, ids);
-                    if (id != null) {
-                        candidates.add(new Candidate(id, Math.pow(2, part.enchantTier - k)));
-                    }
-                }
-            }
+            List<BookCandidate> candidates = bookCandidates(row, part.enchantKey, part.enchantTier, ids);
             if (candidates.isEmpty()) {
                 row.failed = true;
                 return;
             }
             List<CompletableFuture<PriceApi.ItemData>> futures = new ArrayList<>();
-            for (Candidate candidate : candidates) {
+            List<CompletableFuture<PriceApi.ItemData>> addons = new ArrayList<>();
+            for (BookCandidate candidate : candidates) {
                 futures.add(fetchSafe(candidate.id()));
+                addons.add(candidate.addonId() == null
+                        ? CompletableFuture.completedFuture(null) : fetchSafe(candidate.addonId()));
             }
-            CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).thenRun(() -> {
-                Candidate best = null;
+            List<CompletableFuture<PriceApi.ItemData>> all = new ArrayList<>(futures);
+            all.addAll(addons);
+            CompletableFuture.allOf(all.toArray(CompletableFuture[]::new)).thenRun(() -> {
+                BookCandidate best = null;
                 PriceStats bestStats = null;
                 for (int i = 0; i < candidates.size(); i++) {
+                    BookCandidate candidate = candidates.get(i);
                     PriceApi.ItemData data = futures.get(i).getNow(null);
                     if (data == null) {
                         continue;
                     }
-                    PriceStats stats = statsOf(data).scaled(candidates.get(i).factor());
+                    PriceStats stats = statsOf(data).scaled(candidate.factor());
+                    if (candidate.addonId() != null) {
+                        PriceApi.ItemData addon = addons.get(i).getNow(null);
+                        PriceStats extra = addon == null ? null : statsOf(addon).scaled(candidate.addonCount());
+                        if (extra == null || extra.now() <= 0) {
+                            continue;   // an unpriced upgrade item never counts as free
+                        }
+                        stats = new PriceStats(stats.now() + extra.now(), stats.day() + extra.day(),
+                                stats.week() + extra.week(), stats.month() + extra.month(),
+                                stats.all() + extra.all());
+                    }
                     if (stats.now() <= 0) {
                         continue;
                     }
                     if (bestStats == null || stats.now() < bestStats.now()) {
-                        best = candidates.get(i);
+                        best = candidate;
                         bestStats = stats;
                     }
                 }
@@ -214,12 +213,56 @@ public final class ItemValueService {
                     return;
                 }
                 row.itemId = best.id();
-                if (best.factor() > 1) {
+                if (best.addonId() != null) {
+                    row.note = EnchantMarketRules.upgradeFor(part.enchantKey, part.enchantTier)
+                            .note(part.enchantTier);
+                } else if (best.factor() > 1) {
                     row.note = "= " + (long) best.factor() + "x " + tierSuffix(best.id());
                 }
                 row.stats = bestStats;
             });
         });
+    }
+
+    /** One way to build a tier: {@code factor} books of {@code id}, plus optional upgrade items. */
+    private record BookCandidate(String id, double factor, String addonId, int addonCount) {
+    }
+
+    private static List<BookCandidate> bookCandidates(Row row, String enchantKey, int tier,
+                                                      Set<String> ids) {
+        List<BookCandidate> candidates = new ArrayList<>();
+        EnchantMarketRules.Upgrade upgrade = EnchantMarketRules.upgradeFor(enchantKey, tier);
+        if (upgrade != null) {
+            String own = bookId(enchantKey, tier, ids);
+            if (own != null) {
+                candidates.add(new BookCandidate(own, 1, null, 0));
+            }
+            for (BookCandidate base : bookCandidates(row, enchantKey, upgrade.requiredTier(), ids)) {
+                candidates.add(new BookCandidate(base.id(), base.factor(),
+                        upgrade.itemId(), upgrade.countFor(tier)));
+            }
+        } else if (EnchantMarketRules.isStacking(enchantKey)) {
+            for (int k = 1; k <= tier && candidates.isEmpty(); k++) {
+                String id = bookId(enchantKey, k, ids);
+                if (id != null) {
+                    candidates.add(new BookCandidate(id, 1, null, 0));
+                    row.note = "T" + k + " book, levels by use";
+                }
+            }
+        } else if (tier > EnchantMarketRules.maxCombinableTier(enchantKey)) {
+            String id = bookId(enchantKey, tier, ids);
+            if (id != null) {
+                candidates.add(new BookCandidate(id, 1, null, 0));
+            }
+        } else {
+            for (int k = 1; k <= tier; k++) {
+                String id = bookId(enchantKey, k, ids);
+                if (id != null) {
+                    candidates.add(new BookCandidate(id, Math.pow(2, tier - k), null, 0));
+                }
+            }
+        }
+        return candidates;
     }
 
     /** "ENCHANTED_BOOK_ULTIMATE_CHIMERA_1" → "T1" (display hint for composed book prices). */

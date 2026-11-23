@@ -69,6 +69,16 @@ public final class AbilityReadyAlert {
         return INSTANCE;
     }
 
+    /**
+     * Whether {@code ability} is off cooldown: never used, its "now available" line seen, or its
+     * learned cooldown elapsed. Unknown cooldowns wait for the ready line (capped by MAX_PAIR_MS).
+     */
+    public boolean isReady(String ability) {
+        Integer learned = cfg().abilityReadyLearned.get(ability);
+        return "ready".equals(AbilityReady.status(parser.usedAt(ability),
+                learned == null ? -1 : learned, System.currentTimeMillis()));
+    }
+
     private static SBSConfig.MiningHelpersSettings cfg() {
         return ConfigManager.getInstance().get().miningHelpers;
     }

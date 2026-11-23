@@ -617,21 +617,7 @@ public final class SimilarAuctionsOverlay {
     private static String diffText(JsonObject o, boolean theyPrimary) {
         String type = str(o, "t");
         String k = str(o, "k");
-        String label = switch (type == null ? "" : type) {
-            // Enchant labels go through the shared actual-vs-shown mapping
-            // ("ultimate_reiterate" -> "Duplex", "dragon_hunter" -> "Gravity").
-            case "ench" -> k != null
-                    ? sbs.modid.client.helper.enchants.EnchantNames.displayName(k) : pretty(type);
-            case "attr", "rune", "scroll" -> k != null ? pretty(k) : pretty(type);
-            case "gem" -> "Gem" + (k != null ? " " + pretty(k) : "");
-            case "mod" -> k != null ? k : "Modifier";
-            case "stars" -> "Stars";
-            case "recomb" -> "Recombobulated";
-            case "hpb" -> "Potato Books";
-            case "reforge" -> "Reforge";
-            case "tier" -> "Rarity Tier";
-            default -> k != null ? pretty(k) : (type != null ? pretty(type) : null);
-        };
+        String label = sbs.modid.client.economy.auctions.logic.ClosestDiff.label(type, k);
         if (label == null) {
             return null;
         }
@@ -720,36 +706,8 @@ public final class SimilarAuctionsOverlay {
         }
     }
 
-    /**
-     * NBT ids whose in-game display name differs from the id ("dragon_hunter" was renamed to
-     * "Gravity" in-game but keeps its old id in item NBT / the price API). Without this mapping
-     * players think the server invents enchants they've never seen. Extend as Hypixel renames more.
-     */
-    private static final java.util.Map<String, String> ID_RENAMES = java.util.Map.of(
-            "dragon_hunter", "Gravity");
-
-    /** "ultimate_wise" / "WITHER_SHIELD_SCROLL" → "Ultimate Wise" / "Wither Shield Scroll". */
     private static String pretty(String id) {
-        String renamed = ID_RENAMES.get(id.toLowerCase(Locale.ROOT));
-        if (renamed != null) {
-            return renamed;
-        }
-        return prettyWords(id);
-    }
-
-    private static String prettyWords(String id) {
-        String[] words = id.toLowerCase(Locale.ROOT).split("[_\\s]+");
-        StringBuilder sb = new StringBuilder();
-        for (String word : words) {
-            if (word.isEmpty()) {
-                continue;
-            }
-            if (sb.length() > 0) {
-                sb.append(' ');
-            }
-            sb.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
-        }
-        return sb.toString();
+        return sbs.modid.client.economy.auctions.logic.ClosestDiff.pretty(id);
     }
 
     private static Line header(String text) {

@@ -82,7 +82,7 @@ public final class SlotLock {
     /** Whether the given player-inventory index is locked. */
     public static boolean isLocked(int inventorySlot) {
         SBSConfig.SlotLockSettings cfg = cfg();
-        return cfg.enabled && inventorySlot >= 0 && cfg.lockedSlots.contains(inventorySlot);
+        return cfg.enabled && !cfg.lockItems && inventorySlot >= 0 && cfg.lockedSlots.contains(inventorySlot);
     }
 
     /**
@@ -90,7 +90,9 @@ public final class SlotLock {
      * other container (a chest, a crafting grid, ...) and can never be locked.
      */
     public static int inventoryIndexOf(Slot slot) {
-        return slot != null && slot.container instanceof Inventory ? slot.index : -1;
+        // getContainerSlot(), not Slot.index: index is the position in the MENU, a different number
+        // for the same slot in every screen, which made locks wander a row per screen size.
+        return SlotBindings.inventoryIndexOf(slot);
     }
 
     /** Whether a menu slot maps to a locked player-inventory index. */
@@ -112,6 +114,26 @@ public final class SlotLock {
         // Toggling always confirms itself: the deny cues below are a separate, optional thing.
         playSound(locked ? 1.4f : 0.9f);
         overlay(locked ? "§bSlot locked" : "§7Slot unlocked");
+    }
+
+    /** Whether the lock key marks items (through Item Protection) instead of slots. */
+    public static boolean locksItems() {
+        return cfg().lockItems;
+    }
+
+    /**
+     * Item mode: marks the item itself through Item Protection, which follows the item wherever it is
+     * moved and refuses dropping and selling. Turns Item Protection on if it was off - picking "The
+     * Item" here is the player asking for exactly that - and says so.
+     */
+    public static void toggleItem(ItemStack stack) {
+        var protection = ConfigManager.getInstance().get().itemProtection;
+        if (!protection.enabled) {
+            protection.enabled = true;
+            ConfigManager.getInstance().save();
+            overlay("§bItem Protection turned on for item locks");
+        }
+        sbs.modid.client.helper.itemprotection.logic.ItemProtection.toggle(stack);
     }
 
     /** Whether the configured lock modifier key (or mouse button) is currently held. */
@@ -138,7 +160,7 @@ public final class SlotLock {
      */
     public static boolean blocks(Player player, int slotId, int button, ContainerInput input) {
         SBSConfig.SlotLockSettings cfg = cfg();
-        if (!cfg.enabled || cfg.lockedSlots.isEmpty() || player == null) {
+        if (!cfg.enabled || cfg.lockItems || cfg.lockedSlots.isEmpty() || player == null) {
             return false;
         }
         AbstractContainerMenu menu = player.containerMenu;

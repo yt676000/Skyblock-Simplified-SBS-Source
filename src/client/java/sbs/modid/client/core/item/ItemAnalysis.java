@@ -132,9 +132,18 @@ public record ItemAnalysis(
                 ? BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath().toUpperCase(Locale.ROOT)
                 : null;
 
+        Rarity rarity = Rarity.detectUncached(stack);
         LinkedHashSet<String> base = new LinkedHashSet<>();
         if (id != null) {
             base.add(id.toUpperCase(Locale.ROOT));
+        } else {
+            // Menu icons (Bazaar, Auction House, NPC shops) carry no id. When several items share
+            // the name and only the rarity tells them apart (the three Wisp Upgrade Stones), the
+            // name alone priced all of them as one - the tier picks the real id first.
+            String byTier = idForNameAndTier(hoverName, rarity);
+            if (byTier != null) {
+                base.add(byTier.toUpperCase(Locale.ROOT));
+            }
         }
         String normalized = SkyblockItem.normalizeName(hoverName);
         if (!normalized.isEmpty()) {
@@ -152,7 +161,7 @@ public record ItemAnalysis(
         }
         keys.addAll(base);
 
-        return new ItemAnalysis(id, uuid, Rarity.detectUncached(stack), List.copyOf(base),
+        return new ItemAnalysis(id, uuid, rarity, List.copyOf(base),
                 List.copyOf(keys), id != null ? id : registryPath);
     }
 
@@ -221,6 +230,19 @@ public record ItemAnalysis(
             }
         }
         return null;
+    }
+
+    private static String idForNameAndTier(String hoverName, Rarity rarity) {
+        if (rarity == null || hoverName == null) {
+            return null;
+        }
+        String name = hoverName.replaceAll("§.", "").trim();
+        try {
+            return sbs.modid.client.economy.recipe.logic.SkyBlockItemCatalog.getInstance()
+                    .idForNameAndTier(name, rarity.name());
+        } catch (RuntimeException | LinkageError e) {
+            return null;   // catalogue not loadable (unit tests, early start): the name keys stand
+        }
     }
 
     private static String nonEmpty(String value) {

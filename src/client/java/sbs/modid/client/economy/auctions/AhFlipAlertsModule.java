@@ -74,6 +74,10 @@ public final class AhFlipAlertsModule implements SbsModule {
     @Override
     public List<SettingRow> settings() {
         return List.of(
+                SettingRow.toggle("Middle Click to Search", () -> cfg().middleClickSearch,
+                        () -> { cfg().middleClickSearch = !cfg().middleClickSearch; save(); })
+                        .describe("In the Auction House, middle click any item to search the "
+                                + "auctions for it by name."),
                 SettingRow.toggle("AH Flip Alerts", () -> cfg().enabled,
                         () -> { cfg().enabled = !cfg().enabled; save(); })
                         .describe("Tells you when an auction is listed well under its market "

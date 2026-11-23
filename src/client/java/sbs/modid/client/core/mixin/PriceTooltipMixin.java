@@ -83,6 +83,15 @@ public abstract class PriceTooltipMixin {
             cir.setReturnValue(current);
         }
 
+        // Critterdex catch hints for critters not caught yet, sharing this handler for the same
+        // reason. Self-gating: nothing unless the Critterdex is open and the hint is missing.
+        List<Component> withCritter = sbs.modid.client.skills.hunting.render.CritterdexTooltip.decorate(
+                current, (ItemStack) (Object) this);
+        if (withCritter != current) {
+            current = withCritter;
+            cir.setReturnValue(current);
+        }
+
         // Item Protection's "Protected by SBS" line, sharing this handler for the same reason as
         // every line above it. Self-gating: it does nothing unless the item is actually protected.
         List<Component> withProtection =
@@ -90,6 +99,15 @@ public abstract class PriceTooltipMixin {
                         current, (ItemStack) (Object) this);
         if (withProtection != current) {
             current = withProtection;
+            cir.setReturnValue(current);
+        }
+
+        // Trade Guard swap / bait warnings, sharing this handler for the same reason. Self-gating:
+        // nothing unless a trade menu is open and this exact stack sits in a flagged slot.
+        List<Component> withTrade = sbs.modid.client.economy.trade.logic.TradeGuardRuntime.decorate(
+                current, (ItemStack) (Object) this);
+        if (withTrade != current) {
+            current = withTrade;
             cir.setReturnValue(current);
         }
 

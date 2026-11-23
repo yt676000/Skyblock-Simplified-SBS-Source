@@ -312,6 +312,15 @@ public final class SkyBlockRepoRecipeProvider implements RecipeProvider {
                             SkyblockSimplifiedSBS.LOGGER.info(
                                     "[SBS][RecipeRepo] Loaded {} recipe(s) and {} item appearance(s) from disk cache.",
                                     recipes.size(), appearance.size());
+                            // Hypixel keeps adding items (e.g. the foraging update); a cache that was
+                            // only ever written once would never learn them. Serve the cache now and
+                            // re-convert in the background once it is older than CACHE_MAX_AGE.
+                            if (isStale(cache)) {
+                                SkyblockSimplifiedSBS.LOGGER.info(
+                                        "[SBS][RecipeRepo] Cache is older than {} day(s) - refreshing.",
+                                        CACHE_MAX_AGE.toDays());
+                                download();
+                            }
                             return;
                         }
                         SkyblockSimplifiedSBS.LOGGER.info(
@@ -330,8 +339,20 @@ public final class SkyBlockRepoRecipeProvider implements RecipeProvider {
         }
     }
 
+    /** How long a converted cache is trusted before the repo is fetched again. */
+    private static final Duration CACHE_MAX_AGE = Duration.ofDays(3);
+
+    private static boolean isStale(Path cache) {
+        try {
+            long age = System.currentTimeMillis() - Files.getLastModifiedTime(cache).toMillis();
+            return age > CACHE_MAX_AGE.toMillis();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private void download() {
-        SkyblockSimplifiedSBS.LOGGER.info("[SBS][RecipeRepo] Downloading the SkyBlock recipe database (one-time)...");
+        SkyblockSimplifiedSBS.LOGGER.info("[SBS][RecipeRepo] Downloading the SkyBlock recipe database...");
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(REPO_ZIP_URL))
                     .timeout(Duration.ofMinutes(5))
@@ -496,22 +517,39 @@ public final class SkyBlockRepoRecipeProvider implements RecipeProvider {
 
     /** Converts one repo item's crafting recipe into an {@link SbsRecipe}; returns true if stored. */
     private boolean convert(RepoItem item) {
-        if (item == null || item.internalname == null || item.recipe == null || item.recipe.isEmpty()) {
+        if (item == null || item.internalname == null) {
             return false;
         }
+        if (item.recipe != null && !item.recipe.isEmpty()) {
+            return convertGrid(item, item.recipe, 1);
+        }
+        // Newer items (the foraging update onwards) carry no top-level "recipe" grid at all: their
+        // crafting grid is a {type: "crafting", A1..C3} entry of the "recipes" array. Reading only
+        // the old field silently dropped every recipe added since.
+        if (item.recipes != null) {
+            for (RepoRecipeEntry entry : item.recipes) {
+                if (entry != null && "crafting".equalsIgnoreCase(entry.type)) {
+                    return convertGrid(item, entry.grid(), (int) Math.max(1, number(entry.count, 1)));
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean convertGrid(RepoItem item, Map<String, String> cells, int resultCount) {
         String resultName = stripCodes(item.displayname != null ? item.displayname : item.internalname).trim();
         // Prefer the official catalogue's modern material (the repo's itemid is a legacy 1.8 id);
         // the icon registry re-resolves against the catalogue at render time either way.
         SkyBlockItemCatalog.Entry resultEntry = SkyBlockItemCatalog.getInstance().byId(item.internalname);
         String resultMaterial = resultEntry != null && resultEntry.material != null
                 ? resultEntry.material : materialOf(item.itemid);
-        ItemRef result = new ItemRef(item.internalname, resultMaterial, resultName, 1);
+        ItemRef result = new ItemRef(item.internalname, resultMaterial, resultName, resultCount);
         SbsRecipe recipe = new SbsRecipe("Crafting", SOURCE_NAME, result);
 
         ItemRef[] grid = new ItemRef[9];
         List<ItemRef> ingredients = new ArrayList<>();
         for (int i = 0; i < GRID_KEYS.length; i++) {
-            String cell = item.recipe.get(GRID_KEYS[i]);
+            String cell = cells.get(GRID_KEYS[i]);
             if (cell == null || cell.isBlank()) {
                 continue;
             }
@@ -908,5 +946,18 @@ public final class SkyBlockRepoRecipeProvider implements RecipeProvider {
         String count;
         String duration;
         String overrideOutputId;
+        /** Crafting-grid cells of a {@code type: "crafting"} entry ("ITEM_ID:count", blank = empty). */
+        String A1, A2, A3, B1, B2, B3, C1, C2, C3;
+
+        Map<String, String> grid() {
+            Map<String, String> cells = new java.util.HashMap<>();
+            String[] values = {A1, A2, A3, B1, B2, B3, C1, C2, C3};
+            for (int i = 0; i < GRID_KEYS.length; i++) {
+                if (values[i] != null) {
+                    cells.put(GRID_KEYS[i], values[i]);
+                }
+            }
+            return cells;
+        }
     }
 }

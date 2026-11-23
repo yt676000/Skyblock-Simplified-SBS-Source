@@ -38,6 +38,14 @@ public abstract class SlotLockInputMixin {
         if (!SlotLock.enabled() || event.button() != 0 || !SlotLock.lockKeyDown()) {
             return;
         }
+        if (SlotLock.locksItems()) {
+            // Item mode: the lock belongs to the item and travels with it (Item Protection).
+            if (this.hoveredSlot != null && this.hoveredSlot.hasItem()) {
+                SlotLock.toggleItem(this.hoveredSlot.getItem());
+                cir.setReturnValue(true);
+            }
+            return;
+        }
         int index = SlotLock.inventoryIndexOf(this.hoveredSlot);
         if (index < 0) {
             return; // not a player-inventory slot - nothing lockable here

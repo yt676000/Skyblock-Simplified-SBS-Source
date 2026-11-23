@@ -8,7 +8,6 @@
 
 package sbs.modid.client.helper.tooltip;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.network.chat.Component;
@@ -33,7 +32,7 @@ import java.util.List;
  *
  * <p>Called from two Mixins:
  * <ul>
- *   <li>{@code ScrollableTooltipsMixin} → {@link #apply(Font, List)} on the tooltip render path
+ *   <li>{@code ScrollableTooltipsMixin} → {@link #apply(Font, List, int)} on the tooltip render path
  *       ({@code GuiGraphicsExtractor#tooltip}) to swap in the trimmed, scrolled line list.</li>
  *   <li>{@code TooltipScrollInputMixin} → {@link #onMouseScroll(double)} on
  *       {@code AbstractContainerScreen#mouseScrolled} to move the page with the wheel.</li>
@@ -86,38 +85,40 @@ public final class ScrollableTooltips {
      * tooltip is trivial, or it already fits – so vanilla behaviour is untouched in every normal
      * case. Only a genuinely screen-overflowing multi-line tooltip is replaced by a scrolled page.
      */
-    public List<ClientTooltipComponent> apply(Font font, List<ClientTooltipComponent> components) {
+    public List<ClientTooltipComponent> apply(Font font, List<ClientTooltipComponent> components, int guiHeight) {
         if (!isEnabled() || components == null || components.size() <= 1) {
             notOverflowing();
             return components;
         }
 
-        int budget = availableHeight();
+        // Budget from the height the tooltip is actually laid out against (the extractor's own
+        // guiHeight), not a separately read window height.
+        int budget = guiHeight - VERTICAL_CHROME - 2 * SCREEN_MARGIN;
         if (measure(font, components) <= budget) {
             notOverflowing();
             return components;
         }
 
-        // --- Overflowing: build a page that fits, keeping room for the two indicator lines. ---
-        int contentBudget = Math.max(font.lineHeight, budget - 2 * INDICATOR_HEIGHT);
-        int pageSize = pageSizeFor(font, components, contentBudget);
-
         int total = components.size();
-        this.maxScroll = Math.max(0, total - pageSize);
-        this.scrollOffset = clamp(this.scrollOffset, 0, this.maxScroll);
+        int[] heights = new int[total];
+        for (int i = 0; i < total; i++) {
+            heights[i] = components.get(i).getHeight(font);
+        }
+        // Vanilla draws 2px of extra space after the first drawn line; keep it out of the budget.
+        TooltipPager.Page p = TooltipPager.page(heights, budget - EXTRA_SPACE_AFTER_FIRST_LINE,
+                INDICATOR_HEIGHT, this.scrollOffset);
+        this.maxScroll = p.maxOffset();
+        this.scrollOffset = p.from();
         markOverflowing();
 
-        int from = this.scrollOffset;
-        int to = Math.min(total, from + pageSize);
-
-        List<ClientTooltipComponent> page = new ArrayList<>(pageSize + 2);
-        if (from > 0) {
-            page.add(indicator("§8§o▲ " + from + " more"));
+        List<ClientTooltipComponent> page = new ArrayList<>(p.to() - p.from() + 2);
+        if (p.moreAbove()) {
+            page.add(indicator("§8§o▲ " + p.from() + " more"));
         }
-        for (int i = from; i < to; i++) {
+        for (int i = p.from(); i < p.to(); i++) {
             page.add(components.get(i));
         }
-        int below = total - to;
+        int below = total - p.to();
         if (below > 0) {
             page.add(indicator("§8§o▼ " + below + " more"));
         }
@@ -138,19 +139,13 @@ public final class ScrollableTooltips {
             return false;
         }
         int delta = scrollY > 0 ? -LINES_PER_NOTCH : LINES_PER_NOTCH; // wheel up -> earlier lines
-        this.scrollOffset = clamp(this.scrollOffset + delta, 0, this.maxScroll);
+        this.scrollOffset = Math.max(0, Math.min(this.maxScroll, this.scrollOffset + delta));
         return true;
     }
 
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
-
-    /** Vertical space (px) a tooltip may occupy before it clips against a screen edge. */
-    private static int availableHeight() {
-        int guiHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
-        return guiHeight - VERTICAL_CHROME - 2 * SCREEN_MARGIN;
-    }
 
     /** Total rendered height of the given lines (matching vanilla's tooltip height maths). */
     private static int measure(Font font, List<ClientTooltipComponent> components) {
@@ -161,21 +156,6 @@ public final class ScrollableTooltips {
         return height;
     }
 
-    /** How many leading lines fit into {@code contentBudget} (at least one). */
-    private static int pageSizeFor(Font font, List<ClientTooltipComponent> components, int contentBudget) {
-        int used = 0;
-        int fit = 0;
-        for (ClientTooltipComponent c : components) {
-            int h = c.getHeight(font);
-            if (used + h > contentBudget) {
-                break;
-            }
-            used += h;
-            fit++;
-        }
-        return Math.max(1, fit);
-    }
-
     private static ClientTooltipComponent indicator(String legacyText) {
         return ClientTooltipComponent.create(Component.literal(legacyText).getVisualOrderText());
     }
@@ -184,12 +164,15 @@ public final class ScrollableTooltips {
         this.lastOverflowNanos = System.nanoTime();
     }
 
+    /**
+     * A tooltip that fits was drawn. The offset is only forgotten once no long tooltip has been
+     * shown for the active window: resetting on every short tooltip let any other tooltip drawn
+     * in between (or a single-line frame) throw the scrolled lore back to its first page.
+     */
     private void notOverflowing() {
-        this.maxScroll = 0;
-        this.scrollOffset = 0;
-    }
-
-    private static int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
+        if (System.nanoTime() - lastOverflowNanos > ACTIVE_WINDOW_NANOS) {
+            this.maxScroll = 0;
+            this.scrollOffset = 0;
+        }
     }
 }

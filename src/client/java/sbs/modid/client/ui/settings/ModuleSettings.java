@@ -582,11 +582,30 @@ public final class ModuleSettings {
                                 () -> cfg().dev.localFlips.token,
                                 value -> { cfg().dev.localFlips.token = value; save(); }, () -> false)
                         .describe("Sent as the X-SBS-Token header when set - needed when the program is "
-                                + "opened to the LAN. Never logged or shown. Default: empty."),
+                                + "opened to the LAN or Radmin VPN. Never logged or shown. Default: empty."),
+                SettingRow.toggle("Flip Source: Radmin VPN",
+                                sbs.modid.client.economy.localflips.logic.FlipSource::isVpn,
+                                () -> {
+                                    var src = cfg().dev.flipSource;
+                                    src.mode = sbs.modid.client.economy.localflips.logic.FlipSource.isVpn()
+                                            ? "local" : "vpn";
+                                    save();
+                                })
+                        .describe("Local: the addresses above (this PC / LAN), as before. Radmin VPN: the "
+                                + "Local Flip Finder and Lowball both use the host's Radmin IP below. "
+                                + "Default: Local."),
+                SettingRow.text("Host Radmin IP", "e.g. 26.12.34.56", 15,
+                                () -> cfg().dev.flipSource.vpnHost,
+                                value -> { cfg().dev.flipSource.vpnHost = value.trim(); save(); })
+                        .describe("The flip host's IPv4 in Radmin VPN (26.x.x.x). Nothing is preset; "
+                                + "empty means no connection in VPN mode. Default: empty."),
+                SettingRow.intField("Host Port", 1, 65_535, () -> cfg().dev.flipSource.vpnPort,
+                                value -> { cfg().dev.flipSource.vpnPort = value; save(); }, "")
+                        .describe("The host's flip program port in VPN mode. Default: 3020."),
                 SettingRow.button("Test Connection",
                                 sbs.modid.client.economy.localflips.logic.LocalFlipFinder::testConnection)
-                        .describe("Asks the program's /health once and says in chat whether it answered, "
-                                + "how fast, and whether it needs a token."),
+                        .describe("Asks /health and /flips/sofort once and says in chat whether the "
+                                + "host answered and accepted the token."),
                 SettingRow.button("Open Flip Window", () -> open(
                                 new sbs.modid.client.economy.localflips.ui.LocalFlipsScreen()))
                         .describe("The window with every find, its numbers and an Open button."),
@@ -1377,6 +1396,14 @@ public final class ModuleSettings {
                             .describe("Lock inventory slots so their items cannot be moved, "
                                     + "dropped, swapped or replaced by accident. A locked hotbar "
                                     + "item can still be selected and used - just not lost."),
+                    SettingRow.segmented("Lock Follows", List.of("The Slot", "The Item"),
+                            () -> cfg().slotLock.lockItems ? 1 : 0,
+                            i -> { cfg().slotLock.lockItems = i == 1; save(); })
+                            .describe("The Slot: the slot is locked and nothing in it can be moved. "
+                                    + "The Item: the item itself is locked (through Item "
+                                    + "Protection) - you can move it around your inventory freely, "
+                                    + "but it can't be dropped or sold. Slot locks are kept and come "
+                                    + "back when you switch back."),
                     SettingRow.holdKeybind("Lock Key (hold + left click)", () -> cfg().slotLock.lockKey,
                             key -> { cfg().slotLock.lockKey = key; save(); })
                             .describe("Hold this key and left-click a slot to lock or unlock it. "

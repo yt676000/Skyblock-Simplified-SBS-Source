@@ -22,7 +22,11 @@ import sbs.modid.client.ui.hud.edit.logic.HudLayout;
 import sbs.modid.client.economy.recipe.logic.SkyBlockItemCatalog;
 
 import sbs.modid.client.combat.carry.model.SlayerBoss;
+import sbs.modid.client.combat.slayer.SlayerModule;
+import sbs.modid.client.combat.slayer.logic.RngCalculator;
 import sbs.modid.client.combat.slayer.logic.RngMeterTracker;
+import sbs.modid.client.combat.slayer.model.SlayerRngDrops;
+import sbs.modid.client.core.tab.TabStats;
 import sbs.modid.client.combat.slayer.model.RngMeterState;
 import sbs.modid.client.core.util.NumberDisplay;
 
@@ -48,7 +52,8 @@ public final class SlayerHud {
     private static final int GAIN_COLOR = 0xFF57D977;
 
     /** What a snapshot was built for: both trackers' versions, the price clock, the RNG settings. */
-    private record Version(int tracker, int meters, long second, boolean rngMeter, boolean dropValue) {
+    private record Version(int tracker, int meters, long second, boolean rngMeter, boolean dropValue,
+                           boolean calc, String calcBoss, String calcDrop, int calcMf) {
     }
 
     /** The card's draw model: the rows, plus where the RNG bar stands. */
@@ -82,9 +87,12 @@ public final class SlayerHud {
         // Field by field against the built version, so an unchanged frame allocates no key.
         if (current == null || !(current.card().version() instanceof Version built)
                 || built.tracker() != trackerVersion || built.meters() != meters || built.second() != second
-                || built.rngMeter() != cfg.rngMeter || built.dropValue() != cfg.rngMeterDropValue) {
+                || built.rngMeter() != cfg.rngMeter || built.dropValue() != cfg.rngMeterDropValue
+                || built.calc() != cfg.rngCalculator || built.calcMf() != cfg.rngCalcMagicFind
+                || !built.calcBoss().equals(cfg.rngCalcBoss) || !built.calcDrop().equals(cfg.rngCalcDrop)) {
             current = build(tracker, new Version(trackerVersion, meters, second, cfg.rngMeter,
-                    cfg.rngMeterDropValue));
+                    cfg.rngMeterDropValue, cfg.rngCalculator, cfg.rngCalcBoss, cfg.rngCalcDrop,
+                    cfg.rngCalcMagicFind));
             model = current;
         }
         return current;
@@ -130,7 +138,9 @@ public final class SlayerHud {
 
         List<HudCard.Line> rngLines = rngRows(font, tracker, version.rngMeter(), version.dropValue());
 
-        for (List<HudCard.Line> group : List.of(stats, dropLines, rngLines)) {
+        List<HudCard.Line> calcLines = version.calc() ? calcRows(font, tracker, version) : List.of();
+
+        for (List<HudCard.Line> group : List.of(stats, dropLines, rngLines, calcLines)) {
             for (HudCard.Line line : group) {
                 if (line != BAR_ROW) {
                     contentW = Math.max(contentW, line.width(12));
@@ -222,6 +232,53 @@ public final class SlayerHud {
             if (value > 0) {
                 out.add(stat(font, "Drop value", coins(value)));
             }
+        }
+        return out;
+    }
+
+    // ------------------------------------------------------------------ RNG calculator
+
+    /** Magic Find from the tab list, read at most every 5 s (the card rebuilds once a second). */
+    private static double tabMf = -1;
+    private static long tabMfAt;
+
+    private static double tabMagicFind() {
+        long now = System.currentTimeMillis();
+        if (now - tabMfAt > 5_000L) {
+            tabMfAt = now;
+            Double mf = TabStats.read().get(TabStats.Stat.MAGIC_FIND);
+            tabMf = mf == null ? -1 : mf;
+        }
+        return tabMf;
+    }
+
+    /** Chosen drop, chance at your MF, average bosses and hours - counting the meter if it is selected. */
+    private static List<HudCard.Line> calcRows(Font font, SlayerTracker tracker, Version version) {
+        List<HudCard.Line> out = new ArrayList<>();
+        SlayerBoss boss = SlayerModule.bossOf(version.calcBoss());
+        SlayerRngDrops.Drop drop = SlayerRngDrops.find(boss, version.calcDrop());
+        if (drop == null) {
+            return out;
+        }
+        double mf = version.calcMf() > 0 ? version.calcMf() : tabMagicFind();
+        String mfLabel = mf < 0 ? "MF ? (0 used)" : String.format(Locale.ROOT, "%.0f MF", mf);
+        mf = Math.max(0, mf);
+        double chance = RngCalculator.chance(drop.chancePercent(), mf);
+        out.add(stat(font, "RNG Calc", drop.name()));
+        out.add(stat(font, boss.shortLabel() + " T" + drop.tier() + ", " + mfLabel,
+                "1 in " + NumberDisplay.grouped(Math.round(1 / chance))));
+        RngMeterTracker meters = RngMeterTracker.getInstance();
+        RngMeterState state = meters.state(boss);
+        boolean meterUsed = state != null && drop.name().equals(state.selectedDrop) && state.goal > 0;
+        double bosses = meterUsed
+                ? RngCalculator.expectedBossesWithMeter(drop.chancePercent(), mf,
+                        state.current, state.goal, meters.averageGain(boss))
+                : RngCalculator.expectedBosses(drop.chancePercent(), mf);
+        out.add(stat(font, meterUsed ? "Avg bosses (meter)" : "Avg bosses",
+                "~" + NumberDisplay.grouped(Math.round(bosses))));
+        double perHour = tracker.bossesPerHour();
+        if (perHour > 0) {
+            out.add(stat(font, "Avg time", String.format(Locale.ROOT, "~%.1fh", bosses / perHour)));
         }
         return out;
     }

@@ -195,6 +195,11 @@ public final class CritterFinderModule implements SbsModule {
                         .describe("One chat line and a short sound the first time each critter is "
                                 + "seen, and then silence for that critter. Sparkling critters have "
                                 + "their own ping below. On by default."),
+                SettingRow.toggle("Critterdex Catch Hints", () -> cfg().catchHints,
+                        () -> { cfg().catchHints = !cfg().catchHints; save(); })
+                        .describe("In the Critterdex, critters you have not caught yet show where "
+                                + "and how to catch them. Once caught, Hypixel shows that itself, so "
+                                + "nothing is added. On by default."),
 
                 SettingRow.label("§8—— Accuracy ——"),
                 SettingRow.label("§eThe critter name has not been confirmed in game yet."),

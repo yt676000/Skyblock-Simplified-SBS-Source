@@ -21,7 +21,11 @@ import java.util.regex.Pattern;
  * RARE DROP! (Tarantula Silk) (+241% &lt;U+E01A&gt; Magic Find)
  * VERY RARE DROP! (Null Atom) (+171% &lt;U+E01A&gt; Magic Find)
  * RARE DROP! Nether Star
+ * RARE DROP! (64x Toxic Arrow Poison) (+241% &lt;U+E01A&gt; Magic Find)
+ * RARE DROP! Enchanted Book (Flash I) (+203 &lt;U+E01A&gt; Magic Find)
  * </pre>
+ * A stack count can sit INSIDE the parentheses ("(64x Toxic Arrow Poison)"); it was read as part of
+ * the name, so the item never resolved and the slayer tracker lost the drop.
  * The item may or may not be in parentheses, the Magic Find may or may not carry a {@code %}, and the
  * glyph before "Magic Find" is Hypixel's private-use U+E01A (not ✯). The old per-tracker patterns kept
  * the parentheses as part of the name, so "(Null Atom)" never resolved to an item.
@@ -51,7 +55,7 @@ public final class RareDropLine {
     private static final Pattern LINE = Pattern.compile(
             "^(RARE|VERY RARE|CRAZY RARE|INSANE|PRAY TO RNGESUS) DROP!\\s+"
                     + "(?:\\((\\d+)x\\)\\s+)?"
-                    + "(\\((.+?)\\)|(.+?))"
+                    + "(?:\\((?:(\\d+)x\\s+)?(.+?)\\)|(.+?))"
                     + "(?:\\s+\\(\\+(\\d+)%?\\s*\\S*\\s*Magic Find\\))?\\s*$");
 
     private RareDropLine() {
@@ -67,7 +71,8 @@ public final class RareDropLine {
             return null;
         }
         Tier tier = Tier.valueOf(m.group(1).replace(' ', '_'));
-        int count = m.group(2) == null ? 1 : Integer.parseInt(m.group(2));
+        String rawCount = m.group(2) != null ? m.group(2) : m.group(3);
+        int count = rawCount == null ? 1 : Integer.parseInt(rawCount);
         String item = (m.group(4) != null ? m.group(4) : m.group(5)).trim();
         int magicFind = m.group(6) == null ? -1 : Integer.parseInt(m.group(6));
         return item.isEmpty() ? null : new Drop(tier, item, count, magicFind);

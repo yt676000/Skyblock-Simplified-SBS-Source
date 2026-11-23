@@ -25,7 +25,6 @@ import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.async.SbsExecutors;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
-import sbs.modid.client.economy.localflips.logic.LocalAddress;
 import sbs.modid.client.economy.lowball.ui.LowballScreen;
 import sbs.modid.client.economy.lowball.ui.LowballWindow;
 import sbs.modid.client.social.chat.logic.SBSChat;
@@ -298,7 +297,13 @@ public final class Lowball {
     private static void send(JsonArray items, String src, String partner, int timeoutS, Answer onAnswer,
                              boolean isRetry) {
         SBSConfig.LowballSettings cfg = cfg();
-        URI base = LocalAddress.base(cfg.url);
+        boolean vpn = sbs.modid.client.economy.localflips.logic.FlipSource.isVpn();
+        URI base = sbs.modid.client.economy.localflips.logic.FlipSource.base(cfg.url);
+        if (base == null && vpn) {
+            say(Component.literal("Lowball: " + sbs.modid.client.economy.localflips.logic.FlipSource.NEED_IP)
+                    .withColor(RED));
+            return;
+        }
         if (base == null) {
             say(Component.literal("Lowball: the Server URL is not a valid http address.").withColor(RED));
             return;
@@ -332,11 +337,13 @@ public final class Lowball {
         //   the active offer discounts (up to four), and the player's own token for that program as X-SBS-Token when set.
         //   No Minecraft account data, no SBS licence token.
         // DATA RECEIVED: read-only JSON - values and suggested offers for those items.
-        // SAFETY DECLARATION: local or LAN address only (checked after resolving, before connecting);
+        // SAFETY DECLARATION: local or LAN address only - or, in the "vpn" flip source mode, the
+        //   Radmin VPN IP the player typed (IPv4 in 26.0.0.0/8 only) (checked after resolving, before connecting);
         //   no proxy, no redirects. Nothing is sent to Hypixel or anywhere else.
         CompletableFuture.supplyAsync(() -> {
                     try {
-                        if (!LocalAddress.isLocal(InetAddress.getByName(base.getHost()))) {
+                        if (!sbs.modid.client.economy.localflips.logic.FlipSource.allowed(
+                                InetAddress.getByName(base.getHost()), vpn)) {
                             throw new IllegalStateException("not a local address");
                         }
                     } catch (java.net.UnknownHostException unknown) {
@@ -389,7 +396,7 @@ public final class Lowball {
                             }
                         }));
             }
-            case 401 -> say(Component.literal("Lowball: wrong token (Development settings).").withColor(RED));
+            case 401 -> say(Component.literal("Lowball: Token wrong or missing (401).").withColor(RED));
             case 400 -> say(Component.literal("Lowball: " + errorText(text)).withColor(RED));
             default -> say(Component.literal("Lowball: the program answered HTTP " + status + ".").withColor(RED));
         }
@@ -539,7 +546,8 @@ public final class Lowball {
 
     private static List<Component> tooltipLines(LowballFormat.Result r) {
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal("Lowball").withColor(GOLD));
+        lines.add(Component.literal("Lowball ").withColor(GOLD).append(Component.literal(
+                sbs.modid.client.economy.localflips.logic.FlipSource.tag()).withColor(GRAY)));
         if (!r.ok()) {
             lines.add(Component.literal(r.name() + ": " + r.error()).withColor(GRAY));
             return List.copyOf(lines);

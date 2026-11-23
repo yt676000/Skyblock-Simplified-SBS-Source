@@ -1479,9 +1479,14 @@ public final class SBSConfig {
         @Shareable(Kind.BOOL)
         public boolean hollowsMinimapRotate = false;
 
-        /** Crystal Hollows minimap: show the whole Hollows standing still, only your arrow moves. */
+        /**
+         * Crystal Hollows minimap: follow the player (radius, rotation) instead of the default, which
+         * shows all four regions standing still with only the player's arrow moving. A new field rather
+         * than beta 14's {@code hollowsMinimapFixed} (default off), so every existing config gets the
+         * fixed map without a migration.
+         */
         @Shareable(Kind.BOOL)
-        public boolean hollowsMinimapFixed = false;
+        public boolean hollowsMinimapFollow = false;
 
         /** Crystal Hollows map and minimap: draw the cells you have stood in. */
         @Shareable(Kind.BOOL)
@@ -2086,6 +2091,18 @@ public final class SBSConfig {
         /** Add the selected drop's current price to the RNG meter lines on the card. */
         @Shareable(Kind.BOOL)
         public boolean rngMeterDropValue = true;
+
+        /** RNG Calculator: expected bosses / hours to the chosen drop at your Magic Find. */
+        @Shareable(Kind.BOOL)
+        public boolean rngCalculator = true;
+
+        /** The calculator's slayer ({@code SlayerBoss} name) and drop name. */
+        public String rngCalcBoss = "VOIDGLOOM";
+        public String rngCalcDrop = "Judgement Core";
+
+        /** Magic Find to calculate with; 0 = read it from the tab list. */
+        @Shareable(value = Kind.INT, min = 0, max = 500)
+        public int rngCalcMagicFind = 0;
 
         /** Play a sound with every slayer alert. */
         @Shareable(Kind.BOOL)
@@ -2836,6 +2853,35 @@ public final class SBSConfig {
          */
         @Shareable(Kind.BOOL)
         public boolean learnOffers = true;
+    }
+
+    /** Trade Guard: swap / bait-and-switch warnings and an accept lock in the player trade menu. */
+    public TradeGuardSettings tradeGuard = new TradeGuardSettings();
+
+    public static final class TradeGuardSettings {
+        /** Master toggle. Nothing is read outside the trade menu and trade-partner chat anyway. */
+        public boolean enabled = true;
+
+        /** Warn when what I get is worth this many percent less than what I give. */
+        public int thresholdPct = 15;
+
+        /** Play a sound with every warning. */
+        public boolean sound = true;
+
+        /** Refuse my own click on the accept button for {@link #lockSeconds} after a warning. */
+        public boolean acceptLock = true;
+
+        /** How long the accept lock holds, in seconds. Shift-click always overrides. */
+        public int lockSeconds = 3;
+
+        /** Warn on ANY change to their side after they confirmed, not only on removals and swaps. */
+        public boolean warnAnyChangeAfterConfirm = true;
+
+        /** Remember what each partner showed for this many minutes (memory only, never on disk). */
+        public int memoryMinutes = 60;
+
+        /** Also remember items partners link in chat, for the bait-and-switch check. */
+        public boolean learnFromChat = true;
     }
 
     /** Looking At module: a crosshair chip naming the block / mob under the crosshair at range. */
@@ -4876,6 +4922,13 @@ public static final class CaseOpeningSettings {
         public boolean foundPing = true;
 
         /**
+         * Critterdex catch hints: the "where / how to catch" text on critters not caught yet, which
+         * the menu itself only prints after the first catch. Works anywhere the Critterdex opens.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean catchHints = true;
+
+        /**
          * The sparkling half of the same sweep: boxes a critter carrying the sparkling marker in its
          * nametag, whatever the critter is called. Gated independently of {@link #enabled} - the
          * sweep runs while either half is on - because wanting the rare ones does not mean wanting a
@@ -5438,6 +5491,10 @@ public static final class CaseOpeningSettings {
          * which is the direction that costs coins.
          */
         public double localAhTaxPct = 1.0;
+
+        /** Middle click on an item in an Auction House GUI runs {@code /auctionsearch <name>}. */
+        @Shareable(Kind.BOOL)
+        public boolean middleClickSearch = true;
     }
 
         public static final class ForgeSettings {
@@ -6686,12 +6743,28 @@ public static final class CaseOpeningSettings {
         public int swapKey = 342;
 
         /**
+         * What the lock key marks: {@code false} = the slot (the original model), {@code true} = the
+         * item itself, through Item Protection - it can then be moved freely inside the inventory but
+         * not dropped or sold. While on, {@link #lockedSlots} is kept but not enforced or drawn, so
+         * switching back restores the slot locks.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean lockItems = false;
+
+        /**
          * The locked <b>player-inventory</b> indices (0-8 hotbar, 9-35 main, 36-39 armor, 40 offhand).
          * Indices rather than item ids, so the lock belongs to the slot and survives the item in it
          * changing. Persisted here, which is what makes locks outlive closing the inventory and
          * restarting the world.
          */
         public Set<Integer> lockedSlots = new LinkedHashSet<>();
+
+        /**
+         * {@code null} (absent) = {@link #lockedSlots} was written by builds that stored the slot's
+         * MENU position instead of its inventory index; {@code ConfigManager.migrateSlotLockIndices}
+         * converts those once and sets {@code 1}. Boxed on purpose: absent must read as null.
+         */
+        public Integer lockedSlotsFormat;
 
         /** Play a short sound when an action on a locked slot is refused. */
         @Shareable(Kind.BOOL)
@@ -6719,7 +6792,7 @@ public static final class CaseOpeningSettings {
 
         /** true = pressing drop 3× within 3s still drops; false = protected drops are refused flat. */
         @Shareable(Kind.BOOL)
-        public boolean rarityTriplePress = true;
+        public boolean rarityTriplePress = false;
     }
 
     /** Item Protection module preferences (per-item and per-item-type protection). */
@@ -9556,6 +9629,24 @@ public static final class CaseOpeningSettings {
 
         /** Lowball: appraisal of hovered / traded items through the local flip program. */
         public LowballSettings lowball = new LowballSettings();
+
+        /** Where both of the above connect: this PC/LAN, or a host over Radmin VPN. */
+        public FlipSourceSettings flipSource = new FlipSourceSettings();
+    }
+
+    /**
+     * Flip source (developer page). {@code local}: the Local Flip Finder / Lowball address fields as
+     * before. {@code vpn}: {@code http://vpnHost:vpnPort} for both; the host's Radmin IP is typed by
+     * the player (no default). The token stays {@code localFlips.token}.
+     */
+    public static final class FlipSourceSettings {
+        /** {@code "local"} or {@code "vpn"}. */
+        public String mode = "local";
+
+        /** The host's Radmin IPv4; empty until the player enters it. */
+        public String vpnHost = "";
+
+        public int vpnPort = 3020;
     }
 
     /**

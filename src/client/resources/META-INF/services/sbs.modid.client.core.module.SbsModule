@@ -120,3 +120,4 @@ sbs.modid.client.social.party.PartyOverlayModule
 sbs.modid.client.social.sendcoords.SendCoordsModule
 sbs.modid.client.ui.font.FontsModule
 sbs.modid.client.helper.hitboxes.EntityHitboxesModule
+sbs.modid.client.economy.trade.TradeGuardModule

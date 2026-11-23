@@ -31,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -193,6 +194,7 @@ public final class SkyBlockItemCatalog {
         this.sortedCache = null;
         this.nameIndex = null;
         this.normalizedIndex = null;
+        this.sharedNameIndex = null;
     }
 
     /** Loads the disk cache (if fresh) and refreshes from the API in the background when stale. */
@@ -248,6 +250,47 @@ public final class SkyBlockItemCatalog {
     }
 
     private volatile Map<String, Entry> nameIndex;
+
+    /**
+     * The id of the item with this display name AND tier, for names several items share and only
+     * the rarity tells apart: "Wisp Upgrade Stone" is {@code UPGRADE_STONE_FROST} (rare),
+     * {@code _GLACIAL} (epic) and {@code _SUBZERO} (legendary). {@link #byName} keeps whichever of
+     * those it met first, so a menu icon with no id priced every rarity as the same stone (tester
+     * report, 2026-11-07). {@code null} when the name is unique or no item has that tier - the
+     * caller's other keys then stand.
+     */
+    public String idForNameAndTier(String displayName, String tier) {
+        if (displayName == null || tier == null) {
+            return null;
+        }
+        Map<String, List<Entry>> index = sharedNameIndex;
+        if (index == null) {
+            Map<String, List<Entry>> built = new HashMap<>();
+            for (Entry entry : merged().values()) {
+                built.computeIfAbsent(entry.nameLower, k -> new ArrayList<>()).add(entry);
+            }
+            built.values().removeIf(list -> list.size() < 2);
+            sharedNameIndex = built;
+            index = built;
+        }
+        List<Entry> shared = index.get(displayName.trim().toLowerCase(Locale.ROOT));
+        if (shared == null) {
+            return null;
+        }
+        String wanted = tier.toLowerCase(Locale.ROOT);
+        String found = null;
+        for (Entry entry : shared) {
+            if (wanted.equals(entry.tierLower)) {
+                if (found != null) {
+                    return null;   // still ambiguous at this tier (backpack skins etc.)
+                }
+                found = entry.id;
+            }
+        }
+        return found;
+    }
+
+    private volatile Map<String, List<Entry>> sharedNameIndex;
 
     /**
      * Fuzzy display-name lookup via {@code SkyblockItem.normalizeName} (strips reforges, pet

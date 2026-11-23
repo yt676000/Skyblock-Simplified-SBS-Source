@@ -164,6 +164,7 @@ public final class ConfigManager {
                         migrateDianaHud(loaded);
                         migrateChatSpamFilters(loaded);
                         migrateLocalFlips(loaded);
+                        migrateSlotLockIndices(loaded);
                         if (loaded.dungeons != null) {
                             sbs.modid.client.dungeons.puzzle.logic.PuzzleSettings.migrateSilverfish(loaded.dungeons);
                         }
@@ -191,7 +192,7 @@ public final class ConfigManager {
     }
 
     /** The newest round of shipped defaults; bump when a new one has to reach existing configs. */
-    private static final int SHIPPED_DEFAULTS = 3;
+    private static final int SHIPPED_DEFAULTS = 4;
 
     /**
      * Adopts the current shipped defaults into a config that predates them - once, ever.
@@ -224,6 +225,13 @@ public final class ConfigManager {
         // true, so every existing config has it on without anyone having asked for it.
         if (adopted < 3 && config.lookingAt != null) {
             config.lookingAt.enabled = false;
+        }
+
+        // Round 4: rare-item drop protection refuses outright. "Press 3x to drop" shipped as the
+        // default, so a protected item could still be thrown by mashing the drop key - players
+        // asked for the safe setting to be the one they get.
+        if (adopted < 4 && config.slotLock != null) {
+            config.slotLock.rarityTriplePress = false;
         }
 
         if (adopted >= 1) {
@@ -317,6 +325,44 @@ public final class ConfigManager {
      * absent block from the initialiser; this covers an explicit {@code null} (a hand-edited file),
      * and a missing {@code dev} group, so no reader ever has to null-check them.
      */
+    /**
+     * Slot Lock stored {@code Slot.index}, the position in whatever menu was open, instead of the
+     * player-inventory index. Locks were almost always set in the inventory screen, so its layout is
+     * the one undone: 36-44 hotbar to 0-8, 5-8 armor to 39-36, 45 offhand to 40, 9-35 unchanged.
+     * Anything else came from another menu and cannot be traced back, so it is dropped.
+     */
+    static void migrateSlotLockIndices(SBSConfig config) {
+        SBSConfig.SlotLockSettings lock = config.slotLock;
+        if (lock == null || (lock.lockedSlots != null && lock.lockedSlotsFormat != null)) {
+            return;
+        }
+        java.util.Set<Integer> converted = new java.util.LinkedHashSet<>();
+        if (lock.lockedSlots != null) {
+            for (Integer menu : lock.lockedSlots) {
+                int inventory = slotLockInventoryIndex(menu == null ? -1 : menu);
+                if (inventory >= 0) {
+                    converted.add(inventory);
+                }
+            }
+        }
+        lock.lockedSlots = converted;
+        lock.lockedSlotsFormat = 1;
+    }
+
+    /** The inventory index behind an inventory-screen menu index, or -1. */
+    static int slotLockInventoryIndex(int menu) {
+        if (menu >= 36 && menu <= 44) {
+            return menu - 36;
+        }
+        if (menu >= 9 && menu <= 35) {
+            return menu;
+        }
+        if (menu >= 5 && menu <= 8) {
+            return 44 - menu;
+        }
+        return menu == 45 ? 40 : -1;
+    }
+
     static void migrateLocalFlips(SBSConfig config) {
         if (config.dev == null) {
             config.dev = new SBSConfig.DevSettings();

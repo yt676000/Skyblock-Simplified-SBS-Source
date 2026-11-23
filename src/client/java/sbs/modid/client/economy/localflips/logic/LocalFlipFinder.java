@@ -88,6 +88,9 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
     private long apiLastUpdatedMs = -1;
     private int revision;
     private boolean downLogged;
+    /** VPN mode only: "lost" was said in chat, so the next connect says "reconnected" once. */
+    private boolean lostAnnounced;
+    private boolean vpn;
 
     private LocalFlipConnection connection;
     private String appliedKey;
@@ -125,7 +128,7 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
             }
             return;
         }
-        String key = cfg.url + '\n' + cfg.token;
+        String key = connectionKey(cfg);
         long now = System.currentTimeMillis();
         if (appliedKey == null) {
             apply(cfg);
@@ -153,17 +156,27 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
 
     private void apply(SBSConfig.LocalFlipSettings cfg) {
         stopConnection();
-        appliedKey = cfg.url + '\n' + cfg.token;
+        appliedKey = connectionKey(cfg);
         pendingKey = null;
         downLogged = false;
-        URI base = LocalAddress.base(cfg.url);
+        lostAnnounced = false;
+        vpn = FlipSource.isVpn();
+        URI base = FlipSource.base(cfg.url);
         if (base == null) {
             setStatus(Status.INVALID_ADDRESS, 0);
+            if (vpn) {
+                SBSChat.send(FlipSource.NEED_IP);
+            }
             return;
         }
-        connection = new LocalFlipConnection(base, cfg.token, this, Minecraft.getInstance());
+        connection = new LocalFlipConnection(base, cfg.token, this, Minecraft.getInstance(), vpn);
         setStatus(Status.CONNECTING, 0);
         connection.start();
+    }
+
+    /** Everything whose change must restart the connection. */
+    private static String connectionKey(SBSConfig.LocalFlipSettings cfg) {
+        return cfg.url + '\n' + cfg.token + '\n' + FlipSource.key();
     }
 
     private void stopConnection() {
@@ -246,12 +259,20 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
             case CONNECTED -> {
                 if (previous != Status.CONNECTED) {
                     SkyblockSimplifiedSBS.LOGGER.info("[SBS][LocalFlips] connected to the flip program");
+                    if (vpn && lostAnnounced) {
+                        SBSChat.send("[VPN] Flip source reconnected.");
+                    }
                 }
+                lostAnnounced = false;
                 downLogged = false;
             }
             case DISCONNECTED -> {
                 if (!downLogged) {
                     downLogged = true;
+                    if (vpn && !lostAnnounced) {
+                        lostAnnounced = true;
+                        SBSChat.send("[VPN] Flip source lost - reconnecting quietly.");
+                    }
                     SkyblockSimplifiedSBS.LOGGER.info(
                             "[SBS][LocalFlips] flip program not reachable - retrying quietly");
                 }
@@ -260,6 +281,9 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
                 if (previous != next) {
                     SkyblockSimplifiedSBS.LOGGER.warn(
                             "[SBS][LocalFlips] the flip program refused the token (401) - waiting for a settings change");
+                    if (vpn) {
+                        SBSChat.send("[VPN] Token wrong or missing (401) - set it with /sbs flips token <token>.");
+                    }
                 }
             }
             case INVALID_ADDRESS -> {
@@ -330,6 +354,7 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
         String slashCommand = "/" + flip.command();
         Component hover = Component.literal(hoverText(flip));
         MutableComponent line = Component.literal("[SBS-Flip] ").withColor(SBSChat.PREFIX_COLOR)
+                .append(Component.literal(FlipSource.tag() + " ").withColor(0x8FA6BF))
                 .append(Component.literal(flip.displayName())
                         .withColor(SBSChat.WHITE)
                         .withStyle(style -> style.withHoverEvent(new HoverEvent.ShowText(hover))))
@@ -452,9 +477,10 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
      */
     public static void testConnection() {
         SBSConfig.LocalFlipSettings cfg = cfg();
-        URI base = LocalAddress.base(cfg.url);
+        boolean vpn = FlipSource.isVpn();
+        URI base = FlipSource.base(cfg.url);
         if (base == null) {
-            SBSChat.send("Lokaler Flip-Finder: ungültige Adresse.");
+            SBSChat.send(vpn ? FlipSource.NEED_IP : "Lokaler Flip-Finder: ungültige Adresse.");
             return;
         }
         String token = cfg.token == null ? "" : cfg.token.trim();
@@ -462,18 +488,18 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
         Thread test = new Thread(() -> {
             String message;
             try {
-                LocalFlipConnection.Health health = LocalFlipConnection.health(base, token);
-                message = "Lokaler Flip-Finder: " + (health.ok() ? "erreichbar" : "antwortet, meldet aber nicht ok")
-                        + " in " + health.millis() + " ms, Token " + (health.tokenRequired() ? "nötig" : "nicht nötig")
+                LocalFlipConnection.Health health = LocalFlipConnection.health(base, token, vpn);
+                LocalFlipConnection.probeSofort(base, token, vpn);
+                message = (vpn ? "Connected via VPN" : "Connected (local)")
+                        + " - " + health.millis() + " ms"
                         + (health.apiLastUpdatedMs() > 0
-                        ? ", Hypixel-AH-Stand " + FlipText.ago((System.currentTimeMillis()
-                        - health.apiLastUpdatedMs()) / 1000) + " alt" : "")
+                        ? ", AH data " + FlipText.ago((System.currentTimeMillis()
+                        - health.apiLastUpdatedMs()) / 1000) + " old" : "")
                         + ".";
             } catch (LocalFlipConnection.Unauthorized unauthorized) {
-                message = "Lokaler Flip-Finder: 401 – falscher Token.";
+                message = "Token wrong or missing (401)";
             } catch (IOException | RuntimeException e) {
-                message = "Lokaler Flip-Finder: nicht erreichbar (" + e.getClass().getSimpleName()
-                        + (e.getMessage() == null ? "" : ": " + e.getMessage()) + ").";
+                message = "Host not reachable – is Radmin VPN on and the host's flip mode running?";
             }
             String result = message;
             minecraft.execute(() -> SBSChat.send(result));

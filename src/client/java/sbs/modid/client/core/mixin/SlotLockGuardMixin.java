@@ -43,6 +43,12 @@ public abstract class SlotLockGuardMixin {
             ci.cancel();
             return;
         }
+        // Trade Guard: my own accept click is held for a few seconds after a swap warning.
+        if (sbs.modid.client.economy.trade.logic.TradeGuardRuntime.blocksClick(player, slotId, input)) {
+            skyblockSimplified$logVeto("trade guard", input, slotId, button);
+            ci.cancel();
+            return;
+        }
         if (SlotLock.blocks(player, slotId, button, input)) {
             SlotLock.denied();
             skyblockSimplified$logVeto("slot lock", input, slotId, button);

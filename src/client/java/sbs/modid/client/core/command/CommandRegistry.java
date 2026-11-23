@@ -364,6 +364,8 @@ public final class CommandRegistry {
         dev(l, "sbs", "questcapture", List.of("qc"), "[...]", "Records questline dialogue to a file.");
         dev(l, "sbs", "perf", List.of(), "[dump [label]|reset|slow <ms>]",
                 "Performance KPI overlay, report to Development_Stuff/perf, reset, slow-tick test.");
+        dev(l, "sbs", "flips", List.of(), "source local|source vpn <ip> [port]|token <token>|test",
+                "Where the flip finder and Lowball connect: this PC, or the host over Radmin VPN.");
         dev(l, "sbs", "lowball", List.of(), "[last|copy <offer>]",
                 "Appraises the held item through the local flip program and suggests offers.");
         dev(l, "sbs", "terminaltest", List.of(), "", "Runs the terminal solvers against test boards.");

@@ -21,10 +21,10 @@ import java.util.Set;
  *       mining, Cultivating via farming, Toxophilite via bow combat XP, Absorb via foraging,
  *       Pesterminator via pests). Higher tiers never exist as books, so the market value of ANY
  *       applied tier is exactly one base book – never {@code 2^(T-1)} copies.</li>
- *   <li><b>Special top tiers</b> come only from drops, NPCs or item crafts (e.g. Smite VII =
+ *   <li><b>Special top tiers</b> come only from drops, NPCs or upgrade items (e.g. Smite VII =
  *       Smite VI + Severed Hand, Sharpness/Critical/Growth VII from drops/Dark Auction) – never
- *       from combining two books of the tier below. Their real cost is the top-tier book's own
- *       market price, which already embeds the special ingredient/drop value.</li>
+ *       from combining two books of the tier below. Drop tiers price as their own book; upgrade
+ *       tiers (see {@link #UPGRADES}) as the required book plus the item.</li>
  * </ul>
  * Enchants not listed here follow the standard anvil rule (two equal books → one book of the
  * next tier), which keeps tier composition valid for ultimates (Chimera V = 16× Chimera I) and
@@ -68,23 +68,49 @@ final class EnchantMarketRules {
             Map.entry("infinite_quiver", 6),  // VII+: drop only
             Map.entry("divine_gift", 1));     // II/III: drop only
 
-    /** A top tier that is crafted as "lower-tier book + a special item" instead of combined. */
-    record CraftedTier(int baseTier, String itemId, String itemLabel) {
+    /**
+     * An enchant-upgrade item: applied to an item that already has {@code requiredTier}, it raises
+     * the enchant by one level, up to {@code maxTier} (once for most, Silex up to Efficiency X).
+     */
+    record Upgrade(int requiredTier, int maxTier, String itemId, String itemLabel) {
+
+        /** Upgrade items needed to reach {@code tier}, or 0 when this upgrade does not produce it. */
+        int countFor(int tier) {
+            return tier > requiredTier && tier <= maxTier ? tier - requiredTier : 0;
+        }
+
+        /** Row note, e.g. "= 6 + End Stone Idol" or "= 5 + 3x Silex". */
+        String note(int tier) {
+            int count = countFor(tier);
+            return "= " + requiredTier + " + " + (count > 1 ? count + "x " : "") + itemLabel;
+        }
     }
 
     /**
-     * NOTE (maintenance): Hypixel keeps introducing top tiers that are crafted as
-     * "book + special item". Entries here are <b>competing fallbacks</b>, not overrides: the value
-     * service prices BOTH the tier's own book (when the market knows it) and this craft
-     * composition, and the cheaper one wins – so adding an entry is always safe, and when a new
-     * game update introduces another such craft it just needs one line here (wrong/missing ids
-     * simply lose the competition). Known crafts:
+     * Every enchant-upgrade item, collected from the repo lore ("increases its X level by 1 …
+     * requires X N", {@code run/config/sbs/repo/Repo_Item_Lore.json}, 2026-11-22). Their levels
+     * have no book with real orders (ENCHANTMENT_ENDER_SLAYER_7 sits on the Bazaar at 0/0), so they
+     * are priced as the required tier's book plus the item(s); the tier's own book still competes
+     * and the cheaper wins. A new upgrade item = one line here.
      */
-    private static final Map<String, CraftedTier> CRAFTED_TIERS = Map.of(
-            "smite:7", new CraftedTier(6, "SEVERED_HAND", "Severed Hand"),
-            "venomous:7", new CraftedTier(6, "FATEFUL_STINGER", "Fateful Stinger"),
-            "scavenger:6", new CraftedTier(5, "GOLDEN_BOUNTY", "Golden Bounty"),
-            "ender_slayer:7", new CraftedTier(6, "END_STONE_IDOL", "End Stone Idol"));
+    private static final Map<String, Upgrade> UPGRADES = Map.ofEntries(
+            Map.entry("ender_slayer", new Upgrade(6, 7, "ENDSTONE_IDOL", "End Stone Idol")),
+            Map.entry("smite", new Upgrade(6, 7, "SEVERED_HAND", "Severed Hand")),
+            Map.entry("bane_of_arthropods", new Upgrade(6, 7, "ENSNARED_SNAIL", "Ensnared Snail")),
+            Map.entry("venomous", new Upgrade(6, 7, "FATEFUL_STINGER", "Fateful Stinger")),
+            Map.entry("scavenger", new Upgrade(5, 6, "GOLDEN_BOUNTY", "Golden Bounty")),
+            Map.entry("luck_of_the_sea", new Upgrade(6, 7, "GOLD_BOTTLE_CAP", "Gold Bottle Cap")),
+            Map.entry("piscary", new Upgrade(6, 7, "TROUBLED_BUBBLE", "Troubled Bubble")),
+            Map.entry("spiked_hook", new Upgrade(6, 7, "OCTOPUS_TENDRIL", "Octopus Tendril")),
+            Map.entry("frail", new Upgrade(6, 7, "SEVERED_PINCER", "Severed Pincer")),
+            Map.entry("forest_pledge", new Upgrade(5, 6, "WATER_HYACINTH", "Water Hyacinth")),
+            Map.entry("stealth", new Upgrade(5, 6, "DISTANT_ECHO", "Distant Echo")),
+            Map.entry("scuba", new Upgrade(5, 6, "VIBRANT_CORAL", "Vibrant Coral")),
+            Map.entry("charm", new Upgrade(5, 6, "CHAIN_END_TIMES", "Chain of the End Times")),
+            Map.entry("karma", new Upgrade(5, 6, "FORESTS_FAVOR", "Forest's Favor")),
+            Map.entry("pesterminator", new Upgrade(5, 6, "PESTHUNTING_GUIDE", "Pesthunting Guide")),
+            Map.entry("thorns", new Upgrade(3, 4, "PRICKLY_CREEPER", "Prickly Creeper")),
+            Map.entry("efficiency", new Upgrade(5, 10, "SIL_EX", "Silex")));
 
     private EnchantMarketRules() {
     }
@@ -94,9 +120,23 @@ final class EnchantMarketRules {
         return STACKING.contains(normalize(enchantKey));
     }
 
-    /** The "book + item" craft of this enchant tier, or {@code null} for normal market tiers. */
-    static CraftedTier craftedTier(String enchantKey, int tier) {
-        return CRAFTED_TIERS.get(normalize(enchantKey) + ":" + tier);
+    /** The upgrade item that produces this enchant tier, or {@code null} for book-only tiers. */
+    static Upgrade upgradeFor(String enchantKey, int tier) {
+        Upgrade upgrade = UPGRADES.get(normalize(enchantKey));
+        return upgrade != null && upgrade.countFor(tier) > 0 ? upgrade : null;
+    }
+
+    /**
+     * An upgrade tier's price: the cheaper of its own book and "required-tier book + n upgrade
+     * items"; {@code null} when neither side is fully priced (an unpriced part never counts as 0).
+     */
+    static Long upgradedPrice(Upgrade upgrade, int tier, Long ownBook, Long baseBook, Long itemUnit) {
+        Long composed = baseBook == null || itemUnit == null
+                ? null : baseBook + itemUnit * upgrade.countFor(tier);
+        if (ownBook == null) {
+            return composed;
+        }
+        return composed == null ? ownBook : Math.min(ownBook, composed);
     }
 
     /** The highest tier of this enchant an anvil combine can produce (no limit when unlisted). */

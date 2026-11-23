@@ -180,6 +180,11 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
      * merely looking at is copied <b>once</b>, not sixty times a second, while a real change is
      * still picked up on the very next frame – so the index self-updates without polling.
      */
+    /** What {@link #capture} last read: the menu, the slot-change revision and the storage. Client thread. */
+    private AbstractContainerMenu lastMenu;
+    private int lastChanges;
+    private String lastSourceId;
+
     public void capture(AbstractContainerScreen<?> screen) {
         if (!ConfigManager.getInstance().get().skyblockMenu.previewMode.indexes()) {
             return;
@@ -191,10 +196,16 @@ public final class StorageIndex implements sbs.modid.client.core.config.ProfileS
         if (source == null || !cfg().enabledFor(source.kind())) {
             return;
         }
-        Snapshot existing = snapshots.get(source.id());
-        if (existing != null && existing.stateId() == menu.getStateId()) {
+        // Skip only while it is the SAME menu and no slot changed since its last read. The state id
+        // alone was not enough: a reopened page is a new menu whose id can repeat the stored one, and
+        // a click the server accepts as predicted bumps nothing - both left the old contents saved.
+        int changes = sbs.modid.client.core.tick.InventoryChanges.revision();
+        if (menu == lastMenu && changes == lastChanges && source.id().equals(lastSourceId)) {
             return; // unchanged since the last capture - nothing to do
         }
+        lastMenu = menu;
+        lastChanges = changes;
+        lastSourceId = source.id();
         int containerSlots = Math.max(0, menu.getItems().size() - PLAYER_PART);
         // Ender Chest pages AND Backpacks open with an options / navigation row across the top -
         // never real contents. Skip that row for both so it is not indexed or shown.

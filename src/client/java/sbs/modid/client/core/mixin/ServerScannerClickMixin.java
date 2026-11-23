@@ -31,6 +31,10 @@ public abstract class ServerScannerClickMixin {
     @Inject(method = "handleContainerInput", at = @At("RETURN"))
     private void skyblockSimplified$scannerClick(int containerId, int slotId, int button, ContainerInput input,
                                                  Player player, CallbackInfo ci) {
+        // A click is applied locally (predicted) and a server that agrees sends NO slot packet back,
+        // so without this mark every reader gated on InventoryChanges (storage preview, storage index)
+        // keeps the contents from before the player moved anything.
+        sbs.modid.client.core.tick.InventoryChanges.mark();
         ServerScanner.onClick(containerId, slotId, button, input);
     }
 }

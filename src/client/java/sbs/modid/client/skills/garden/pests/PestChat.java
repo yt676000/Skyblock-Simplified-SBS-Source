@@ -40,6 +40,29 @@ public final class PestChat {
             "Earthworm", "Mosquito", "Firefly", "Cricket", "Beetle", "Locust", "Mouse", "Mite",
             "Moth", "Slug", "Rat", "Fly");
 
+    /** The glyph Hypixel puts in every pest nametag. */
+    private static final String PEST_MARK = "ൠ";
+
+    /**
+     * Every species in {@link #PESTS} as a whole word. The word boundary keeps "Fly" from matching
+     * inside "Butterfly"; Dragonfly and Firefly match as their own entries. Built from the one list,
+     * so a new species added there is highlighted too - a separate copy in the highlighter missed
+     * the 0.24 Jelly pests (Dragonfly, Firefly, Praying Mantis).
+     */
+    private static final Pattern PEST_NAME = Pattern.compile("(?i)\\b(?:"
+            + String.join("|", PESTS.stream().map(Pattern::quote).toList()) + ")\\b");
+
+    /**
+     * Whether a nametag belongs to a pest: the pest glyph or a species name. Tags with "[Lv" are pet
+     * names (the Rat pet carries the word "Rat") and never count.
+     */
+    public static boolean isPestTag(String name) {
+        if (name == null || name.isEmpty() || name.toLowerCase(Locale.ROOT).contains("[lv")) {
+            return false;
+        }
+        return name.contains(PEST_MARK) || PEST_NAME.matcher(name).find();
+    }
+
     private static final Pattern RARE_DROP = Pattern.compile(
             "^(?:CRAZY |VERY )?(?:RARE|INSANE|PET) DROP! (?:\\((\\d+)x\\) )?(.+?)(?: \\(\\+.*\\))?$");
     private static final Pattern SACK_LINE = Pattern.compile("^\\s*([+-][\\d,]+) (.+?) \\((.+)\\)\\s*$");

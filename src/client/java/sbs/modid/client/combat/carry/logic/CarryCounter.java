@@ -58,9 +58,9 @@ import java.util.regex.Pattern;
  *       exactly how a busy slayer area used to inflate the total. All that is still asked of the
  *       kill itself is that the boss was part of your fight at some point, so one that dies across
  *       the arena counts just as much as one that dies at your feet.</li>
- *   <li><b>Proximity.</b> Only when no owner line is on the stack does it fall back to the old
- *       guess: a boss that died right next to you (a stand-in for "you assisted") counts for the
- *       active carry.</li>
+ *   <li><b>No owner line, no count.</b> There used to be a proximity fallback (a boss dying right
+ *       next to you counted for the active carry). It booked strangers' bosses - ones you hit once,
+ *       or never touched - so it is gone; a missed kill is added with {@code /sbs carry +}.</li>
  * </ol>
  * A short post-count cooldown guards both paths against a boss's own phase change being read as a
  * second kill. If it ever miscounts on a given server the carrier can turn auto-detect off and use
@@ -532,16 +532,22 @@ public final class CarryCounter {
             if (track.owner != null && self != null && track.owner.equalsIgnoreCase(self)) {
                 continue; // your own boss: "SLAYER QUEST COMPLETE!" is the exact signal (onChat)
             }
-            boolean proximity = track.owner == null;
-            if (!proximity && find(track.owner) == null) {
+            // No owner line read: never counted. The old proximity fallback booked any boss dying
+            // beside you onto the active carry - strangers' bosses you had hit once, or never touched
+            // (tester report 2026-10-22). Missing a kill is fixed with "/sbs carry +"; a stranger's
+            // boss on a customer's bill is not noticed at all.
+            if (track.owner == null) {
+                SkyblockSimplifiedSBS.LOGGER.info(
+                        "[SBS][Carry] {} (entity {}) vanished with no owner line read - not counted",
+                        track.boss, e.getKey());
+                continue;
+            }
+            if (find(track.owner) == null) {
                 logForeignBoss(now, track.owner);
                 continue;
             }
-            // Owner path: only that it was ever part of your fight. Proximity path: it went out
-            // right beside you.
-            boolean eligible = track.everClose
-                    && (!proximity || now - track.lastCloseMs <= DEATH_WINDOW_MS);
-            if (!eligible) {
+            // Only that it was ever part of your fight.
+            if (!track.everClose) {
                 continue;
             }
             if (judge.vanished(track.boss, track.owner, track.pos.x, track.pos.y, track.pos.z, now,

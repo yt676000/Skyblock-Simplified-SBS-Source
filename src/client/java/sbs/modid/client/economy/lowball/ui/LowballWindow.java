@@ -15,7 +15,9 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
+import sbs.modid.client.economy.auctions.logic.ClosestDiff;
 import sbs.modid.client.economy.lowball.logic.Lowball;
+import sbs.modid.client.economy.lowball.logic.LowballFormat;
 import sbs.modid.client.economy.lowball.logic.LowballView;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.theme.SBSTheme;
@@ -55,6 +57,7 @@ public final class LowballWindow {
     private static final int ORANGE = 0xFFFFA040;
     private static final int YELLOW = 0xFFFFD64D;
     private static final int GREEN = 0xFF57D977;
+    private static final int GOLD = 0xFFFFAA00;
     private static final int BOX_RED = 0x40FF5555;
     private static final int BOX_ORANGE = 0x40FFA040;
     private static final int BUTTON_BG = 0x3057D977;
@@ -62,6 +65,12 @@ public final class LowballWindow {
 
     /** Offer table columns, as fractions of the content width. */
     private static final float[] TABLE_X = {0f, 0.17f, 0.36f, 0.66f, 0.83f};
+
+    /** Similar-auction row columns: label, price, match, adj, → est. */
+    private static final float[] SIMILAR_X = {0f, 0.36f, 0.53f, 0.64f, 0.80f};
+
+    /** Marks a row's copy text as a live auction to open with {@code /viewauction}. */
+    private static final String VIEW_AUCTION = "auction:";
 
     /** Marks a row's copy text as a plain copy (a sell price), not an offer to the seller. */
     private static final String PLAIN_COPY = "plain:";
@@ -72,11 +81,18 @@ public final class LowballWindow {
      */
     private record Line(String a, int colorA, String b, int colorB, String c, int colorC,
                         String d, int colorD, String e, int colorE, boolean table,
-                        int indent, String copy, int toggle, int tint, String hover) {
+                        int indent, String copy, int toggle, int tint, String hover, boolean similar) {
+
+        Line(String a, int colorA, String b, int colorB, String c, int colorC,
+             String d, int colorD, String e, int colorE, boolean table,
+             int indent, String copy, int toggle, int tint, String hover) {
+            this(a, colorA, b, colorB, c, colorC, d, colorD, e, colorE, table, indent, copy, toggle, tint, hover,
+                    false);
+        }
 
         Line(String a, int colorA, String b, int colorB, String c, int colorC,
              int indent, String copy, int toggle, int tint, String hover) {
-            this(a, colorA, b, colorB, c, colorC, null, 0, null, 0, false, indent, copy, toggle, tint, hover);
+            this(a, colorA, b, colorB, c, colorC, null, 0, null, 0, false, indent, copy, toggle, tint, hover, false);
         }
     }
 
@@ -218,6 +234,10 @@ public final class LowballWindow {
         for (String warning : item.warnings()) {
             out.add(new Line(warning, RED, null, 0, null, 0, indent, null, -1, 0, warning));
         }
+        if (item.dyeText() != null) {
+            out.add(new Line(item.dyeText(), SBSTheme.TEXT_MUTED, null, 0, null, 0, indent, null, -1, 0,
+                    item.dyeText()));
+        }
         if (!item.tiers().isEmpty()) {
             out.add(new Line("Sell", SBSTheme.TEXT_MUTED, "Price", SBSTheme.TEXT_MUTED, "Time", SBSTheme.TEXT_MUTED,
                     indent, null, -1, 0, null));
@@ -230,6 +250,7 @@ public final class LowballWindow {
             out.add(new Line("Value ~" + item.fastText(), SBSTheme.ACCENT_BRIGHT, null, 0, null, 0,
                     indent, null, -1, 0, null));
         }
+        similar(out, item, indent);
         for (String market : item.market()) {
             out.add(new Line(market, SBSTheme.TEXT_MUTED, null, 0, null, 0, indent, null, -1, 0, market));
         }
@@ -263,6 +284,65 @@ public final class LowballWindow {
                         indent, row.copyText(), -1, row.closest() ? BUTTON_BG : 0, hover));
             }
         }
+    }
+
+    /** "Similar auctions": one row per closest entry, the diff in the hover, LIVE rows clickable. */
+    private static void similar(List<Line> out, LowballView.Item item, int indent) {
+        if (item.similar().isEmpty()) {
+            return;
+        }
+        out.add(new Line("Similar auctions", SBSTheme.TEXT_MUTED, null, 0, null, 0, indent, null, -1, 0,
+                "Most similar first. Match is value-weighted (100% = same setup).\n"
+                        + "+/- = your item is worth more/less; → = your item's value by this comparison"));
+        for (LowballView.Similar s : item.similar()) {
+            int labelColor = s.sameItem() ? GOLD : s.live() ? SBSTheme.ACCENT_BRIGHT : SBSTheme.TEXT;
+            int matchColor = s.match() >= 85 ? GREEN : s.match() >= 65 ? YELLOW : SBSTheme.TEXT_MUTED;
+            int adjColor = s.adj() > 0 ? GREEN : s.adj() < 0 ? RED : SBSTheme.TEXT_MUTED;
+            boolean clickable = s.live() && s.auctionId() != null && !s.auctionId().isBlank();
+            out.add(new Line(s.label(), labelColor, s.priceText(), SBSTheme.ACCENT_BRIGHT,
+                    s.match() + "%", matchColor, s.adjText(), adjColor,
+                    s.estText() != null ? "→ " + s.estText() : null, SBSTheme.TEXT, true,
+                    indent, clickable ? VIEW_AUCTION + s.auctionId() : null, -1, 0,
+                    similarHover(s, clickable), true));
+        }
+    }
+
+    private static String similarHover(LowballView.Similar s, boolean clickable) {
+        List<String> parts = new ArrayList<>();
+        if (!s.youHave().isEmpty()) {
+            parts.add("§aYou have:");
+            for (LowballView.Diff d : s.youHave()) {
+                parts.add("§a+ " + diffText(d, true));
+            }
+        }
+        if (!s.theyHave().isEmpty()) {
+            parts.add("§cThey have:");
+            for (LowballView.Diff d : s.theyHave()) {
+                parts.add("§c- " + diffText(d, false));
+            }
+        }
+        if (parts.isEmpty()) {
+            parts.add("§7No differences");
+        }
+        if (clickable) {
+            parts.add("§7Click: /viewauction");
+        }
+        return String.join("\n", parts);
+    }
+
+    /** "Eman Kills 150k vs 60k (+3.8m)"; enchants/gems show only the coin weight. */
+    private static String diffText(LowballView.Diff d, boolean mine) {
+        String label = ClosestDiff.label(d.type(), d.key());
+        StringBuilder sb = new StringBuilder(label != null ? label : "?");
+        if (!ClosestDiff.valuesAreCoins(d.type()) && (d.you() != 0 || d.they() != 0)) {
+            double first = mine ? d.you() : d.they();
+            double second = mine ? d.they() : d.you();
+            sb.append(' ').append(LowballFormat.coins(first)).append(" vs ").append(LowballFormat.coins(second));
+        }
+        if (d.w() > 0) {
+            sb.append(" (").append(mine ? "+" : "-").append(LowballFormat.coins(d.w())).append(')');
+        }
+        return sb.toString();
     }
 
     private static String nameOf(LowballView.Item item) {
@@ -357,8 +437,9 @@ public final class LowballWindow {
                 int[] colors = {line.colorA(), line.colorB(), line.colorC(), line.colorD(), line.colorE()};
                 for (int c = 0; c < cells.length; c++) {
                     if (cells[c] != null) {
-                        int cx = x + (int) (width * TABLE_X[c]);
-                        int next = c + 1 < cells.length ? x + (int) (width * TABLE_X[c + 1]) : posX + panelW - PAD;
+                        float[] cols = line.similar() ? SIMILAR_X : TABLE_X;
+                        int cx = x + (int) (width * cols[c]);
+                        int next = c + 1 < cells.length ? x + (int) (width * cols[c + 1]) : posX + panelW - PAD;
                         g.text(font, Component.literal(font.plainSubstrByWidth(cells[c], Math.max(0, next - cx - 3),
                                 false)), cx, y, colors[c]);
                     }
@@ -426,7 +507,9 @@ public final class LowballWindow {
         int index = scrollRow + (int) ((my - rowsTop() + 1) / ROW_H);
         if (my >= rowsTop() - 1 && index >= 0 && index < lines.size() && index - scrollRow < visibleRows()) {
             Line line = lines.get(index);
-            if (line.copy() != null && line.copy().startsWith(PLAIN_COPY)) {
+            if (line.copy() != null && line.copy().startsWith(VIEW_AUCTION)) {
+                viewAuction(line.copy().substring(VIEW_AUCTION.length()));
+            } else if (line.copy() != null && line.copy().startsWith(PLAIN_COPY)) {
                 Lowball.copy(line.copy().substring(PLAIN_COPY.length()));
             } else if (line.copy() != null) {
                 Lowball.offerClicked(line.copy(), view.partner());
@@ -438,6 +521,15 @@ public final class LowballWindow {
             }
         }
         return true;
+    }
+
+    /** Opens a live auction in-game; nothing else (no buying). */
+    private static void viewAuction(String auctionId) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || !auctionId.matches("[0-9a-fA-F-]{32,36}")) {
+            return;
+        }
+        minecraft.player.connection.sendCommand("viewauction " + auctionId);
     }
 
     public boolean handleDrag(Screen screen, MouseButtonEvent event) {

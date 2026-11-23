@@ -12,6 +12,7 @@
     "ItemNameMixin",
     "ItemRarityMixin",
     "ItemUseMixin",
+    "AuctionSearchClickMixin",
     "LowballKeyMixin",
     "PriceHistoryKeyMixin",
     "PriceTooltipMixin",

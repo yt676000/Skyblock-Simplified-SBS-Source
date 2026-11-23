@@ -50,7 +50,8 @@ public class ChatScreenMixin {
         if (message != null && message.startsWith("/") && SBSCommands.tryExecute(message.substring(1))) {
             // Vanilla records the sent-message history AFTER this point; since we cancel here, we
             // record it ourselves – arrow-key recall must offer /sbs like any other command.
-            if (addToHistory) {
+            // ...except "/sbs flips token <token>": the token must not sit in the arrow-key history.
+            if (addToHistory && !message.toLowerCase(java.util.Locale.ROOT).startsWith("/sbs flips token")) {
                 net.minecraft.client.Minecraft.getInstance().gui.hud.getChat().addRecentChat(message);
             }
             ci.cancel();

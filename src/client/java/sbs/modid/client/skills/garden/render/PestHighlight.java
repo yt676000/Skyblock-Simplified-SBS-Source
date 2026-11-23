@@ -348,17 +348,6 @@ public final class PestHighlight {
         }
     }
 
-    /** The glyph Hypixel puts in every pest nametag. */
-    private static final String PEST_MARK = "ൠ";
-
-    /**
-     * The pest species, as whole words. The word boundary is what keeps this from matching past the
-     * catalog ("Firefly" does not contain the word "fly"); pet tags are excluded separately because
-     * the Rat PET really does carry the word "Rat".
-     */
-    private static final java.util.regex.Pattern PEST_NAME = java.util.regex.Pattern.compile(
-            "(?i)\\b(beetle|cricket|earthworm|fly|locust|mite|mosquito|moth|rat|slug)\\b");
-
     /** Every pest mob near the player, identified by nametag (+ the tuning log when none match). */
     private static List<Entity> collectPests(ClientLevel level, LocalPlayer player) {
         AABB area = player.getBoundingBox().inflate(SCAN_RADIUS);
@@ -414,10 +403,7 @@ public final class PestHighlight {
      * are excluded outright - a pet level prefix can never be on a pest.
      */
     private static boolean isPestTag(String name) {
-        if (name.isEmpty() || name.toLowerCase(Locale.ROOT).contains("[lv")) {
-            return false;
-        }
-        return name.contains(PEST_MARK) || PEST_NAME.matcher(name).find();
+        return sbs.modid.client.skills.garden.pests.PestChat.isPestTag(name);
     }
 
     /** Whether a world point projects inside the viewport (clip space [-1,1], in front of the camera). */

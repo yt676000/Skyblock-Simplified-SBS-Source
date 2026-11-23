@@ -57,6 +57,14 @@ public enum Rarity {
     /** A legacy § marker and the code character after it, stripped before any text is matched. */
     private static final Pattern FORMATTING = Pattern.compile("\\u00a7.");
 
+    /**
+     * An obfuscated run: {@code §k} and the text it scrambles, up to the next § code. A recombobulated
+     * item's rarity line is fenced by such a marker on BOTH sides ("§d§l§ka§r §d§lMYTHIC ACCESSORY
+     * §d§l§ka"); stripped of codes alone the leading one leaves "a MYTHIC ...", which the start-anchored
+     * line pattern rejects, so every recombed item lost its lore rarity. Removed before matching.
+     */
+    private static final Pattern OBFUSCATED = Pattern.compile("\\u00a7[kK][^\\u00a7]*");
+
     /** A legacy colour code, e.g. {@code §6}. Formatting codes (k-o, r) are not colours. */
     private static final Pattern COLOR_CODE = Pattern.compile("\\u00a7([0-9a-fA-F])");
 
@@ -107,7 +115,7 @@ public enum Rarity {
             // The rarity is on the last lore line; scan bottom-up so the lines an auction or menu
             // appends below it (seller, price, "Click to inspect") are passed over first.
             for (int i = lore.lines().size() - 1; i >= 0; i--) {
-                Rarity rarity = fromLoreLine(lore.lines().get(i).getString());
+                Rarity rarity = fromLoreLine(withoutObfuscated(lore.lines().get(i)));
                 if (rarity != null) {
                     return rarity;
                 }
@@ -159,12 +167,27 @@ public enum Rarity {
         return PET_LEVEL.matcher(rawName).find();   // a pet proves itself by its level prefix
     }
 
+    /**
+     * A lore line's text with the segments drawn obfuscated by their component style left out - the
+     * style-borne twin of {@link #OBFUSCATED}, for a line built from components instead of § codes.
+     */
+    private static String withoutObfuscated(Component line) {
+        StringBuilder out = new StringBuilder();
+        line.visit((style, text) -> {
+            if (!style.isObfuscated()) {
+                out.append(text);
+            }
+            return Optional.empty();
+        }, Style.EMPTY);
+        return out.toString();
+    }
+
     /** The rarity one lore line states, or {@code null} when the line is not a rarity line. */
     static Rarity fromLoreLine(String line) {
         if (line == null) {
             return null;
         }
-        String text = FORMATTING.matcher(line).replaceAll("").trim();
+        String text = FORMATTING.matcher(OBFUSCATED.matcher(line).replaceAll("")).replaceAll("").trim();
         Matcher matcher = RARITY_LINE.matcher(text);
         return matcher.find() ? valueOf(matcher.group(1)) : null;
     }

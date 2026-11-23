@@ -192,16 +192,17 @@ public final class MapModule implements SbsModule {
                         .describe("Side length of the minimap square. Default 112."),
                 SettingRow.rangeSlider("Minimap Radius", 32, 256, () -> cfg().hollowsMinimapRadius,
                         value -> { cfg().hollowsMinimapRadius = value; save(); }, " blocks")
-                        .describe("How far from you the minimap reaches, centre to edge. Anything "
+                        .describe("Only with Minimap Follows You: how far from you it reaches, centre to edge. Anything "
                                 + "further sits on the edge in its direction. Default 96."),
                 SettingRow.toggle("Rotate Minimap With You", () -> cfg().hollowsMinimapRotate,
                         () -> { cfg().hollowsMinimapRotate = !cfg().hollowsMinimapRotate; save(); })
-                        .describe("Turns the minimap so the way you face is up, with an N on the edge. "
+                        .describe("Only with Minimap Follows You: turns the minimap so the way you face is up, with an N on the edge. "
                                 + "Off keeps north up. Default off."),
-                SettingRow.toggle("Fixed Minimap (Whole Hollows)", () -> cfg().hollowsMinimapFixed,
-                        () -> { cfg().hollowsMinimapFixed = !cfg().hollowsMinimapFixed; save(); })
-                        .describe("Shows the whole Crystal Hollows standing still, north up, and moves "
-                                + "only your arrow across it. Radius and rotation are ignored. Default off."),
+                SettingRow.toggle("Minimap Follows You", () -> cfg().hollowsMinimapFollow,
+                        () -> { cfg().hollowsMinimapFollow = !cfg().hollowsMinimapFollow; save(); })
+                        .describe("Off: the minimap shows all four regions of the Crystal Hollows standing "
+                                + "still, north up, and only your arrow moves. On: it centres on you and "
+                                + "uses Minimap Radius and Rotate Minimap With You. Default off."),
                 SettingRow.toggle("Show Explored Trail", () -> cfg().hollowsShowTrail,
                         () -> { cfg().hollowsShowTrail = !cfg().hollowsShowTrail; save(); })
                         .describe("Shades the 8x8 cells you have stood in this lobby, upper cave and "

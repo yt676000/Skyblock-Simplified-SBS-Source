@@ -38,6 +38,7 @@ public abstract class ScrollableTooltipsMixin {
 
     @ModifyVariable(method = "tooltip", at = @At("HEAD"), argsOnly = true, ordinal = 0)
     private List<ClientTooltipComponent> skyblockSimplified$scrollTooltip(List<ClientTooltipComponent> components) {
-        return ScrollableTooltips.getInstance().apply(Minecraft.getInstance().font, components);
+        return ScrollableTooltips.getInstance().apply(Minecraft.getInstance().font, components,
+                ((GuiGraphicsExtractor) (Object) this).guiHeight());
     }
 }

@@ -237,6 +237,18 @@ public final class SBSCommands {
                 return true;
             }
 
+            // /sbs flips source local | source vpn <ip> [port] | token <token> | test (dev mode) - where
+            // the Local Flip Finder and Lowball connect: this PC, or the host's PC over Radmin VPN.
+            if (sub[0].equalsIgnoreCase("flips")) {
+                // DEV-ONLY: dev command handling
+                if (!sbs.modid.client.core.dev.DevMode.ACTIVE) {
+                    return true;   // silent, like every other dev path
+                }
+                sbs.modid.client.economy.localflips.command.FlipSourceCommand.handle(
+                        sub.length > 1 ? sub[1].trim() : "");
+                return true;
+            }
+
             // /sbs lowball [copy <offer>] (dev mode) - appraise the held item through the local flip
             // program; "copy" is what a clicked offer runs. Never sends anything to the server.
             if (sub[0].equalsIgnoreCase("lowball")) {

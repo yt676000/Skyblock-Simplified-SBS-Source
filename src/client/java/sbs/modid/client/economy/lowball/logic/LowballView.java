@@ -51,8 +51,24 @@ public final class LowballView {
                        String confidenceText, String confidenceLevel, String confidenceHover,
                        List<Box> boxes, List<String> warnings, List<Tier> tiers, List<String> market,
                        List<OfferRow> offers, Recommended recommended, boolean valueOnly, String fastText,
-                       boolean warned) {
+                       boolean warned, List<Similar> similar, String dyeText) {
     }
+
+    /** One {@code closest[].diff} entry: type, key, counter/cost values and coin weight. */
+    public record Diff(String type, String key, double you, double they, double w) {
+    }
+
+    /**
+     * One similar auction from {@code closest[]}: sold in the last 14 days or live on the AH. Texts
+     * are ready to draw; {@code auctionId} is set only for a live row (it opens on click).
+     */
+    public record Similar(boolean live, String label, boolean sameItem, String priceText, int match,
+                          double adj, String adjText, String estText, String auctionId,
+                          List<Diff> youHave, List<Diff> theyHave) {
+    }
+
+    /** At most this many similar auctions are shown (the server sends up to 8). */
+    static final int MAX_SIMILAR = 8;
 
     private final List<Item> items;
     private final List<String> totalOffers;
@@ -130,7 +146,7 @@ public final class LowballView {
         int count = (int) LowballFormat.num(r, "count");
         if (!base.ok()) {
             return new Item(base.ref(), false, base.name(), count, base.error(), null, null, null,
-                    List.of(), List.of(), List.of(), List.of(), List.of(), null, true, null, false);
+                    List.of(), List.of(), List.of(), List.of(), List.of(), null, true, null, false, List.of(), null);
         }
 
         // Confidence badge.
@@ -183,8 +199,11 @@ public final class LowballView {
             boxes.add(new Box("MAYOR: " + (current != null ? current : "?"), lines, false));
         }
         List<String> warnings = new ArrayList<>();
+        String dyeText = dye(r.get("dye"));
         for (String w : base.warnings()) {
-            if (!shown.contains(w) && !w.isBlank()) {
+            // The dye warning repeats the dedicated Dye line; drop it once that line is there.
+            boolean dyeDup = dyeText != null && w.strip().toLowerCase(Locale.ROOT).startsWith("dye:");
+            if (!shown.contains(w) && !w.isBlank() && !dyeDup) {
                 warnings.add(w);
             }
         }
@@ -285,7 +304,100 @@ public final class LowballView {
         boolean warned = !boxes.isEmpty() || !warnings.isEmpty();
         return new Item(base.ref(), true, base.name(), count, null, confText, confLevel, confHover,
                 List.copyOf(boxes), List.copyOf(warnings), List.copyOf(tiers), List.copyOf(market),
-                List.copyOf(offers), recommended, base.valueOnly(), fastText, warned);
+                List.copyOf(offers), recommended, base.valueOnly(), fastText, warned, similar(r.get("closest")), dyeText);
+    }
+
+    /** {@code closest[]} → rows; missing / malformed (old server) gives an empty list, never an error. */
+    static List<Similar> similar(JsonElement closest) {
+        if (!(closest instanceof JsonArray array)) {
+            return List.of();
+        }
+        List<Similar> out = new ArrayList<>();
+        for (JsonElement e : array) {
+            if (out.size() >= MAX_SIMILAR) {
+                break;
+            }
+            if (!(e instanceof JsonObject o)) {
+                continue;
+            }
+            double price = LowballFormat.num(o, "price");
+            if (price <= 0) {
+                continue;
+            }
+            boolean live = "live".equals(LowballFormat.str(o, "source"));
+            boolean same = !live && bool(o, "same_item");
+            String label = live ? "LIVE"
+                    : same ? "SOLD (this item!)"
+                    : has(o, "age_h") ? "SOLD " + age(LowballFormat.num(o, "age_h")) : "SOLD";
+            String priceText = text(o, "price_text", price);
+            double adj = LowballFormat.num(o, "adj");
+            String adjText = has(o, "adj") ? (adj >= 0 ? "+" : "") + LowballFormat.coins(adj) : null;
+            double est = has(o, "est") ? LowballFormat.num(o, "est") : price + adj;
+            String estText = has(o, "est_text") || has(o, "est") || has(o, "adj") ? text(o, "est_text", est) : null;
+            List<Diff> you = List.of();
+            List<Diff> they = List.of();
+            if (o.get("diff") instanceof JsonObject diff) {
+                you = diffs(diff.get("you_have"));
+                they = diffs(diff.get("they_have"));
+            }
+            out.add(new Similar(live, label, same, priceText, (int) Math.round(LowballFormat.num(o, "match")),
+                    adj, adjText, estText, live ? LowballFormat.str(o, "auction_id") : null, you, they));
+        }
+        return List.copyOf(out);
+    }
+
+    private static List<Diff> diffs(JsonElement side) {
+        if (!(side instanceof JsonArray array)) {
+            return List.of();
+        }
+        List<Diff> out = new ArrayList<>();
+        for (JsonElement e : array) {
+            if (e instanceof JsonObject d) {
+                out.add(new Diff(LowballFormat.str(d, "t"), LowballFormat.str(d, "k"), LowballFormat.num(d, "you"),
+                        LowballFormat.num(d, "they"), LowballFormat.num(d, "w")));
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * {@code dye} object → {@code "Dye: with 80.2m (~12 h) | without 76.1m (~5 h) | dye applied 4.1m"};
+     * {@code null} / absent (undyed item, old server) gives {@code null}.
+     */
+    static String dye(JsonElement e) {
+        if (!(e instanceof JsonObject d)) {
+            return null;
+        }
+        return "Dye: with " + text(d, "with_dye_text", LowballFormat.num(d, "with_dye"))
+                + " (~" + hours(d, "time_with_h") + " h)"
+                + " | without " + text(d, "without_dye_text", LowballFormat.num(d, "without_dye"))
+                + " (~" + hours(d, "time_without_h") + " h)"
+                + " | dye applied " + text(d, "applied_text", LowballFormat.num(d, "applied_value"));
+    }
+
+    private static String hours(JsonObject o, String key) {
+        if (!has(o, key)) {
+            return "?";
+        }
+        double h = LowballFormat.num(o, key);
+        return h >= 10 ? String.valueOf(Math.round(h)) : String.format(Locale.ROOT, "%.1f", h);
+    }
+
+    /** The server's own text when it sent one, else the same k/m/b format. */
+    private static String text(JsonObject o, String key, double fallback) {
+        String t = LowballFormat.str(o, key);
+        return t != null && !t.isBlank() ? t : LowballFormat.coins(fallback);
+    }
+
+    /** {@code 0.4 -> "<1h ago"}, {@code 5.2 -> "5h ago"}, {@code 50 -> "2d ago"}. */
+    static String age(double hours) {
+        if (hours < 1) {
+            return "<1h ago";
+        }
+        if (hours < 48) {
+            return Math.round(Math.floor(hours)) + "h ago";
+        }
+        return Math.round(Math.floor(hours / 24)) + "d ago";
     }
 
     static OfferRow offerRow(JsonObject o, boolean closest) {

@@ -123,6 +123,9 @@ public final class PickobolusHighlight {
         if (radius <= 0) {
             return;                                   // not holding a Pickobolus pickaxe
         }
+        if (!sbs.modid.client.combat.cooldowns.AbilityReadyAlert.getInstance().isReady("Pickobulus")) {
+            return;                                   // on cooldown: nothing to preview yet
+        }
 
         BlockPos centre = aimBlock(player, level, cfg.aimRange);
         if (centre == null) {

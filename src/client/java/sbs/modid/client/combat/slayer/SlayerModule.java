@@ -8,7 +8,10 @@
 
 package sbs.modid.client.combat.slayer;
 
+import sbs.modid.client.combat.carry.model.SlayerBoss;
+import sbs.modid.client.combat.slayer.logic.RngCalculator;
 import sbs.modid.client.combat.slayer.logic.SlayerTracker;
+import sbs.modid.client.combat.slayer.model.SlayerRngDrops;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.ui.hud.edit.ui.HudEditorScreen;
@@ -61,6 +64,19 @@ public final class SlayerModule implements SbsModule {
         return ConfigManager.getInstance().get().slayer;
     }
 
+    /** The calculator's slayer from config; Voidgloom when the name is unknown. */
+    public static SlayerBoss bossOf(String name) {
+        try {
+            return SlayerBoss.valueOf(name);
+        } catch (RuntimeException unknown) {
+            return SlayerBoss.VOIDGLOOM;
+        }
+    }
+
+    private static List<String> bossOptions() {
+        return java.util.Arrays.stream(SlayerBoss.values()).map(SlayerBoss::displayName).toList();
+    }
+
     private static void save() {
         ConfigManager.getInstance().save();
     }
@@ -89,6 +105,33 @@ public final class SlayerModule implements SbsModule {
                         () -> { cfg().rngMeterDropValue = !cfg().rngMeterDropValue; save(); })
                         .describe("Shows what your selected RNG drop sells for right now, under the "
                                 + "meter on the session card."),
+                SettingRow.toggle("RNG Calculator", () -> cfg().rngCalculator,
+                        () -> { cfg().rngCalculator = !cfg().rngCalculator; save(); })
+                        .describe("Adds the average number of bosses (and hours, at your bosses per "
+                                + "hour) to get the drop picked below, with your Magic Find. If that "
+                                + "drop is selected on your RNG meter, the meter's bonus and "
+                                + "guarantee are counted in. Chances come from the wiki."),
+                SettingRow.options("RNG Calc Slayer", SlayerModule::bossOptions,
+                        () -> bossOf(cfg().rngCalcBoss).displayName(),
+                        name -> {
+                            for (SlayerBoss b : SlayerBoss.values()) {
+                                if (b.displayName().equals(name)) {
+                                    cfg().rngCalcBoss = b.name();
+                                    cfg().rngCalcDrop = SlayerRngDrops.of(b).get(0).name();
+                                }
+                            }
+                            save();
+                        }),
+                SettingRow.options("RNG Calc Drop",
+                        () -> SlayerRngDrops.of(bossOf(cfg().rngCalcBoss)).stream()
+                                .map(SlayerRngDrops.Drop::name).toList(),
+                        () -> SlayerRngDrops.find(bossOf(cfg().rngCalcBoss), cfg().rngCalcDrop).name(),
+                        name -> { cfg().rngCalcDrop = name; save(); }),
+                SettingRow.intField("RNG Calc Magic Find", 0, RngCalculator.MF_CAP,
+                        () -> cfg().rngCalcMagicFind,
+                        v -> { cfg().rngCalcMagicFind = v; save(); }, "MF")
+                        .describe("0 reads your Magic Find from the tab list (needs the Stats "
+                                + "widget). Set a number to calculate with that instead."),
                 SettingRow.button("Move / Resize Overlay", () -> open(new HudEditorScreen(
                         new HudElement[] {HudElement.SLAYER_TRACKER}, "Edit Slayer Tracker")))
                         .describe("Opens the editor where you drag the session card anywhere on the "
@@ -143,13 +186,13 @@ public final class SlayerModule implements SbsModule {
                                 + "lines are what point you at the ones behind your back. Works on "
                                 + "its own - you do not need the Show Pointer Lines switch further "
                                 + "down."),
-                SettingRow.toggle("Boss Phase Colors", () -> cfg().phaseHighlight,
+                SettingRow.toggle("Boss Hitbox", () -> cfg().phaseHighlight,
                         () -> { cfg().phaseHighlight = !cfg().phaseHighlight; save(); })
-                        .describe("Tints your boss box by what the boss is doing right now. For the "
+                        .describe("Draws a box around your slayer boss, tinted by what the boss is doing right now. For the "
                                 + "Voidgloom: normal, beacon placed, or the 'hits' phase. For the "
                                 + "other slayers the box switches to the Boss State Color below "
                                 + "while the boss is enraged, protected or cocooned. One glance at "
-                                + "the color tells you what to do."),
+                                + "the color tells you what to do. Turn this off to hide the box."),
                 SettingRow.enumOptions("Phase: Normal", () -> cfg().phaseNormalColor,
                         value -> { cfg().phaseNormalColor = value; save(); }, v -> v.displayName())
                         .describe("Boss color while nothing special is happening. Click to cycle."),

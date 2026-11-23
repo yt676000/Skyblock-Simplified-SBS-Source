@@ -24,11 +24,10 @@ import net.minecraft.network.chat.TextColor;
  * roughly one smooth pass of colour and neighbouring letters differ by a few degrees.
  *
  * <p>The colours themselves come from the selected {@link ChromaPalette} via {@link Chroma#rampRgb},
- * then through {@link Chroma#evenRgb}, which holds every point of the sweep at the same perceived
- * brightness - without that the sweep visibly throbs and its dark stretch disappears into the
- * tooltip background. Text takes the constant-luminance ramp rather than the vivid one on purpose:
- * a letter has to stay legible everywhere in the sweep, and it is the letter that carries the
- * meaning, not its colour.
+ * then through {@link Chroma#evenRgb}, which lifts the dark stretch of the sweep (blue, violet) to a
+ * readable brightness and leaves every brighter hue alone - without it the blue phase disappears
+ * into the tooltip background, and darkening the bright hues instead turns yellow olive and orange
+ * brown.
  *
  * <p>Time phase comes from {@link Chroma#phase}, which reduces the clock modulo the cycle in long
  * arithmetic before it ever becomes a float. Do not "simplify" that into a float division of epoch

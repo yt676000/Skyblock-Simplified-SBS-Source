@@ -88,7 +88,7 @@ public final class Chroma {
     }
 
     /**
-     * Luminance band {@link #vividRgb} keeps every hue inside. A band rather than the single value
+     * Luminance band {@link #vividRgb} keeps every hue inside. A band rather than the bare floor
      * {@link #evenRgb} uses, because the two corrections do not cost the same thing:
      *
      * <ul>
@@ -118,7 +118,7 @@ public final class Chroma {
      * maxed rows), as opposed to {@link #evenRgb}, which is the ramp for text.
      *
      * <p>Text and fills genuinely want different things here. Text has to stay legible at every
-     * point of the sweep, so a constant luminance is worth the wash-out; a bar is judged on whether
+     * point of the sweep, so its floor sits higher; a bar is judged on whether
      * it looks like a rainbow, and a rainbow that has been flattened to one brightness reads as
      * pastel. Both still fix the original defect - no part of the sweep goes near black.
      */
@@ -145,28 +145,28 @@ public final class Chroma {
     }
 
     /**
-     * Perceived (Rec. 709) luminance the {@link #evenRgb} ramp holds every hue to. Chosen to sit
-     * clearly above a dark tooltip background while still leaving the saturated hues room to stay
-     * saturated - pushed much higher, every colour has to be blended toward white to reach it and
-     * the rainbow washes out.
+     * Lowest perceived (Rec. 709) luminance the {@link #evenRgb} text ramp lets a hue sit at - about
+     * where vanilla's own blue text ({@code &9}) sits, so the darkest stretch of the sweep is as
+     * readable on a tooltip as any blue enchant line already is.
+     *
+     * <p>It is a floor only. The ramp used to pin every hue to one fixed luminance (0.62), which
+     * meant scaling yellow and orange <i>down</i> - and a darkened yellow is olive, a darkened orange
+     * is brown. Players read the result as "dull, with brown in it", correctly. Bright hues are now
+     * left at full brightness; the slight brightness wave that leaves is what a rainbow looks like.
      */
-    private static final float TARGET_LUMA = 0.62f;
+    private static final float TEXT_LUMA_FLOOR = 0.42f;
 
     private static final float LUMA_R = 0.2126f;
     private static final float LUMA_G = 0.7152f;
     private static final float LUMA_B = 0.0722f;
 
     /**
-     * A hue at <b>constant perceived brightness</b>, packed RGB (no alpha).
+     * A hue made <b>legible as text</b> on a dark tooltip, packed RGB (no alpha).
      *
-     * <p>This is the difference between a rainbow that reads as one moving colour and one that
-     * visibly throbs. Raw HSV at full value is nowhere near perceptually even: pure yellow carries
-     * roughly 0.93 relative luminance and pure blue roughly 0.07, an order of magnitude apart, so a
-     * scrolling HSV rainbow pulses bright-dark-bright and its blue phase all but vanishes against a
-     * dark tooltip. Here the hue is generated at full value and then moved onto a fixed luminance:
-     * hues brighter than the target are scaled down, hues darker than it are blended toward white
-     * (the only way to raise luminance without leaving the hue), which costs some saturation on
-     * blue and violet exactly where it is needed for legibility.
+     * <p>Raw HSV pure blue carries roughly 0.07 relative luminance and all but vanishes against a
+     * dark tooltip, so hues under {@link #TEXT_LUMA_FLOOR} are blended toward white by exactly the
+     * amount that reaches it. Hues already above the floor are returned untouched - never darkened,
+     * because darkening a warm hue is what turns it brown.
      *
      * @param base       the palette's colour at this point of the sweep, packed RGB
      * @param saturation 0-1; 1 is the colour as the palette gave it, lower mixes in white before
@@ -179,19 +179,12 @@ public final class Chroma {
         float b = ((base & 0xFF) / 255.0f - 1.0f) * sat + 1.0f;
 
         float luma = LUMA_R * r + LUMA_G * g + LUMA_B * b;
-        if (luma <= 0.0001f) {
-            r = g = b = TARGET_LUMA;
-        } else if (luma < TARGET_LUMA) {
-            // Blend toward white by exactly the amount that lands on the target luminance.
-            float t = (TARGET_LUMA - luma) / (1.0f - luma);
+        if (luma < TEXT_LUMA_FLOOR) {
+            // Blend toward white by exactly the amount that lands on the floor.
+            float t = (TEXT_LUMA_FLOOR - luma) / (1.0f - luma);
             r += (1.0f - r) * t;
             g += (1.0f - g) * t;
             b += (1.0f - b) * t;
-        } else {
-            float scale = TARGET_LUMA / luma;
-            r *= scale;
-            g *= scale;
-            b *= scale;
         }
         return (clamp255(r) << 16) | (clamp255(g) << 8) | clamp255(b);
     }

@@ -78,6 +78,15 @@ public final class SlayerTracker {
 
     private static final long SCAN_INTERVAL_MS = 250;
     private static final long LOOT_WINDOW_MS = 12_000L;
+    /**
+     * How long after your boss's nametag vanished its drops still count. The "RARE DROP!" line comes
+     * BEFORE "SLAYER QUEST COMPLETE" (play-instance logs: Duplex, Null Atom, Hazmat Enderman, Toxic
+     * Arrow Poison all one line ahead of it), when the boss is already gone and the post-kill window
+     * not yet open - so every RNG drop fell between the two gates (tester report, 2026-11-22).
+     */
+    private static final long POST_BOSS_GRACE_MS = 10_000L;
+    /** Matches a bare enchant name ending in a roman level, as RNG book drops print ("Duplex I"). */
+    private static final Pattern ROMAN_SUFFIX = Pattern.compile("^(.+?)\s+([IVXLC]+)$");
     private static final long IDLE_HIDE_MS = 10 * 60_000L;
 
     /** One "[Sacks]" hover line: "+24 Revenant Flesh (Slayer Sack)". */
@@ -235,7 +244,10 @@ public final class SlayerTracker {
             if (anchor == null) {
                 return box;
             }
-            Vec3 now = anchor.position();
+            // Interpolated, the same position the entity model is drawn at: the tick position runs
+            // up to a tick ahead, which on knockback shoves the box off the boss.
+            Vec3 now = anchor.getPosition(net.minecraft.client.Minecraft.getInstance()
+                    .getDeltaTracker().getGameTimeDeltaPartialTick(true));
             return box.move(now.x - anchorPos.x, now.y - anchorPos.y, now.z - anchorPos.z);
         }
 
@@ -303,6 +315,8 @@ public final class SlayerTracker {
      */
     private boolean questActive;
     private boolean bossUp;
+    /** When {@link #bossUp} last went false - the kill, as far as the world can tell. */
+    private long bossGoneAt;
 
     /** Tier of the running Voidgloom quest from its sidebar line, 0 when unknown. */
     private int questTier;
@@ -547,6 +561,9 @@ public final class SlayerTracker {
             ownBossPos = null;
             clearAttunement();
             VoidgloomFight.getInstance().reset();
+        }
+        if (bossUp && !slayBoss) {
+            bossGoneAt = now;
         }
         bossUp = slayBoss;
     }
@@ -1689,7 +1706,7 @@ public final class SlayerTracker {
         // which the old private pattern kept as part of the name ("(Null Atom)" resolved to nothing).
         sbs.modid.client.core.util.RareDropLine.Drop rare =
                 sbs.modid.client.core.util.RareDropLine.parse(plain);
-        if (rare != null && (now < lootWindowUntil || bossUp)) {
+        if (rare != null && lootGateOpen(now)) {
             String itemId = resolveItemId(rare.item());
             if (itemId != null) {
                 bookDrop(itemId, rare.count(), now);
@@ -1703,7 +1720,7 @@ public final class SlayerTracker {
 
     /** Books slayer bulk drops out of the "[Sacks]" hover breakdown. */
     private void onSackMessage(Component component, long now) {
-        boolean windowOpen = now < lootWindowUntil;
+        boolean windowOpen = now < lootWindowUntil || now - bossGoneAt < POST_BOSS_GRACE_MS;
         if (!windowOpen && !bossUp) {
             return;
         }
@@ -1729,6 +1746,11 @@ public final class SlayerTracker {
         for (Map.Entry<String, Integer> entry : perItem.entrySet()) {
             bookDrop(entry.getKey().substring(0, entry.getKey().indexOf('|')), entry.getValue(), now);
         }
+    }
+
+    /** Your boss is up, just died, or the quest-complete line opened the post-kill window. */
+    private boolean lootGateOpen(long now) {
+        return bossUp || now < lootWindowUntil || now - bossGoneAt < POST_BOSS_GRACE_MS;
     }
 
     private void bookDrop(String itemId, int count, long now) {
@@ -1888,9 +1910,31 @@ public final class SlayerTracker {
         if (entry != null) {
             return entry.id;
         }
+        // Enchanted books: "Enchanted Book (Flash I)" or, for RNG books, just "Duplex I". The
+        // name-built fallback gave FLASH_I / DUPLEX_I, which no price source knows.
+        String book = bookId(name);
+        if (book != null) {
+            return book;
+        }
         String constructed = NON_KEY_CHARS.matcher(name.toUpperCase(Locale.ROOT).replace(' ', '_'))
                 .replaceAll("");
         return constructed.isEmpty() ? null : constructed;
+    }
+
+    private static String bookId(String name) {
+        String wrapped = name.regionMatches(true, 0, "Enchanted Book", 0, 14) ? name
+                : ROMAN_SUFFIX.matcher(name).matches() ? "Enchanted Book (" + name + ")" : null;
+        if (wrapped == null) {
+            return null;
+        }
+        List<String> candidates =
+                sbs.modid.client.dungeons.chest.DungeonChestValue.bazaarIdCandidates(wrapped);
+        for (String candidate : candidates) {
+            if (BazaarPriceCache.getInstance().get(candidate) != null) {
+                return candidate;
+            }
+        }
+        return candidates.isEmpty() ? null : candidates.get(0);
     }
 
     private static LivingEntity mobBelow(ClientLevel level, ArmorStand stand) {

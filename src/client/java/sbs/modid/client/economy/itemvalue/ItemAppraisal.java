@@ -170,7 +170,8 @@ public final class ItemAppraisal {
      * when no tier of it is on the Bazaar.
      *
      * <p>Mirrors {@link ItemValueService}'s book logic against the local Bazaar snapshot: stacking
-     * enchants are one base book however high they have been levelled, tiers above an enchant's
+     * enchants are one base book however high they have been levelled, upgrade-item tiers are the
+     * required book plus the item(s) (Ender Slayer VII = VI + End Stone Idol), tiers above an enchant's
      * combine limit are drop-only and price as their own book, and everything else takes the
      * cheapest way of building tier T – {@code 2^(T-k)} books of any lower tier k that exists.
      */
@@ -184,6 +185,14 @@ public final class ItemAppraisal {
             return null;
         }
         String key = enchantKey.toUpperCase(Locale.ROOT);
+        EnchantMarketRules.Upgrade upgrade = EnchantMarketRules.upgradeFor(enchantKey, tier);
+        if (upgrade != null) {
+            // Ender Slayer VII = Ender Slayer VI book + End Stone Idol (its own book has no orders).
+            return EnchantMarketRules.upgradedPrice(upgrade, tier,
+                    price(BOOK_PREFIX + key + "_" + tier, side, liveOnly),
+                    bookPrice(enchantKey, upgrade.requiredTier(), side, liveOnly),
+                    price(upgrade.itemId(), side, liveOnly));
+        }
         if (EnchantMarketRules.isStacking(enchantKey)) {
             for (int k = 1; k <= tier; k++) {
                 Long value = price(BOOK_PREFIX + key + "_" + k, side, liveOnly);

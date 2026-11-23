@@ -84,6 +84,8 @@ public final class LocalFlipConnection {
     private static final int CONNECT_TIMEOUT_MS = 3_000;
     /** The program pings every 15 s; 40 s of silence means the link is dead. */
     static final int STREAM_IDLE_TIMEOUT_MS = 40_000;
+    /** Over VPN: 15 s ping interval + 10 s slack, as the host's spec asks. */
+    static final int VPN_IDLE_TIMEOUT_MS = 25_000;
     private static final int JSON_TIMEOUT_MS = 5_000;
     static final long LIST_REFRESH_MS = 20_000;
     private static final String TOKEN_HEADER = "X-SBS-Token";
@@ -92,6 +94,7 @@ public final class LocalFlipConnection {
     private final String token;
     private final Sink sink;
     private final Executor client;
+    private final boolean vpn;
 
     private volatile boolean running;
     private volatile boolean connected;
@@ -101,6 +104,12 @@ public final class LocalFlipConnection {
     private final Object listWake = new Object();
 
     public LocalFlipConnection(URI base, String token, Sink sink, Executor client) {
+        this(base, token, sink, client, false);
+    }
+
+    /** {@code vpn}: Radmin VPN source - 26.0.0.0/8 allowed, 3-30 s backoff, 25 s silence limit. */
+    public LocalFlipConnection(URI base, String token, Sink sink, Executor client, boolean vpn) {
+        this.vpn = vpn;
         this.base = base;
         this.token = token == null ? "" : token.trim();
         this.sink = sink;
@@ -182,7 +191,7 @@ public final class LocalFlipConnection {
                 connected = false;
                 stream = null;
             }
-            long delay = Backoff.delayMs(failures);
+            long delay = vpn ? Backoff.vpnDelayMs(failures) : Backoff.delayMs(failures);
             long retryAt = System.currentTimeMillis() + delay;
             post(() -> sink.onState(State.DISCONNECTED, retryAt));
             try {
@@ -200,7 +209,7 @@ public final class LocalFlipConnection {
     /** True when the host is this PC or the LAN. Resolving a name happens here, off the client thread. */
     private boolean resolvesLocally() throws IOException {
         for (InetAddress address : InetAddress.getAllByName(base.getHost())) {
-            if (!LocalAddress.isLocal(address)) {
+            if (!FlipSource.allowed(address, vpn)) {
                 return false;
             }
         }
@@ -211,7 +220,9 @@ public final class LocalFlipConnection {
     // [MODERATOR AUDIT / NETWORK DISCLOSURE]
     // KEYWORDS: NETWORK_OUTBOUND, NETWORK_INBOUND, HTTP_REQUEST, API_CLIENT, EXTERNAL_IO
     // ENDPOINT: {address typed by the player}/flips/stream - default http://127.0.0.1:3020; refused
-    //   unless it resolves to a loopback, private-LAN, link-local or unique-local address
+    //   unless it resolves to a loopback, private-LAN, link-local or unique-local address; in the
+    //   "vpn" flip source mode also http://{Radmin IP typed by the player}:{port}, IPv4 in 26.0.0.0/8
+    //   only (Radmin VPN's own range - a friend's PC on the same private VPN network)
     // METHOD: GET (Server-Sent Events, one long-lived connection)
     // PURPOSE: Developer-mode Local Flip Finder - live auction flip finds from a flip program the
     //   player runs on their own PC or LAN, shown in a window and in chat
@@ -220,12 +231,13 @@ public final class LocalFlipConnection {
     // DATA RECEIVED: Text event stream - flip finds as JSON (item names, prices, auction ids),
     //   "auction gone" ids and keep-alive comments. Parsed with Gson; the auction id is validated as
     //   32 hex characters and the command to open it is built locally, never taken from the data
-    // SAFETY DECLARATION: Only reaches an address on the player's own machine or LAN, only while
-    //   developer mode and the feature are both on. Nothing leaves the local network. Opening an
+    // SAFETY DECLARATION: Only reaches an address on the player's own machine, LAN or Radmin VPN
+    //   network, only while developer mode and the feature are both on. Opening an
     //   auction is a click by the player; nothing is bought, bid or clicked automatically
     // ============================================================================
     private void readStream() throws IOException {
-        HttpURLConnection connection = open("/flips/stream", STREAM_IDLE_TIMEOUT_MS);
+        int idleMs = vpn ? VPN_IDLE_TIMEOUT_MS : STREAM_IDLE_TIMEOUT_MS;
+        HttpURLConnection connection = open("/flips/stream", idleMs);
         connection.setRequestProperty("Accept", "text/event-stream");
         stream = connection;
         if (!running) {
@@ -270,7 +282,7 @@ public final class LocalFlipConnection {
                 parser.accept(line);
             }
         } catch (SocketTimeoutException idle) {
-            throw new IOException("stream idle for " + STREAM_IDLE_TIMEOUT_MS / 1000 + " s", idle);
+            throw new IOException("stream idle for " + idleMs / 1000 + " s", idle);
         }
     }
 
@@ -342,13 +354,13 @@ public final class LocalFlipConnection {
     // ============================================================================
     // [MODERATOR AUDIT / NETWORK DISCLOSURE]
     // KEYWORDS: NETWORK_OUTBOUND, NETWORK_INBOUND, HTTP_REQUEST, API_CLIENT, EXTERNAL_IO
-    // ENDPOINT: {address typed by the player}/flips/liste - same local/LAN-only address as the stream
+    // ENDPOINT: {address typed by the player}/flips/liste - same local/LAN/Radmin-VPN-only address as the stream
     // METHOD: GET
     // PURPOSE: Developer-mode Local Flip Finder - the program's list of buy-it-now and bid flips,
     //   refreshed every 20 seconds while the stream is connected
     // DATA SENT: The request line and standard headers; X-SBS-Token only when the player set one
     // DATA RECEIVED: Read-only JSON - flips with item names, prices and auction ids. Parsed with Gson
-    // SAFETY DECLARATION: Local or LAN address only; no Minecraft account data, no SBS licence token
+    // SAFETY DECLARATION: Local, LAN or Radmin VPN address only; no Minecraft account data, no SBS licence token
     // ============================================================================
     private void refreshList() {
         try {
@@ -367,17 +379,17 @@ public final class LocalFlipConnection {
     // ============================================================================
     // [MODERATOR AUDIT / NETWORK DISCLOSURE]
     // KEYWORDS: NETWORK_OUTBOUND, NETWORK_INBOUND, HTTP_REQUEST, API_CLIENT, EXTERNAL_IO
-    // ENDPOINT: {address typed by the player}/health - same local/LAN-only address as the stream
+    // ENDPOINT: {address typed by the player}/health - same local/LAN/Radmin-VPN-only address as the stream
     // METHOD: GET
     // PURPOSE: Developer-mode Local Flip Finder - how old the program's Hypixel auction data is, for
     //   the "Hypixel AH API stuck" warning; also the "Test connection" button
     // DATA SENT: The request line and standard headers; X-SBS-Token only when the player set one
     // DATA RECEIVED: Read-only JSON - ok flag, port, whether a token is required, two timestamps
-    // SAFETY DECLARATION: Local or LAN address only; no Minecraft account data, no SBS licence token
+    // SAFETY DECLARATION: Local, LAN or Radmin VPN address only; no Minecraft account data, no SBS licence token
     // ============================================================================
     private void refreshHealth() {
         try {
-            Health health = health(base, token);
+            Health health = health(base, token, vpn);
             post(() -> sink.onHealth(health.apiLastUpdatedMs(), health.updatedSeconds()));
         } catch (IOException | RuntimeException e) {
             // Same as the list: the stream owns the state.
@@ -419,14 +431,31 @@ public final class LocalFlipConnection {
      * the address is not local or the program does not answer. Never call from the client thread.
      */
     public static Health health(URI base, String token) throws IOException {
-        for (InetAddress address : InetAddress.getAllByName(base.getHost())) {
-            if (!LocalAddress.isLocal(address)) {
-                throw new IOException("not a local or LAN address");
-            }
-        }
+        return health(base, token, false);
+    }
+
+    public static Health health(URI base, String token, boolean vpn) throws IOException {
+        checkAllowed(base, vpn);
         long started = System.nanoTime();
         JsonObject body = getJson(base, token, "/health");
-        long millis = (System.nanoTime() - started) / 1_000_000L;
+        return parseHealth(body, (System.nanoTime() - started) / 1_000_000L);
+    }
+
+    /** Blocking {@code GET /flips/sofort} - the token check of "Test connection". */
+    public static void probeSofort(URI base, String token, boolean vpn) throws IOException {
+        checkAllowed(base, vpn);
+        getJson(base, token, "/flips/sofort");
+    }
+
+    private static void checkAllowed(URI base, boolean vpn) throws IOException {
+        for (InetAddress address : InetAddress.getAllByName(base.getHost())) {
+            if (!FlipSource.allowed(address, vpn)) {
+                throw new IOException("not a local, LAN or Radmin VPN address");
+            }
+        }
+    }
+
+    private static Health parseHealth(JsonObject body, long millis) {
         boolean ok = body.has("ok") && body.get("ok").isJsonPrimitive() && body.get("ok").getAsBoolean();
         boolean tokenRequired = body.has("token_required") && body.get("token_required").isJsonPrimitive()
                 && body.get("token_required").getAsBoolean();

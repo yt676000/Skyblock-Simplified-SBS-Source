@@ -248,6 +248,8 @@ public final class TickTasks {
                         () -> sbs.modid.client.helper.npc.NpcLocator.getInstance().onClientTick()),
                 TickTask.of("tick.ObjectiveNpcTracker", ALWAYS,
                         () -> sbs.modid.client.helper.npc.ObjectiveNpcTracker.getInstance().onClientTick()),
+                TickTask.of("tick.TradeGuard", CONTAINER,
+                        () -> sbs.modid.client.economy.trade.logic.TradeGuardRuntime.getInstance().onClientTick()),
                 TickTask.of("tick.ComposterOverlay", CONTAINER,
                         () -> sbs.modid.client.skills.garden.ui.ComposterOverlay.getInstance().onClientTick()),
                 TickTask.of("tick.VisitorOfferStore", GARDEN_OR_CONTAINER,

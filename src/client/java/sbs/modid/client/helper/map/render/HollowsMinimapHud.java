@@ -61,7 +61,7 @@ public final class HollowsMinimapHud {
         }
         Font font = Minecraft.getInstance().font;
         int size = Math.max(48, Math.min(256, cfg.hollowsMinimapSize));
-        boolean fixed = cfg.hollowsMinimapFixed;
+        boolean fixed = !cfg.hollowsMinimapFollow;
         boolean rotate = cfg.hollowsMinimapRotate && !fixed;
         int radius = fixed ? (HollowsGeometry.MAX - HollowsGeometry.MIN) / 2 + 1
                 : Math.max(16, cfg.hollowsMinimapRadius);

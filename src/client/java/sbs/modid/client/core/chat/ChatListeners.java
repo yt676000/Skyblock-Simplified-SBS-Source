@@ -344,6 +344,9 @@ final class ChatListeners {
                 || line.has("Kuudra Key") || line.has("KUUDRA DOWN!") || line.has("DEFEAT")
                 || sbs.modid.client.combat.kuudraprofit.logic.KuudraProfitTracker.probing(), (p, r, m) ->
                 sbs.modid.client.combat.kuudraprofit.logic.KuudraProfitTracker.getInstance().onChat(p));
+        // Trade Guard: remember items players link in chat ("Name: ..." lines only).
+        add(l, "TradeGuard", ANY_ISLAND, any(":"), (p, r, m) ->
+                sbs.modid.client.economy.trade.logic.TradeGuardRuntime.getInstance().onChat(p, m));
         return List.copyOf(l);
     }
 
