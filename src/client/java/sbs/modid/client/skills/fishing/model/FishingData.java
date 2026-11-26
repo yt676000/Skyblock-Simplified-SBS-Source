@@ -40,8 +40,43 @@ public final class FishingData {
     /** Exact spawn sentence (colour-stripped, trimmed) -> the sea creature it announces. */
     private static final Map<String, String> SPAWN_LINES = new LinkedHashMap<>();
 
+    /** {@link #spawnKey} of every spawn sentence -> creature: the tolerant second lookup. */
+    private static final Map<String, String> SPAWN_KEYS = new LinkedHashMap<>();
+
     private static void line(String creature, String message) {
         SPAWN_LINES.put(message, creature);
+        SPAWN_KEYS.put(spawnKey(message), creature);
+    }
+
+    /** A prefix longer than this in front of a spawn sentence is not a decoration - no match. */
+    private static final int MAX_PREFIX = 24;
+
+    /**
+     * The sentence reduced to lower-case letters and digits separated by single spaces. Every
+     * apostrophe, dash, ellipsis and punctuation variant collapses to the same key: "It's" and
+     * "Its", "’" and "'", "—" and "-", a missing "!" - all of which Hypixel has varied between
+     * creatures and releases, and each of which used to lose a catch silently under strict equality.
+     * Apostrophes are dropped without leaving a space, so "It's" keys as "its".
+     */
+    public static String spawnKey(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        boolean gap = false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\'' || c == '’' || c == '‘') {
+                continue;
+            }
+            if (Character.isLetterOrDigit(c)) {
+                if (gap && out.length() > 0) {
+                    out.append(' ');
+                }
+                gap = false;
+                out.append(Character.toLowerCase(c));
+            } else {
+                gap = true;
+            }
+        }
+        return out.toString();
     }
 
     static {
@@ -246,7 +281,37 @@ public final class FishingData {
         if (creature != null) {
             return creature;
         }
+        creature = tolerantMatch(trimmed);
+        if (creature != null) {
+            return creature;
+        }
         warnIfRewordedSpawnLine(trimmed);
+        return null;
+    }
+
+    /**
+     * The second lookup: the line's {@link #spawnKey} equals a sentence's key, or ends with one behind
+     * a short decoration (an icon, a "Double Hook!" or rarity tag glued in front). Still a whole
+     * sentence - never a fragment - so combat, death and player lines cannot reach it: a player
+     * line carries a "name:" sender and is refused outright.
+     */
+    private static String tolerantMatch(String line) {
+        if (line.indexOf(':') >= 0) {
+            return null;
+        }
+        String key = spawnKey(line);
+        String creature = SPAWN_KEYS.get(key);
+        if (creature != null) {
+            return creature;
+        }
+        int space = key.indexOf(' ');
+        while (space > 0 && space <= MAX_PREFIX) {
+            creature = SPAWN_KEYS.get(key.substring(space + 1));
+            if (creature != null) {
+                return creature;
+            }
+            space = key.indexOf(' ', space + 1);
+        }
         return null;
     }
 

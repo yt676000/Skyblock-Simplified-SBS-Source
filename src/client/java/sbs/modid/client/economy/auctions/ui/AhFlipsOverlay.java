@@ -22,7 +22,6 @@ import sbs.modid.client.ui.window.FloatingWindows;
 import sbs.modid.client.ui.window.WindowMemory;
 import sbs.modid.client.ui.component.SciFiScrollbar;
 import sbs.modid.client.ui.render.DevNotice;
-import sbs.modid.client.ui.render.LocalRankingNotice;
 import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.ui.render.SourceSwitch;
 import sbs.modid.client.ui.theme.SBSTheme;
@@ -161,7 +160,7 @@ public final class AhFlipsOverlay {
                     SBSTheme.TOGGLE_ON, flip));
             String detail = "   " + fmt(flip.price()) + " → " + fmt(flip.target())
                     + " · " + Math.round(flip.discountPct()) + "%"
-                    + " · " + flip.volumeLabel()
+                    + (flip.volumeLabel().isEmpty() ? "" : " · " + flip.volumeLabel())
                     + " · " + ago(flip.receivedMs());
             built.add(new Line(detail, "", SBSTheme.TEXT_MUTED, SBSTheme.TEXT_MUTED, flip));
         }
@@ -232,7 +231,7 @@ public final class AhFlipsOverlay {
         // Server / Local on its own strip under the header, then the pinned notice while the local
         // ranking is what is on screen. Both are outside the scroll region: a warning that scrolls
         // away is one most readers see once and then forget while reading the numbers.
-        boolean preferLocal = cfg().flipSource.preferLocal;
+        boolean preferLocal = sbs.modid.client.economy.auctions.logic.FlipServer.isLocal();
         int switchY = posY + HEADER_H + 3;
         SourceSwitch.draw(g, font, posX + PAD, switchY, preferLocal, mouseX, mouseY);
         if (mouseX >= posX + PAD && mouseX < posX + PAD + SourceSwitch.width(font)
@@ -245,9 +244,8 @@ public final class AhFlipsOverlay {
                     SBSTheme.tooltipStyle());
         }
         int noticeTop = switchY + SourceSwitch.HEIGHT + 2;
-        int noticeWidth = Math.max(1, panelW - PAD * 2);
-        int noticeHeight = preferLocal
-                ? LocalRankingNotice.draw(g, font, posX + PAD, noticeTop, noticeWidth, null) : 0;
+        // Local is the dev program now, not a weaker ranking: no warning banner.
+        int noticeHeight = 0;
 
         List<Line> list = currentLines();
         // Measured off what was actually drawn, never assumed: the notice wraps to two lines on a

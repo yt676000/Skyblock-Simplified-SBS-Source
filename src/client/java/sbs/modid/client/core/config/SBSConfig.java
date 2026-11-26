@@ -97,6 +97,9 @@ public final class SBSConfig {
     /** AH Flip Alerts (Economy): chat alerts for underpriced auction-house listings. */
     public AhFlipAlertSettings ahFlips = new AhFlipAlertSettings();
 
+    /** AH Wishlist (Economy): the player's own wanted items, with an alert when one is listed. */
+    public AhWishlistSettings ahWishlist = new AhWishlistSettings();
+
     /** Quality of Life: small comforts that do not belong to any one feature area. */
     public ConvenienceSettings convenience = new ConvenienceSettings();
 
@@ -4394,6 +4397,41 @@ public static final class CaseOpeningSettings {
         public int dedupeMs = 4000;
     }
 
+    /** Fishing Share (Fishing): hotspot share buttons and the rare sea creature alert / share. */
+    public FishingShareSettings fishingShare = new FishingShareSettings();
+
+    public static final class FishingShareSettings {
+
+        /** Master switch. On: the module only prints local lines until something is clicked. */
+        @Shareable(Kind.BOOL)
+        public boolean enabled = true;
+
+        /** Offer a clickable share line when a hotspot comes into view. */
+        @Shareable(Kind.BOOL)
+        public boolean hotspotShare = true;
+
+        /**
+         * Which creatures count as rare, comma-separated, {@code FishingData}'s spelling. Not
+         * {@code @Shareable}: share codes cap text at 64 characters and the default list is longer.
+         */
+        public String rareCreatures = "Lord Jawbus, Thunder, Plhlegblast, Ragnarok, Wiki Tiki, "
+                + "Titanoboa, Fiery Scuttler, The Loch Emperor, Great White Shark, Phantom Fisher, "
+                + "Grim Reaper, Yeti, Reindrake, Sea Emperor, Abyssal Miner, Water Hydra";
+
+        /** Big title for a rare catch. */
+        @Shareable(Kind.BOOL)
+        public boolean rareTitle = true;
+
+        /** Alarm sound for a rare catch. */
+        @Shareable(Kind.BOOL)
+        public boolean rareSound = true;
+
+        /** Party share for a rare catch: off, a click, or automatic (explicit opt-in). */
+        @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.skills.fishing.model.FishingShareMode.class)
+        public sbs.modid.client.skills.fishing.model.FishingShareMode rareShareMode =
+                sbs.modid.client.skills.fishing.model.FishingShareMode.CLICK;
+    }
+
     /** Settings shared by every Foraging module (Beacon Tuning, and whatever Galatea gets next). */
     public ForagingSettings foraging = new ForagingSettings();
 
@@ -5413,6 +5451,22 @@ public static final class CaseOpeningSettings {
         public boolean chatMessageTag = true;
     }
 
+    public static final class AhWishlistSettings {
+        /** Master switch: watch the live auction crawl for the entries below. */
+        @Shareable(Kind.BOOL)
+        public boolean enabled = false;
+
+        /**
+         * How a match reaches the player ({@link sbs.modid.client.core.alert.AlertChannels} mask).
+         * The chat line carries the click that opens the auction, which is why it is on by default.
+         */
+        public int alertChannels = sbs.modid.client.core.alert.AlertChannel.CHAT.bit()
+                | sbs.modid.client.core.alert.AlertChannels.TITLE_AND_SOUND;
+
+        /** The wishlist itself. Personal data, deliberately not shareable. */
+        public List<sbs.modid.client.economy.wishlist.model.WishlistEntry> entries = new ArrayList<>();
+    }
+
     public static final class AhFlipAlertSettings {
         /**
          * Master switch: subscribe to server-found AH flips (long-poll against the SBS flip
@@ -5453,44 +5507,14 @@ public static final class CaseOpeningSettings {
         /** Upper bound of the alert price range in coins; {@code 0} = unlimited. */
         public long maxPrice = 0;
 
-        // ------------------------------------------------------------------
-        // Local ranking – live auctions only. No sale history is used, kept or derived here.
-        // ------------------------------------------------------------------
-
-        /** Server flip stream or the local one. See {@link SourceChoice}. */
+        /**
+         * Server flip stream or (dev only, explicitly picked) the flip program on this PC. See
+         * {@code FlipServer#isLocal}: an untouched choice means Server here.
+         */
         public SourceChoice flipSource = new SourceChoice();
 
-        /** Server appraisal or the local live-listings view, for Similar Auctions. */
-        public SourceChoice similarSource = new SourceChoice();
-
-        /**
-         * How far under the next-cheapest listing an auction must sit before the local ranking calls
-         * it a flip, in percent.
-         *
-         * <p>The local engine has one signal — this listing against the rest of its own live market —
-         * so this threshold is the whole of its judgement. Set it low and every ordinary bit of price
-         * spread becomes an alert; the default is deliberately well clear of that.
-         */
-        public int localMinDiscountPct = 20;
-
-        /**
-         * How many BIN listings of an item must exist before the local ranking will judge it.
-         *
-         * <p>Two listings are not a market. With only a couple on sale, "cheapest versus next
-         * cheapest" is a comparison between two arbitrary asking prices, and the gap between them
-         * says nothing about what the item is worth. This is the one guard against that, and it is
-         * why the default is not 2.
-         */
-        public int localMinListings = 4;
-
-        /**
-         * Auction-house sale tax taken off the resale price by the local ranking, in percent.
-         *
-         * <p>A setting rather than a constant because it has <b>not been confirmed in game</b> and
-         * Hypixel has changed it before. Left wrong it only ever makes the local ranking optimistic,
-         * which is the direction that costs coins.
-         */
-        public double localAhTaxPct = 1.0;
+        /** Set by the one-time move of every config to the Server flip source (2026-11-26). */
+        public boolean flipSourceServerMigrated = false;
 
         /** Middle click on an item in an Auction House GUI runs {@code /auctionsearch <name>}. */
         @Shareable(Kind.BOOL)
@@ -9544,9 +9568,9 @@ public static final class CaseOpeningSettings {
         public int valueKey = 0;
 
         /**
-         * GLFW key that opens the Similar Auctions window for the hovered item ({@code 0} =
-         * unbound): live identical/similar auctions (click = open) plus the sale history with
-         * time-to-sell, appraised by the cloud API.
+         * GLFW key of the Lowball Helper ({@code 0} = unbound): value, offers and similar auctions
+         * for the hovered item (or the other side of /trade) from {@code POST /flips/lowball}. The
+         * key name is kept from the Similar Auctions key it replaced, so existing bindings carry over.
          */
         @Shareable(Kind.KEYCODE)
         public int similarAuctionsKey = 0;

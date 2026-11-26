@@ -74,6 +74,9 @@ public final class SettingRow {
     /** Set only when the row is shown outside its own module's page. See {@link #owner}. */
     private String ownerModuleId;
 
+    /** The bind code a key-capture row edits, so the keyboard overview can list it; else null. */
+    private IntSupplier boundKey;
+
     private SettingRow(String label, WidgetFactory factory) {
         this(label, factory, false);
     }
@@ -513,8 +516,18 @@ public final class SettingRow {
      * {@code core/keybind/Keys}, which owns the encoding.
      */
     public static SettingRow keybind(String label, IntSupplier key, IntConsumer onAssign) {
-        return new SettingRow(label, (x, y, w, h) ->
+        SettingRow row = new SettingRow(label, (x, y, w, h) ->
                 new sbs.modid.client.ui.component.SciFiKeyCaptureButton(x, y, w, h, label, key, onAssign));
+        row.boundKey = key;
+        return row;
+    }
+
+    /**
+     * The bind code this row edits, or {@code null} for a row that is not a key-capture row. Read by
+     * the keyboard overview ({@code core/keybind/KeyBindSources}).
+     */
+    public IntSupplier boundKey() {
+        return boundKey;
     }
 
     /**
@@ -525,9 +538,11 @@ public final class SettingRow {
      * stored and then never fire. The field refuses it and says so instead.
      */
     public static SettingRow holdKeybind(String label, IntSupplier key, IntConsumer onAssign) {
-        return new SettingRow(label, (x, y, w, h) ->
+        SettingRow row = new SettingRow(label, (x, y, w, h) ->
                 new sbs.modid.client.ui.component.SciFiKeyCaptureButton(x, y, w, h, label, key, onAssign,
                         true));
+        row.boundKey = key;
+        return row;
     }
 
     /**

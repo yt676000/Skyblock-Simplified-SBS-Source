@@ -160,7 +160,7 @@ public final class HuntingBoxScanner {
         ShardOwnership ownership = ShardOwnership.getInstance();
         ownership.forgetBoxAmounts();
         for (HuntingBoxShard shard : shards) {
-            ownership.noteBox(shard.id(), shard.name(), shard.count());
+            ownership.noteBox(shard.id(), shard.name(), shard.rarity(), shard.count());
         }
 
         if (shards.size() != lastCount) {

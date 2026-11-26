@@ -240,9 +240,15 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
      * "(1/3) Loadouts" and its pages. Not "Wardrobe (1/2)": that legacy menu was last seen
      * 2026-07-07, and claiming it here let SBS Loadouts cover a wardrobe that SBS Wardrobe View
      * had been switched off for (docs/skyblock-ui/menus.md, Loadouts / Wardrobe).
+     *
+     * <p>Not "Loadout 8" either: that is Hypixel's per-loadout <b>editor</b>, opened by a right
+     * click. Matching it on {@code contains("loadout")} put the overlay straight back over the
+     * editor (right-click "did nothing"), scraped the editor as a loadouts page, and the next card
+     * click sent the list page's slot number into the editor - card 8's slot 33 landed on the
+     * editor's tuning item (tester report, 2026-11; titles verified in the instance logs).
      */
     static boolean isLoadoutsMenu(String title) {
-        return title.toLowerCase(Locale.ROOT).contains("loadout");
+        return title.toLowerCase(Locale.ROOT).contains("loadouts");
     }
 
     /** Whether the overlay covers a menu with this title while SBS Loadouts is {@code enabled}. */
@@ -427,7 +433,7 @@ public final class LoadoutsOverlay implements sbs.modid.client.core.config.Profi
         // The worn armor in the menu's own preview column is the best dye/skin source there is for
         // the loadout you are ALREADY wearing. Modern menu only: the legacy wardrobe layout puts
         // other loadouts' pieces at these positions, the very mis-binding the column rules banned.
-        if (title(screen).toLowerCase(Locale.ROOT).contains("loadout")
+        if (isLoadoutsMenu(title(screen))
                 && harvestWornColumn(menu, upper)) {
             changed = true;
         }

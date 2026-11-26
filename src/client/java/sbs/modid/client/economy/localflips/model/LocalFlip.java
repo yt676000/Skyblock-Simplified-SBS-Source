@@ -53,7 +53,10 @@ public record LocalFlip(
         String auction,
         double foundAt,
         double start,
-        double latencyS) {
+        double latencyS,
+        double botP,
+        boolean auctionOnly,
+        double ageRatio) {
 
     /** "Not sent" for whole-number fields. Every real value the program sends is far above it. */
     public static final long NONE = Long.MIN_VALUE;
@@ -144,7 +147,10 @@ public record LocalFlip(
                 auction,
                 fraction(o, "found_at"),
                 fraction(o, "start"),
-                fraction(o, "latency_s"));
+                fraction(o, "latency_s"),
+                fraction(o, "bot_p"),
+                flag(o, "auction_only"),
+                fraction(o, "age_ratio"));
     }
 
     /**
@@ -190,6 +196,22 @@ public record LocalFlip(
     // ------------------------------------------------------------------
     // Field readers: tolerant of absence and of the wrong JSON type
     // ------------------------------------------------------------------
+
+    /** True only for a JSON {@code true}; anything else (absent, wrong type) is false. */
+    private static boolean flag(JsonObject o, String key) {
+        JsonElement e = o.get(key);
+        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean() && e.getAsBoolean();
+    }
+
+    /** Bot share 0-100, or -1 when the server sent no {@code bot_p}. */
+    public int botPct() {
+        return Double.isNaN(botP) ? -1 : (int) Math.round(Math.max(0, Math.min(1, botP)) * 100);
+    }
+
+    /** {@code bot_p >= 0.65}: the server's "BOT PREY" threshold. */
+    public boolean botPrey() {
+        return !Double.isNaN(botP) && botP >= 0.65;
+    }
 
     private static String string(JsonObject o, String key) {
         JsonElement e = o.get(key);

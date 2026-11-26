@@ -42,7 +42,7 @@ public final class SBSCommands {
     /** Root command literals owned by this mod (lower-case, without leading slash). */
     private static final Set<String> ROOT_COMMANDS =
             Set.of("sbs", "skyblocksimplified", "sbstest", "sbsdev", "pf", "pv",
-                    "sendcoords", "sbssendcoords");
+                    "sendcoords", "sbssendcoords", "sbsfishshare");
 
     /**
      * Roots that are only ours while their feature is on. They are short, generic names another client
@@ -163,6 +163,13 @@ public final class SBSCommands {
         // /sbssendcoords carries the mod's own name and cannot be claimed out from under the player.
         if (name.equals("sendcoords") || name.equals("sbssendcoords")) {
             sbs.modid.client.social.sendcoords.SendCoords.handle(parts.length > 1 ? parts[1] : "");
+            return true;
+        }
+
+        // /sbsfishshare <party|all> <id> - the Fishing Share buttons; the id names a message the
+        // client composed itself, so a click can only ever send that.
+        if (name.equals("sbsfishshare")) {
+            sbs.modid.client.skills.fishing.logic.FishingShare.handleCommand(parts.length > 1 ? parts[1] : "");
             return true;
         }
 

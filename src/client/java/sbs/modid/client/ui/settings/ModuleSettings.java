@@ -567,12 +567,8 @@ public final class ModuleSettings {
      */
     private static List<SettingRow> localFlipRows() {
         return List.of(
-                SettingRow.label("— Local Flip Finder (Lokaler Flip-Finder) —"),
-                SettingRow.toggle("Local Flip Finder", () -> cfg().dev.localFlips.enabled,
-                                () -> { cfg().dev.localFlips.enabled = !cfg().dev.localFlips.enabled; save(); })
-                        .describe("Connects to the flip program on this PC or your LAN and shows its "
-                                + "finds in the flip window and in chat. Only opens an auction when you "
-                                + "click; buying is yours. Off: no connection, no thread. Default: off."),
+                SettingRow.label("— Flip Finder: Local source (dev) —"),
+                SettingRow.label("§7Used only with AH Flip Alerts > Flip Source = Local"),
                 SettingRow.text("Flip Program Address", "http://127.0.0.1:3020", 200,
                                 () -> cfg().dev.localFlips.url,
                                 value -> { cfg().dev.localFlips.url = value; save(); })
@@ -605,41 +601,7 @@ public final class ModuleSettings {
                 SettingRow.button("Test Connection",
                                 sbs.modid.client.economy.localflips.logic.LocalFlipFinder::testConnection)
                         .describe("Asks /health and /flips/sofort once and says in chat whether the "
-                                + "host answered and accepted the token."),
-                SettingRow.button("Open Flip Window", () -> open(
-                                new sbs.modid.client.economy.localflips.ui.LocalFlipsScreen()))
-                        .describe("The window with every find, its numbers and an Open button."),
-                SettingRow.keybind("Open Flip Window Key", () -> cfg().dev.localFlips.openOverlayKey,
-                                key -> { cfg().dev.localFlips.openOverlayKey = key; save(); })
-                        .describe("A key that opens the flip window. Default: unbound."),
-                SettingRow.keybind("Open Newest Find Key", () -> cfg().dev.localFlips.openNewestKey,
-                                key -> { cfg().dev.localFlips.openNewestKey = key; save(); })
-                        .describe("A key that opens the auction of the newest SOFORT find that is still "
-                                + "valid - one /viewauction per press. Default: unbound."),
-                SettingRow.toggle("Flip Chat Alerts", () -> cfg().dev.localFlips.chatAlerts,
-                                () -> { cfg().dev.localFlips.chatAlerts = !cfg().dev.localFlips.chatAlerts; save(); })
-                        .describe("One chat line per new SOFORT find with [OPEN] and [COPY]. Each auction "
-                                + "once, also across reconnects. Default: on."),
-                SettingRow.soundToggle("Flip Alert Sound", () -> cfg().dev.localFlips.sound,
-                                () -> { cfg().dev.localFlips.sound = !cfg().dev.localFlips.sound; save(); })
-                        .describe("A short sound with each alert. Default: on."),
-                SettingRow.toggle("Flip Alert Toast", () -> cfg().dev.localFlips.toast,
-                                () -> { cfg().dev.localFlips.toast = !cfg().dev.localFlips.toast; save(); })
-                        .describe("A toast in the corner with each alert. Default: off."),
-                SettingRow.intField("Alert Min Profit", 0, 2_000_000_000, () -> cfg().dev.localFlips.minProfit,
-                                value -> { cfg().dev.localFlips.minProfit = value; save(); }, "coins")
-                        .describe("Finds below this net profit are not alerted, and are drawn greyed in "
-                                + "the window. Default: 500000."),
-                SettingRow.rangeSlider("Alert Min Safety", 0, 100, () -> cfg().dev.localFlips.minSafety,
-                                value -> { cfg().dev.localFlips.minSafety = value; save(); }, "%")
-                        .describe("Finds below this safety are not alerted. Bids carry no safety and are "
-                                + "never held back by it. Default: 0 %."),
-                SettingRow.toggle("Show Flip List", () -> cfg().dev.localFlips.showList,
-                                () -> { cfg().dev.localFlips.showList = !cfg().dev.localFlips.showList; save(); })
-                        .describe("The program's flip list below the SOFORT finds. Default: on."),
-                SettingRow.toggle("Show Bid Auctions", () -> cfg().dev.localFlips.showBids,
-                                () -> { cfg().dev.localFlips.showBids = !cfg().dev.localFlips.showBids; save(); })
-                        .describe("Bid auctions in the flip list, with the most worth bidding. Default: on."));
+                                + "host answered and accepted the token."));
     }
 
     /**
@@ -2903,11 +2865,12 @@ public final class ModuleSettings {
                             .licenced("the value is still worked out from prices you already have; "
                                     + "the historic columns beside it are what goes missing")
                             .inDevelopment(),
-                    SettingRow.label("Hover + press the key for live & historic similar auctions"),
-                    SettingRow.keybind("Show Similar Auctions", () -> cfg().priceHistory.similarAuctionsKey,
+                    SettingRow.label("Hover + press the key for a lowball offer (value, offers, similar auctions)"),
+                    SettingRow.keybind("Lowball Helper", () -> cfg().priceHistory.similarAuctionsKey,
                             key -> { cfg().priceHistory.similarAuctionsKey = key; save(); })
-                            .describe("Hover an item and press this key to list live and past "
-                                    + "auctions of similar items - what they actually sold for.")
+                            .describe("Hover an item in any container and press this key: its value "
+                                    + "(fast / normal / patient), suggested lowball offers and similar "
+                                    + "auctions. In /trade it appraises everything on the other side.")
                             .licenced()
                             .inDevelopment());
 
@@ -3265,6 +3228,14 @@ public final class ModuleSettings {
                                     + "or a cycling message, limited to chosen islands if you "
                                     + "want; the Shortcuts tab maps words to commands (garden -> "
                                     + "/warp garden)."),
+                    SettingRow.button("Keyboard Overview", () -> open(
+                                    new sbs.modid.client.core.keybind.KeyboardOverviewScreen(
+                                            Minecraft.getInstance().gui.screen())))
+                            .describe("Shows a keyboard and mouse with every bound key highlighted - "
+                                    + "Minecraft controls, other mods' keys, SBS setting keys, command "
+                                    + "keybinds and slot hotkeys. Hover or click a key to list its "
+                                    + "binds; keys where two binds fire on the same press are marked "
+                                    + "as conflicts. Click a bind to go to where it is set."),
                     SettingRow.label("Also reachable as /sbs keybind (and /sbs gui for the main menu)"),
                     SettingRow.label("Keybinds: key + modifiers, commands or cycled messages"),
                     SettingRow.label("Conditions: run only on a chosen island / area"),

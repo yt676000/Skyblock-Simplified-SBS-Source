@@ -28,8 +28,8 @@ public final class FloatingWindows {
         BROWSERS,
         /** The Item Value table window. */
         VALUE,
-        /** The Similar Auctions window. */
-        AUCTIONS,
+        /** The Flip Finder window (live AH flip finds). */
+        LOCAL_FLIPS,
         /** The Best Flips window (Bazaar module). */
         FLIPS,
 
@@ -56,7 +56,7 @@ public final class FloatingWindows {
     }
 
     private static final List<Layer> order = new ArrayList<>(
-            List.of(Layer.RECIPE, Layer.BROWSERS, Layer.VALUE, Layer.AUCTIONS, Layer.FLIPS,
+            List.of(Layer.RECIPE, Layer.BROWSERS, Layer.VALUE, Layer.LOCAL_FLIPS, Layer.FLIPS,
                     Layer.FORGE, Layer.AH_FLIPS, Layer.CALCULATOR, Layer.GARDEN_PLOTS,
                     Layer.ESSENCE_SHOP, Layer.MISSING_SHARDS, Layer.LOWBALL));
 

@@ -35,6 +35,9 @@ import java.util.function.Function;
  * before children, siblings left to right), so an item held once is never counted for two rows: the
  * Enchanted Flint a parent took is gone before a sibling branch asks for it.
  *
+ * <p><b>The root always expands.</b> Holding the opened item does not hide its recipe; the root is
+ * marked done and its recipe is shown for the full quantity. Only nodes below it stop as satisfied.
+ *
  * <p><b>Stops.</b> Base items (no usable recipe), an item already on the path above (data does carry
  * cycles: A crafts from B, B un-crafts into A), the configured depth, and a node cap that bounds a
  * pathological tree.
@@ -109,6 +112,11 @@ public final class CraftTree {
         }
         int index = Math.floorMod(inputs.choices().getOrDefault(id, 0), count);
         long missing = need - have;
+        // The root is what the player opened: a held root still shows its recipe (for the whole
+        // amount), otherwise the view of an item already owned would be an empty tree.
+        if (depth == 0 && missing <= 0) {
+            missing = need;
+        }
         CraftNode.Stop stop = null;
         if (missing <= 0) {
             stop = CraftNode.Stop.SATISFIED;

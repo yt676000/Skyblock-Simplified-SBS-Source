@@ -29,7 +29,10 @@ import sbs.modid.client.ui.component.SciFiButton;
 import sbs.modid.client.ui.theme.SBSTheme;
 import sbs.modid.client.economy.recipe.model.ItemFilter;
 import sbs.modid.client.economy.recipe.model.ItemRef;
+import sbs.modid.client.economy.recipe.logic.MarketSearch;
 import sbs.modid.client.economy.recipe.logic.RecipeLookup;
+import sbs.modid.client.economy.recipe.logic.RecipePricing;
+import sbs.modid.client.core.util.NumberDisplay;
 import sbs.modid.client.economy.recipe.logic.RecipeRegistry;
 import sbs.modid.client.economy.recipe.model.SbsRecipe;
 import sbs.modid.client.economy.recipe.logic.SearchHighlightState;
@@ -129,8 +132,28 @@ public final class RecipeViewerScreen extends Screen {
     private ItemRef pendingSelect;
     private boolean pendingUsages;
 
-    /** The icon/row under the mouse in the last rendered frame (for the price-history hotkey). */
+    /**
+     * The icon/row under the mouse in the last rendered frame: the price-history hotkey and the
+     * Middle Click market search act on it.
+     */
     private ItemRef priceKeyHovered;
+
+    // Price table (detail mode): column width, scroll, its area, and the amounts a click copies.
+    private static final int PRICE_COL_W = 50;
+    private static final long COPIED_FLASH_MS = 1200L;
+    private int priceScroll;
+    private int priceTop;
+    private int priceBottom;
+
+    /** A copyable amount's click box in the last rendered frame, and the text it puts on the clipboard. */
+    private record CopyTarget(int x0, int y0, int x1, int y1, String text) {
+    }
+
+    private final List<CopyTarget> copyTargets = new ArrayList<>();
+    private String copiedText;
+    private long copiedAt;
+    private int copiedX;
+    private int copiedY;
 
     // Craft Helper: the Recipe / Tree switch, the favourite star and the tree itself (detail mode).
     private static final String[] VIEW_LABELS = {"Recipe", "Tree"};
@@ -378,6 +401,7 @@ public final class RecipeViewerScreen extends Screen {
         syncPetControls();
         this.recipes = registry.recipesFor(ref.lookupId());
         this.recipeIndex = 0;
+        this.priceScroll = 0;
     }
 
     private int visibleRows() {
@@ -439,6 +463,24 @@ public final class RecipeViewerScreen extends Screen {
         // An open Craft Helper recipe list takes the click first, wherever it lands.
         if (selected != null && treeView && treePanel.popupOpen()) {
             return treePanel.click(mx, my, event.button());
+        }
+        // Middle Click on any item icon or row: /bz for a Bazaar product, /ahsearch otherwise.
+        if (event.button() == 2 && priceKeyHovered != null) {
+            MarketSearch.run(priceKeyHovered);
+            return true;
+        }
+        // Click on an amount (count or price): onto the clipboard, as plain digits.
+        if (event.button() == 0 && selected != null) {
+            for (CopyTarget t : copyTargets) {
+                if (mx >= t.x0() && mx < t.x1() && my >= t.y0() && my < t.y1()) {
+                    Minecraft.getInstance().keyboardHandler.setClipboard(t.text());
+                    copiedText = t.text();
+                    copiedAt = System.currentTimeMillis();
+                    copiedX = (int) mx;
+                    copiedY = (int) my;
+                    return true;
+                }
+            }
         }
         boolean handled = super.mouseClicked(event, doubled);
 
@@ -571,6 +613,10 @@ public final class RecipeViewerScreen extends Screen {
         if (selected != null && treeView && craftHelperOn() && treePanel.scroll(mouseX, mouseY, scrollY)) {
             return true;
         }
+        if (selected != null && !treeView && mouseY >= priceTop - 12 && mouseY < priceBottom) {
+            priceScroll = Math.max(0, priceScroll - (int) Math.signum(scrollY)); // clamped on render
+            return true;
+        }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
@@ -644,6 +690,9 @@ public final class RecipeViewerScreen extends Screen {
         public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
             var font = RecipeViewerScreen.this.font;
             priceKeyHovered = null; // re-established below by whichever icon/row is hovered
+            copyTargets.clear();     // re-registered below by whichever amounts are drawn
+            priceTop = 0;            // set again only while a price table is drawn
+            priceBottom = 0;
 
             g.fill(0, 0, RecipeViewerScreen.this.width, RecipeViewerScreen.this.height, SBSTheme.BG_TINT);
             SciFiRender.glow(g, panelX, panelY, panelW, panelH, SBSTheme.PANEL_CORNER, SBSTheme.PANEL_GLOW, 2);
@@ -674,6 +723,14 @@ public final class RecipeViewerScreen extends Screen {
                 drawResults(g, mouseX, mouseY);
             } else {
                 drawDetail(g, mouseX, mouseY);
+            }
+            long since = System.currentTimeMillis() - copiedAt;
+            if (copiedText != null && since < COPIED_FLASH_MS) {
+                String msg = "Copied " + copiedText;
+                int w = font.width(msg);
+                int x = clamp(copiedX - w / 2, 2, RecipeViewerScreen.this.width - w - 2);
+                g.fill(x - 2, copiedY - 12, x + w + 2, copiedY - 1, SBSTheme.CARD_BG);
+                g.text(font, Component.literal(msg), x, copiedY - 10, SBSTheme.TOGGLE_ON);
             }
         }
 
@@ -858,23 +915,12 @@ public final class RecipeViewerScreen extends Screen {
                     priceKeyHovered = recipe.result;
                 }
 
-                // Ingredient amounts summary to the right / below.
-                int infoY = y + 3 * CELL + 6;
-                StringBuilder counter = new StringBuilder();
-                for (ItemRef ing : recipe.ingredients) {
-                    if (counter.length() > 0) {
-                        counter.append(", ");
-                    }
-                    counter.append(ing.count).append("x ").append(ing.name);
-                }
-                g.textWithWordWrap(font, Component.literal("Needs: " + counter), innerX, infoY,
-                        contentWidth, SBSTheme.TEXT);
-                y = infoY + font.lineHeight * 2 + 6;
                 if (recipes.size() > 1) {
-                    g.text(font, Component.literal("Recipe " + (recipeIndex + 1) + " / " + recipes.size()
-                            + "  •  " + recipe.category), innerX, y, SBSTheme.TEXT_MUTED);
-                    y += font.lineHeight + 4;
+                    // Right of the result, so the price table below keeps every row it can get.
+                    String counter = (recipeIndex + 1) + "/" + recipes.size();
+                    g.text(font, Component.literal(counter), resX + 22, midY, SBSTheme.TEXT_MUTED);
                 }
+                y = drawPriceTable(g, font, recipe, y + 3 * CELL + 4, mouseX, mouseY);
             }
 
             // Acquisition methods.
@@ -884,6 +930,101 @@ public final class RecipeViewerScreen extends Screen {
                         innerX, y, SBSTheme.HUD_MANA);
             }
             drawFooter(g, font);
+        }
+
+        /**
+         * The price table: header, the total for one craft, the result, then every ingredient, each
+         * with its insta-buy and buy-order price. Rows that do not fit above the footer scroll with
+         * the wheel. Every amount is a copy target ({@link #copyTargets}); hovering a row makes its
+         * item the Middle Click / price-history target.
+         */
+        private int drawPriceTable(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font, SbsRecipe recipe,
+                                   int top, int mouseX, int mouseY) {
+            RecipePricing.Table table = RecipePricing.of(recipe);
+            int rowH = font.lineHeight + 2;
+            int bottom = (sbs$canSupercraft() ? supercraftY : navY) - 3;
+            int orderX = innerX + contentWidth;                // right edge of the buy-order column
+            int instaX = orderX - PRICE_COL_W;                 // right edge of the insta-buy column
+            int nameRight = instaX - PRICE_COL_W - 2;
+
+            List<Object[]> rows = new ArrayList<>(); // {label, count or null, insta, order, item or null, colour}
+            rows.add(new Object[] {table.complete() ? "Craft total" : "Craft total (partial)", null,
+                    table.totalInsta(), table.totalOrder(), null, SBSTheme.ACCENT_BRIGHT});
+            if (table.result() != null) {
+                RecipePricing.Line r = table.result();
+                rows.add(new Object[] {"= " + r.item().name, r.count(), r.insta(), r.order(), r.item(),
+                        SBSTheme.HUD_MANA});
+            }
+            for (RecipePricing.Line line : table.ingredients()) {
+                rows.add(new Object[] {line.item().name, line.count(), line.insta(), line.order(), line.item(),
+                        SBSTheme.TEXT});
+            }
+
+            priceTop = top + rowH;
+            priceBottom = bottom;
+            int fit = Math.max(0, (bottom - priceTop) / rowH);
+            priceScroll = clamp(priceScroll, 0, Math.max(0, rows.size() - fit));
+            if (priceTop > bottom) {
+                return top; // no room at all (tiny viewport): the hover tooltips still carry prices
+            }
+            g.text(font, Component.literal("Item"), innerX, top, SBSTheme.TEXT_MUTED);
+            rightText(g, font, "Insta-buy", instaX, top, SBSTheme.TEXT_MUTED);
+            rightText(g, font, "Buy order", orderX, top, SBSTheme.TEXT_MUTED);
+
+            int y = priceTop;
+            for (int i = priceScroll; i < rows.size() && y + rowH <= bottom + 2; i++) {
+                Object[] row = rows.get(i);
+                Integer count = (Integer) row[1];
+                ItemRef item = (ItemRef) row[4];
+                int colour = (Integer) row[5];
+                if (item != null && mouseY >= y - 1 && mouseY < y + rowH - 1
+                        && mouseX >= innerX && mouseX < orderX) {
+                    priceKeyHovered = item;
+                    g.fill(innerX - 2, y - 1, orderX + 2, y + rowH - 1, SBSTheme.CARD_BG);
+                }
+                int x = innerX;
+                if (count != null) {
+                    String amount = count + "x";
+                    copyText(g, font, amount, String.valueOf(count), x, y, SBSTheme.ACCENT, mouseX, mouseY);
+                    x += font.width(amount) + 3;
+                }
+                String label = (String) row[0];
+                g.text(font, Component.literal(font.plainSubstrByWidth(label, Math.max(0, nameRight - x))),
+                        x, y, colour);
+                priceCell(g, font, (Long) row[2], instaX, y, mouseX, mouseY);
+                priceCell(g, font, (Long) row[3], orderX, y, mouseX, mouseY);
+                y += rowH;
+            }
+            if (rows.size() > fit && fit > 0) {
+                String more = (priceScroll + 1) + "-" + Math.min(rows.size(), priceScroll + fit) + "/" + rows.size();
+                rightText(g, font, more, innerX + font.width("Item") + 4 + font.width(more), top, SBSTheme.TEXT_MUTED);
+            }
+            return y + 2;
+        }
+
+        private void priceCell(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font, Long value, int right,
+                               int y, int mouseX, int mouseY) {
+            if (value == null) {
+                rightText(g, font, "?", right, y, SBSTheme.TEXT_MUTED);
+                return;
+            }
+            String shown = NumberDisplay.format(value);
+            copyText(g, font, shown, String.valueOf(value), right - font.width(shown), y, SBSTheme.TEXT,
+                    mouseX, mouseY);
+        }
+
+        /** Draws a copyable amount, highlighted on hover, and registers its click box for this frame. */
+        private void copyText(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font, String shown, String copy,
+                              int x, int y, int colour, int mouseX, int mouseY) {
+            int w = font.width(shown);
+            boolean hover = mouseX >= x - 1 && mouseX < x + w + 1 && mouseY >= y - 1 && mouseY < y + font.lineHeight;
+            g.text(font, Component.literal(shown), x, y, hover ? SBSTheme.ACCENT_BRIGHT : colour);
+            copyTargets.add(new CopyTarget(x - 1, y - 1, x + w + 1, y + font.lineHeight, copy));
+        }
+
+        private void rightText(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font, String text, int right,
+                               int y, int colour) {
+            g.text(font, Component.literal(text), right - font.width(text), y, colour);
         }
 
         /**

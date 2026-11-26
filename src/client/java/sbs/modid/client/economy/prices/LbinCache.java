@@ -46,6 +46,8 @@ public final class LbinCache {
     private static final int MAX_PAGES = 200;
 
     private final LbinApiClient api = new LbinApiClient();
+    private final sbs.modid.client.economy.wishlist.logic.WishlistWatcher wishlist =
+            sbs.modid.client.economy.wishlist.logic.WishlistWatcher.getInstance();
     private ScheduledExecutorService scheduler;
 
     private volatile Map<String, Long> lbin = Map.of();
@@ -124,13 +126,10 @@ public final class LbinCache {
                     // Kuudra Profit values AH-only chest loot (attribute armour, books) in the Hollow.
                     || (cfg.kuudraProfit.enabled
                             && sbs.modid.client.combat.kuudra.logic.KuudraTracker.getInstance().inHollow());
-            // The local AH flip ranking and the local Similar Auctions list both read the live
-            // index this crawl builds, so either one wanting it is a reason to run.
-            boolean localAuctionsNeedIt =
-                    (cfg.ahFlips.enabled && cfg.ahFlips.flipSource.preferLocal)
-                            || cfg.ahFlips.similarSource.preferLocal;
+            // The AH Wishlist checks every crawl's listings against the player's entries.
+            boolean wishlistNeedsIt = sbs.modid.client.economy.wishlist.logic.WishlistWatcher.wantsCrawl();
             if (!cfg.itemOverlay.showLbin && !fishingNeedsIt && !minionsNeedIt
-                    && !localAuctionsNeedIt && !nucleusNeedsIt) {
+                    && !nucleusNeedsIt && !wishlistNeedsIt) {
                 return; // no consumer – don't hit the API
             }
             if (Minecraft.getInstance().player == null) {
@@ -150,6 +149,15 @@ public final class LbinCache {
         }
         Map<String, Long> map = new HashMap<>();
         building = new LiveAuctionIndex.Builder();
+        wishlist.beginCrawl();
+        try {
+            crawl(first, map);
+        } finally {
+            wishlist.endCrawl();
+        }
+    }
+
+    private void crawl(LbinApiClient.Response first, Map<String, Long> map) {
         accumulate(first, map);
         this.lbin = Map.copyOf(map); // publish immediately – first prices show within seconds
         PriceVersion.bump();
@@ -195,8 +203,9 @@ public final class LbinCache {
                 continue;
             }
             map.merge(key, auction.starting_bid, Math::min);
+            String id = auctionId(auction.uuid);
+            wishlist.offer(key, id, auction.item_name, auction.starting_bid, auction.item_bytes);
             if (building != null) {
-                String id = auctionId(auction.uuid);
                 if (id != null) {
                     building.offer(key, auction.item_name,
                             new LiveAuctionIndex.Listing(id, auction.starting_bid,

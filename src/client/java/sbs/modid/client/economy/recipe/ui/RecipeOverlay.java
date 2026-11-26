@@ -33,13 +33,10 @@ import sbs.modid.client.ui.render.SciFiRender;
 import sbs.modid.client.economy.recipe.ui.RecipeViewerScreen;
 import sbs.modid.client.ui.theme.SBSTheme;
 import sbs.modid.client.core.util.MathEval;
-import sbs.modid.client.economy.prices.BazaarPriceCache;
-import sbs.modid.client.economy.prices.ChatPriceCache;
 import sbs.modid.client.core.mixin.AbstractContainerScreenAccessor;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -79,6 +76,13 @@ public final class RecipeOverlay {
     /** Whether the last unfiltered list was empty (catalogue not loaded yet): rebuild next time. */
     private boolean baseEmpty = true;
     private List<ItemRef> items = List.of();
+
+    /**
+     * A recipe opened inside the panel, so it stays beside the container while crafting; while open
+     * it replaces the item grid. Closed again when the search query changes.
+     */
+    private final DockedRecipePanel docked = new DockedRecipePanel();
+    private String dockedQuery;
 
     /** The panel item under the mouse in the last rendered frame (for hover-sensitive hotkeys). */
     private ItemRef lastHovered;
@@ -467,6 +471,10 @@ public final class RecipeOverlay {
             return;
         }
         List<Component> lines = RepoLoreCache.buildTooltip(hovered.iconStack(), hovered.lookupId());
+        if (docked.isOpen()) {
+            lines.add(Component.literal("Click an amount to copy it").withColor(HINT_COLOR));
+            lines.add(Component.literal("Middle Click to open Bazaar / AH").withColor(HINT_COLOR));
+        } else {
         lines.add(Component.literal("Click to view recipe").withColor(HINT_COLOR));
         lines.add(Component.literal("Right-Click to view usages").withColor(HINT_COLOR));
         if (ConfigManager.getInstance().get().recipeViewer.npcLocator
@@ -477,6 +485,7 @@ public final class RecipeOverlay {
         }
         lines.add(Component.literal("Ctrl + Click to open Wiki").withColor(HINT_COLOR));
         lines.add(Component.literal("Alt + Click to open SkyBlock Wiki").withColor(HINT_COLOR));
+        }
 
         Font font = Minecraft.getInstance().font;
         List<ClientTooltipComponent> components = new ArrayList<>(lines.size());
@@ -487,10 +496,21 @@ public final class RecipeOverlay {
                 sbs.modid.client.ui.theme.SBSTheme.tooltipStyle());
     }
 
+    /** Whether a docked recipe is showing; a new search query closes it, back to the item grid. */
+    private boolean dockedOpen() {
+        if (docked.isOpen() && !SearchHighlightState.getInstance().rawQuery().equals(dockedQuery)) {
+            docked.close();
+        }
+        return docked.isOpen();
+    }
+
     /** The panel item currently under the mouse, or {@code null}. */
     private ItemRef hoveredPanelItem(AbstractContainerScreen<?> screen, double mouseX, double mouseY) {
         if (windowed() && minimized) {
             return null;
+        }
+        if (dockedOpen()) {
+            return docked.hovered();
         }
         int[] b = panelBounds(screen);
         int cols = b[2] / CELL;
@@ -597,6 +617,11 @@ public final class RecipeOverlay {
 
     private void drawItemPanel(AbstractContainerScreen<?> screen, GuiGraphicsExtractor g, int mouseX, int mouseY) {
         int[] b = panelBounds(screen);
+        if (dockedOpen()) {
+            docked.render(g, b, mouseX, mouseY);
+            lastHovered = docked.hovered();
+            return;
+        }
         int cols = b[2] / CELL;
         int rows = b[3] / CELL;
         if (cols < 1 || rows < 1) {
@@ -725,6 +750,13 @@ public final class RecipeOverlay {
         double mx = event.x();
         double my = event.y();
         int[] b = panelBounds(screen);
+        if (dockedOpen()) {
+            boolean inside = mx >= b[0] && mx < b[0] + b[2] && my >= b[1] && my < b[1] + b[3];
+            if (inside) {
+                docked.click(event);
+            }
+            return inside; // every click on the docked recipe stays off the container
+        }
         int cols = b[2] / CELL;
         int rows = b[3] / CELL;
         if (cols < 1 || rows < 1 || mx < b[0] || mx >= b[0] + cols * CELL || my < b[1] || my >= b[1] + rows * CELL) {
@@ -759,19 +791,15 @@ public final class RecipeOverlay {
             return true;
         }
         // Shift + Click: /bz for bazaar items, /ahsearch for everything else.
-        if (event.hasShiftDown()) {
-            Minecraft minecraft = Minecraft.getInstance();
-            if (minecraft.player != null) {
-                String id = item.lookupId();
-                boolean bazaar = BazaarPriceCache.getInstance().getBuy(id) != null
-                        || ChatPriceCache.getInstance().getUnitPrice(id) != null;
-                minecraft.player.connection.sendCommand(
-                        (bazaar ? "bz " : "ahsearch ") + item.name.trim().toLowerCase(Locale.ROOT));
-            }
+        // Middle click does the same (the Recipe Viewer screen's gesture for it).
+        if (event.hasShiftDown() || event.button() == 2) {
+            sbs.modid.client.economy.recipe.logic.MarketSearch.run(item);
             return true;
         }
-        // Plain click: recipe view; right-click: usages.
-        Minecraft.getInstance().setScreenAndShow(new RecipeViewerScreen(item, event.button() == 1));
+        // Plain click: the recipe, right-click: its usages - docked in this panel, so it stays beside
+        // the inventory / crafting table ("Full" in its header opens the full-screen viewer).
+        docked.open(item, event.button() == 1);
+        dockedQuery = SearchHighlightState.getInstance().rawQuery();
         return true;
     }
 
@@ -871,6 +899,10 @@ public final class RecipeOverlay {
     }
 
     private void scrollGrid(AbstractContainerScreen<?> screen, double scrollY) {
+        if (dockedOpen()) {
+            docked.scroll(scrollY);
+            return;
+        }
         int[] b = panelBounds(screen);
         int cols = Math.max(1, b[2] / CELL);
         int rows = Math.max(1, b[3] / CELL);

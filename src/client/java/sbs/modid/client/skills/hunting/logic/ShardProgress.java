@@ -126,7 +126,7 @@ public final class ShardProgress {
                 continue;
             }
 
-            ShardRarity rarity = shard.rarity();
+            ShardRarity rarity = rarityOf(shard.rarity(), owned);
             int tier = owned == null ? -1 : owned.tier;
             int derived = tier < 0 ? ShardLevelling.UNKNOWN : ShardLevelling.toMaxFrom(rarity, tier);
             boolean measured = derived >= 0;
@@ -143,6 +143,19 @@ public final class ShardProgress {
                     ShardBazaar.wideSpread(id), true));
         }
         return rows;
+    }
+
+    /**
+     * The rarity a row is estimated from: the catalogue's where it states one, else what the menu or
+     * the box showed. The bundled {@code shards.json} states none (its Bazaar source has no rarity),
+     * so before this fallback every row was {@link ShardRarity#UNKNOWN} and every amount and cost
+     * read "?" - the in-game reading was taken and then thrown away.
+     */
+    static ShardRarity rarityOf(ShardRarity catalogued, ShardOwnership.Owned owned) {
+        if (catalogued != null && catalogued != ShardRarity.UNKNOWN) {
+            return catalogued;
+        }
+        return owned == null ? ShardRarity.UNKNOWN : owned.rarity();
     }
 
     /** How many of each shard the Hunting Box holds, summed over its rows. */

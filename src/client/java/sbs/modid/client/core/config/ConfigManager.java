@@ -158,6 +158,7 @@ public final class ConfigManager {
                         migrateBuffCards(loaded);
                         migrateDesktopNotifications(loaded);
                         migrateNumberFormats(loaded);
+                        migrateFlipSourceToServer(loaded);
                         migrateScoreboardLayout(loaded);
                         migrateChromaSpeed(loaded);
                         migrateHighlightNames(loaded);
@@ -501,6 +502,24 @@ public final class ConfigManager {
      * migration keeps that as well, because the marker is set either way.
      */
     @SuppressWarnings("deprecation")
+    /**
+     * One-time (2026-11-26): AH Flip Source "Local" used to be the client-side scan; it now means the
+     * dev flip program on 127.0.0.1:3020, which normal players do not run. Every config is moved to
+     * Server once; from then on Local is only what the player picks on the switch.
+     */
+    private void migrateFlipSourceToServer(SBSConfig config) {
+        SBSConfig.AhFlipAlertSettings flips = config.ahFlips;
+        if (flips == null || flips.flipSourceServerMigrated) {
+            return;
+        }
+        if (flips.flipSource == null) {
+            flips.flipSource = new SBSConfig.SourceChoice();
+        }
+        flips.flipSource.preferLocal = false;
+        flips.flipSource.pinned = false;
+        flips.flipSourceServerMigrated = true;
+    }
+
     private void migrateNumberFormats(SBSConfig config) {
         if (Boolean.TRUE.equals(config.numberFormatsFollowGlobal)) {
             return;

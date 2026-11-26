@@ -80,4 +80,17 @@ public final class SlotBindingIcon {
         g.text(font, Component.literal(String.valueOf(number)), x + 3, y + 2,
                 isAnchor ? 0xFF102A44 : SBSTheme.ACCENT_BRIGHT);
     }
+
+    /**
+     * The line a bind drag draws from its start slot to the cursor, as touching 2x2 dots in the
+     * pending colour. Squares rather than a rotated quad, so it stays crisp at every GUI scale.
+     */
+    public static void drawLine(GuiGraphicsExtractor g, int x0, int y0, int x1, int y1) {
+        int steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+        for (int i = 0; i <= steps; i += 2) {
+            int x = x0 + Math.round((x1 - x0) * (float) i / Math.max(1, steps));
+            int y = y0 + Math.round((y1 - y0) * (float) i / Math.max(1, steps));
+            g.fill(x - 1, y - 1, x + 1, y + 1, SBSTheme.WARN);
+        }
+    }
 }

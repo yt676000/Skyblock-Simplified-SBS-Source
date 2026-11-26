@@ -151,7 +151,7 @@ public final class ScreenForeground {
                                 .renderAll(container, g, mouseX, mouseY);
                         case VALUE -> sbs.modid.client.economy.itemvalue.ItemValueOverlay.getInstance()
                                 .renderTopMost(container, g, mouseX, mouseY);
-                        case AUCTIONS -> sbs.modid.client.economy.auctions.ui.SimilarAuctionsOverlay.getInstance()
+                        case LOCAL_FLIPS -> sbs.modid.client.economy.localflips.ui.LocalFlipsWindow.getInstance()
                                 .renderTopMost(container, g, mouseX, mouseY);
                         case FLIPS -> sbs.modid.client.economy.bazaar.ui.BestFlipsOverlay.getInstance()
                                 .renderTopMost(container, g, mouseX, mouseY);

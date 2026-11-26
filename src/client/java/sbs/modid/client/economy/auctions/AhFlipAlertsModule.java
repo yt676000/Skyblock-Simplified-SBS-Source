@@ -23,11 +23,9 @@ import java.util.Locale;
 /**
  * The AH Flip Alerts module, registering itself (see {@link SbsModule}).
  *
- * <p>Toggling it on lets {@link AhFlipClient} long-poll the SBS flip server: every AH crawl the
- * server appraises all live BIN auctions from 5m upwards with the same value model as the
- * Similar Auctions window and pushes the underpriced ones (10%+ below their real value, ranked by
- * profit x discount x weekly sales) to every subscribed player as a chat line with a
- * click-to-open link!
+ * <p>Toggling it on lets {@link AhFlipClient} follow the SBS flip server's live stream
+ * ({@code /flips/stream} + {@code /flips/liste}): new underpriced auctions arrive as popup cards and
+ * chat lines with a click-to-open link, and leave the moment the server reports them gone.
  *
  * <p>The price range is the user's own capital band: alerts only arrive for auctions whose total
  * price falls inside it. The lower bound can never go below the server's 5m floor.
@@ -67,13 +65,17 @@ public final class AhFlipAlertsModule implements SbsModule {
         return ConfigManager.getInstance().get().ahFlips;
     }
 
+    private static SBSConfig.LocalFlipSettings flipFinder() {
+        return ConfigManager.getInstance().get().dev.localFlips;
+    }
+
     private static void save() {
         ConfigManager.getInstance().save();
     }
 
     @Override
     public List<SettingRow> settings() {
-        return List.of(
+        return java.util.List.of(
                 SettingRow.toggle("Middle Click to Search", () -> cfg().middleClickSearch,
                         () -> { cfg().middleClickSearch = !cfg().middleClickSearch; save(); })
                         .describe("In the Auction House, middle click any item to search the "
@@ -85,39 +87,15 @@ public final class AhFlipAlertsModule implements SbsModule {
                                 + "licence token.")
                         .licenced()
                         .inDevelopment(),
-                SettingRow.label(sbs.modid.client.ui.render.LocalRankingNotice.settingsNote()),
                 SettingRow.segmented("Flip Source", List.of("Server", "Local"),
-                        () -> cfg().flipSource.preferLocal ? 1 : 0,
+                        () -> sbs.modid.client.economy.auctions.logic.FlipServer.isLocal() ? 1 : 0,
                         index -> sbs.modid.client.core.api.RankingSource.choose(
                                 cfg().flipSource, index == 1))
-                        .describe("Where flips come from. Server watches the whole auction house "
-                                + "for us and needs a licence token. Local scans the live auctions "
-                                + "your own client already downloads and compares each item's "
-                                + "cheapest listing against the next cheapest - no sale history, so "
-                                + "it can only tell you something is cheap for its own market right "
-                                + "now, not that it is worth more than that."),
-                SettingRow.segmented("Similar Auctions Source", List.of("Server", "Local"),
-                        () -> cfg().similarSource.preferLocal ? 1 : 0,
-                        index -> sbs.modid.client.core.api.RankingSource.choose(
-                                cfg().similarSource, index == 1))
-                        .describe("What the Similar Auctions window shows. Server appraises your "
-                                + "exact item and lists what comparable ones sold for. Local lists "
-                                + "what is on sale right now under that name and nothing else - no "
-                                + "value, no sale history, no matching of your item's stars and "
-                                + "books against a listing's."),
-                SettingRow.intField("Local Min Discount", 1, 95,
-                        () -> cfg().localMinDiscountPct,
-                        value -> { cfg().localMinDiscountPct = value; save(); }, "%")
-                        .describe("How far under the next-cheapest listing something must sit "
-                                + "before the local scan calls it a flip. This one threshold is the "
-                                + "whole of its judgement, so setting it low turns ordinary price "
-                                + "spread into alerts."),
-                SettingRow.intField("Local Min Listings", 2, 100,
-                        () -> cfg().localMinListings,
-                        value -> { cfg().localMinListings = value; save(); }, "")
-                        .describe("How many of an item must be on sale before the local scan will "
-                                + "judge it. Two listings are two opinions, not a market, and the "
-                                + "gap between them says nothing about what the item is worth."),
+                        .describe("Where flips come from. Server is the SBS flip server - it watches "
+                                + "the whole auction house with sale history and needs your licence "
+                                + "token. Local is the flip program running on this PC, for "
+                                + "development only."),
+                SettingRow.label("§7Local = dev only (flip_overlay.py on this PC)"),
                 SettingRow.label("Needs an active licence token"),
                 SettingRow.toggle("Popup Alerts", () -> cfg().popupAlerts,
                         () -> { cfg().popupAlerts = !cfg().popupAlerts; save(); })
@@ -154,7 +132,50 @@ public final class AhFlipAlertsModule implements SbsModule {
                         text -> { cfg().maxPrice = parseCoins(text); save(); })
                         .describe("Ignore flips costing more than this - cap it at what you can "
                                 + "actually afford to buy. Empty = no limit."),
-                SettingRow.label("Range is the auction's total price - 5m is the server minimum"));
+                SettingRow.label("Range is the auction's total price - 5m is the server minimum"),
+                SettingRow.label("— Flip Finder window —"),
+                SettingRow.toggle("Flip Finder", () -> flipFinder().enabled,
+                                () -> { flipFinder().enabled = !flipFinder().enabled; save(); })
+                        .describe("Every find from the flip server in a movable window: SOFORT finds, "
+                                + "the flip list, bids, price ladder, confidence and bot share. It "
+                                + "stays open beside the Auction House and the other SBS windows. "
+                                + "Needs your licence token. Default: off.")
+                        .licenced(),
+                SettingRow.button("Open Flip Finder Window",
+                                sbs.modid.client.economy.localflips.ui.LocalFlipsWindow::show)
+                        .describe("Opens the window (and switches the Flip Finder on). Drag the header, "
+                                + "drag an edge to resize, Ctrl+scroll to scale."),
+                SettingRow.keybind("Open Flip Window Key", () -> flipFinder().openOverlayKey,
+                                key -> { flipFinder().openOverlayKey = key; save(); })
+                        .describe("A key that opens the flip window. Default: unbound."),
+                SettingRow.keybind("Open Newest Find Key", () -> flipFinder().openNewestKey,
+                                key -> { flipFinder().openNewestKey = key; save(); })
+                        .describe("A key that opens the auction of the newest SOFORT find that is still "
+                                + "valid - one /viewauction per press. Default: unbound."),
+                SettingRow.toggle("Flip Chat Alerts", () -> flipFinder().chatAlerts,
+                                () -> { flipFinder().chatAlerts = !flipFinder().chatAlerts; save(); })
+                        .describe("One chat line per new SOFORT find with [OPEN] and [COPY]. Each auction "
+                                + "once, also across reconnects. Default: on."),
+                SettingRow.soundToggle("Flip Alert Sound", () -> flipFinder().sound,
+                                () -> { flipFinder().sound = !flipFinder().sound; save(); })
+                        .describe("A short sound with each alert. Default: on."),
+                SettingRow.toggle("Flip Alert Toast", () -> flipFinder().toast,
+                                () -> { flipFinder().toast = !flipFinder().toast; save(); })
+                        .describe("A toast in the corner with each alert. Default: off."),
+                SettingRow.intField("Alert Min Profit", 0, 2_000_000_000, () -> flipFinder().minProfit,
+                                value -> { flipFinder().minProfit = value; save(); }, "coins")
+                        .describe("Finds below this net profit are not alerted, and are drawn greyed in "
+                                + "the window. Default: 500000."),
+                SettingRow.rangeSlider("Alert Min Safety", 0, 100, () -> flipFinder().minSafety,
+                                value -> { flipFinder().minSafety = value; save(); }, "%")
+                        .describe("Finds below this safety are not alerted. Bids carry no safety and are "
+                                + "never held back by it. Default: 0 %."),
+                SettingRow.toggle("Show Flip List", () -> flipFinder().showList,
+                                () -> { flipFinder().showList = !flipFinder().showList; save(); })
+                        .describe("The program's flip list below the SOFORT finds. Default: on."),
+                SettingRow.toggle("Show Bid Auctions", () -> flipFinder().showBids,
+                                () -> { flipFinder().showBids = !flipFinder().showBids; save(); })
+                        .describe("Bid auctions in the flip list, with the most worth bidding. Default: on."));
     }
 
     private static void open(net.minecraft.client.gui.screens.Screen screen) {

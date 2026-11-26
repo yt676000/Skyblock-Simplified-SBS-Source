@@ -8,9 +8,7 @@
 
 package sbs.modid.client.economy.localflips.command;
 
-import net.minecraft.client.Minecraft;
 import sbs.modid.client.economy.localflips.logic.LocalFlipFinder;
-import sbs.modid.client.economy.localflips.ui.LocalFlipsScreen;
 
 /**
  * The Local Flip Finder's two keys, both unbound by default: open the flip window, and open the
@@ -28,7 +26,7 @@ public final class LocalFlipKeybinds {
         }
         var cfg = LocalFlipFinder.cfg();
         if (cfg.openOverlayKey != 0 && code == cfg.openOverlayKey) {
-            Minecraft.getInstance().setScreenAndShow(new LocalFlipsScreen());
+            sbs.modid.client.economy.localflips.ui.LocalFlipsWindow.toggle();
         } else if (cfg.openNewestKey != 0 && code == cfg.openNewestKey && cfg.enabled) {
             LocalFlipFinder.getInstance().openNewest();
         }

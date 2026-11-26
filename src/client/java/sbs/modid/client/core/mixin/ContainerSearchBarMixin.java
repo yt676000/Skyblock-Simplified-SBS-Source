@@ -203,7 +203,7 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
                 case VALUE -> sbs.modid.client.economy.itemvalue.ItemValueOverlay.getInstance().handleClick(self, event);
                 case BROWSERS -> PriceBrowserManager.getInstance().handleClick(self, event);
                 case RECIPE -> RecipeOverlay.getInstance().handleWindowClick(self, event);
-                case AUCTIONS -> sbs.modid.client.economy.auctions.ui.SimilarAuctionsOverlay.getInstance()
+                case LOCAL_FLIPS -> sbs.modid.client.economy.localflips.ui.LocalFlipsWindow.getInstance()
                         .handleClick(self, event);
                 case FLIPS -> sbs.modid.client.economy.bazaar.ui.BestFlipsOverlay.getInstance()
                         .handleClick(self, event);
@@ -263,7 +263,7 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
             cir.setReturnValue(true);
             return;
         }
-        if (sbs.modid.client.economy.auctions.ui.SimilarAuctionsOverlay.getInstance().handleDrag(self, event)) {
+        if (sbs.modid.client.economy.localflips.ui.LocalFlipsWindow.getInstance().handleDrag(self, event)) {
             cir.setReturnValue(true);
             return;
         }
@@ -330,7 +330,7 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
             cir.setReturnValue(true);
             return;
         }
-        if (sbs.modid.client.economy.auctions.ui.SimilarAuctionsOverlay.getInstance().handleRelease(event)) {
+        if (sbs.modid.client.economy.localflips.ui.LocalFlipsWindow.getInstance().handleRelease(event)) {
             cir.setReturnValue(true);
             return;
         }
@@ -461,7 +461,7 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
                         .handleScroll(self, mouseX, mouseY, scrollY);
                 case BROWSERS -> PriceBrowserManager.getInstance().handleScroll(self, mouseX, mouseY, scrollY);
                 case RECIPE -> RecipeOverlay.getInstance().handleWindowScroll(self, mouseX, mouseY, scrollY);
-                case AUCTIONS -> sbs.modid.client.economy.auctions.ui.SimilarAuctionsOverlay.getInstance()
+                case LOCAL_FLIPS -> sbs.modid.client.economy.localflips.ui.LocalFlipsWindow.getInstance()
                         .handleScroll(self, mouseX, mouseY, scrollY);
                 case FLIPS -> sbs.modid.client.economy.bazaar.ui.BestFlipsOverlay.getInstance()
                         .handleScroll(self, mouseX, mouseY, scrollY);

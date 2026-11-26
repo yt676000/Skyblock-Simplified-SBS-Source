@@ -109,9 +109,14 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
         return ConfigManager.getInstance().get().dev.localFlips;
     }
 
-    /** True while developer mode is on - the only state in which this feature exists. */
+    /** Always: the Flip Finder is a normal feature (it was developer-only while it was local-only). */
     public static boolean available() {
-        return sbs.modid.client.core.dev.DevMode.ACTIVE; // DEV-ONLY: maintainer's local flip tool
+        return true;
+    }
+
+    /** The SBS flip server, unless "Local" is picked under AH Flip Alerts > Flip Source. */
+    public static boolean server() {
+        return !sbs.modid.client.economy.auctions.logic.FlipServer.isLocal();
     }
 
     // ------------------------------------------------------------------
@@ -160,6 +165,19 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
         pendingKey = null;
         downLogged = false;
         lostAnnounced = false;
+        if (server()) {
+            vpn = false;
+            String token = sbs.modid.client.economy.auctions.logic.FlipServer.token();
+            if (token.isEmpty()) {
+                setStatus(Status.UNAUTHORIZED, 0);
+                return;
+            }
+            connection = LocalFlipConnection.flipAlerts(sbs.modid.client.economy.auctions.logic.FlipServer.SERVER,
+                    "/flips/health", token, this, Minecraft.getInstance(), true);
+            setStatus(Status.CONNECTING, 0);
+            connection.start();
+            return;
+        }
         vpn = FlipSource.isVpn();
         URI base = FlipSource.base(cfg.url);
         if (base == null) {
@@ -176,7 +194,8 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
 
     /** Everything whose change must restart the connection. */
     private static String connectionKey(SBSConfig.LocalFlipSettings cfg) {
-        return cfg.url + '\n' + cfg.token + '\n' + FlipSource.key();
+        return server() ? "server\n" + sbs.modid.client.economy.auctions.logic.FlipServer.token().hashCode()
+                : cfg.url + '\n' + cfg.token + '\n' + FlipSource.key();
     }
 
     private void stopConnection() {
@@ -354,7 +373,7 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
         String slashCommand = "/" + flip.command();
         Component hover = Component.literal(hoverText(flip));
         MutableComponent line = Component.literal("[SBS-Flip] ").withColor(SBSChat.PREFIX_COLOR)
-                .append(Component.literal(FlipSource.tag() + " ").withColor(0x8FA6BF))
+                .append(Component.literal((server() ? "[SERVER]" : FlipSource.tag()) + " ").withColor(0x8FA6BF))
                 .append(Component.literal(flip.displayName())
                         .withColor(SBSChat.WHITE)
                         .withStyle(style -> style.withHoverEvent(new HoverEvent.ShowText(hover))))

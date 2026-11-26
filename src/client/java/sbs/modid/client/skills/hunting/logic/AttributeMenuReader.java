@@ -296,7 +296,8 @@ public final class AttributeMenuReader {
                 ? ShardLevelling.UNKNOWN
                 : ShardLevelling.ownedFrom(rarity, tier, syphon.remaining);
 
-        ownership.noteMenu(resolution.canonicalId(), resolution.displayName(), tier, syphoned);
+        ownership.noteMenu(resolution.canonicalId(), resolution.displayName(), rarity, tier,
+                syphoned);
         return syphoned >= 0;
     }
 

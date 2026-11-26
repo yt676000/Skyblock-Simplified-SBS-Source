@@ -28,9 +28,11 @@ import sbs.modid.client.helper.inventory.render.SlotBindingIcon;
  * one, and showing it.
  *
  * <ul>
- *   <li><b>Bind</b> – the bind key held + left click picks a slot, the next click ties the two
- *       together; right click with the key held unbinds. The click is swallowed either way, so it
- *       never also becomes an item pickup.</li>
+ *   <li><b>Bind</b> – with the bind key held, press on one slot and drag to another to tie the two
+ *       together; a line follows the cursor meanwhile. Clicking a bound slot with the key held
+ *       unbinds it (so does a right click). Clicking an unbound slot still works the older way: it
+ *       becomes the pending pick and the next click completes it. Press, drag and release are all
+ *       swallowed, so none of it becomes an item pickup or a vanilla drag.</li>
  *   <li><b>Swap</b> – shift + left click on a bound slot exchanges it with its anchor and swallows
  *       the vanilla quick-move that click would otherwise be. Everything else about the click is
  *       vanilla, and a slot that is not bound never reaches this branch.</li>
@@ -68,7 +70,7 @@ public abstract class SlotBindingInputMixin {
             if (event.button() == 1) {
                 SlotBindings.unbind(index);
             } else {
-                SlotBindings.clicked(index);
+                SlotBindings.dragPressed(index);
             }
             cir.setReturnValue(true);
             return;
@@ -91,6 +93,23 @@ public abstract class SlotBindingInputMixin {
         cir.setReturnValue(true);
     }
 
+    @Inject(method = "mouseDragged", at = @At("HEAD"), cancellable = true)
+    private void skyblockSimplified$slotBindingDrag(MouseButtonEvent event, double dragX, double dragY,
+                                                    CallbackInfoReturnable<Boolean> cir) {
+        if (SlotBindings.dragSlot() >= 0) {
+            cir.setReturnValue(true);
+        }
+    }
+
+    @Inject(method = "mouseReleased", at = @At("HEAD"), cancellable = true)
+    private void skyblockSimplified$slotBindingRelease(MouseButtonEvent event,
+                                                       CallbackInfoReturnable<Boolean> cir) {
+        if (event.button() == 0
+                && SlotBindings.dragReleased(SlotBindings.inventoryIndexOf(this.hoveredSlot))) {
+            cir.setReturnValue(true);
+        }
+    }
+
     @Inject(method = "extractSlots", at = @At("TAIL"))
     private void skyblockSimplified$drawSlotBindings(GuiGraphicsExtractor g, int mouseX, int mouseY,
                                                      CallbackInfo ci) {
@@ -98,6 +117,22 @@ public abstract class SlotBindingInputMixin {
             return;
         }
         int pending = SlotBindings.pendingSlot();
+        int dragFrom = SlotBindings.dragSlot();
+        for (Slot slot : getMenu().slots) {
+            if (dragFrom >= 0 && SlotBindings.inventoryIndexOf(slot) == dragFrom) {
+                // Slots are drawn in GUI-local space; the cursor arrives in screen space. Snap the
+                // end to the hovered inventory slot so the line shows exactly what a release binds.
+                AbstractContainerScreenAccessor bounds = (AbstractContainerScreenAccessor) this;
+                int endX = mouseX - bounds.skyblockSimplified$leftPos();
+                int endY = mouseY - bounds.skyblockSimplified$topPos();
+                if (SlotBindings.inventoryIndexOf(this.hoveredSlot) >= 0) {
+                    endX = this.hoveredSlot.x + 8;
+                    endY = this.hoveredSlot.y + 8;
+                }
+                SlotBindingIcon.drawPending(g, slot.x, slot.y);
+                SlotBindingIcon.drawLine(g, slot.x + 8, slot.y + 8, endX, endY);
+            }
+        }
         for (Slot slot : getMenu().slots) {
             int index = SlotBindings.inventoryIndexOf(slot);
             if (index < 0) {

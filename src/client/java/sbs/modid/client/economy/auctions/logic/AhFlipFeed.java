@@ -42,24 +42,19 @@ public final class AhFlipFeed {
      */
     public record Flip(String auctionId, String displayName, long price, long target, long profit,
                        double discountPct, long weekSales, long endAtMs, double rating,
-                       long receivedMs, boolean local, int liveListings) {
+                       long receivedMs, String meta) {
 
         public boolean expired(long nowMs) {
             return nowMs - receivedMs > TTL_MS || (endAtMs > 0 && nowMs > endAtMs);
         }
 
         /**
-         * The one-word market figure each output prints after the discount, worded for whichever
-         * engine produced the flip.
-         *
-         * <p>A locally found flip has <b>no</b> weekly sales figure and must never print one: the
-         * local engine sees a single snapshot of what is listed and knows nothing about what sells.
-         * Printing "0/wk" there would be a confident wrong number in the field players use to judge
-         * whether a flip will actually move, which is worse than printing nothing. It reports what it
-         * does know instead - how many are on sale right now.
+         * The short market figure each output prints after the percentage: the flip algorithm's
+         * confidence and, when it flagged one, its BOT PREY share ({@code "conf 82% · BOT PREY 40%"}).
+         * Built from validated numbers and a whitelisted note fragment on receipt.
          */
         public String volumeLabel() {
-            return local ? liveListings + " listed" : weekSales + "/wk";
+            return meta == null ? "" : meta;
         }
     }
 

@@ -161,6 +161,8 @@ final class ChatListeners {
                 sbs.modid.client.skills.fishing.logic.FishingTracker.getInstance().onChat(r, m));
         add(l, "SeaCreatureAnnouncer", ANY_ISLAND, EVERY_LINE, (p, r, m) ->
                 sbs.modid.client.skills.fishing.logic.SeaCreatureAnnouncer.getInstance().onChat(r));
+        add(l, "FishingShare", ANY_ISLAND, EVERY_LINE, (p, r, m) ->
+                sbs.modid.client.skills.fishing.logic.FishingShare.getInstance().onChat(r));
         // START / ANITA are "[NPC] Jacob: ..."; the probe takes "Jacob" or upper-case "CONTEST".
         add(l, "JacobContestTracker", ANY_ISLAND, or(any("Jacob"), anyIgnoreCase("contest")), (p, r, m) ->
                 sbs.modid.client.skills.farming.contest.JacobContestTracker.getInstance().onChat(r));

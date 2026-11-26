@@ -396,6 +396,9 @@ public final class CommandRegistry {
         // --- Hidden: never listed, never suggested.
         l.add(new Command("sbs", "developermode", List.of(), "", null, "", DEVELOPER, null, null,
                 Visibility.HIDDEN, ""));
+        // Run by Fishing Share's clickable buttons; typing it by hand has no use.
+        l.add(new Command("sbsfishshare", "", List.of(), "<party|all> <id>", null,
+                "Sends a parked Fishing Share message.", PARTY, null, null, Visibility.HIDDEN, ""));
         return Collections.unmodifiableList(l);
     }
 

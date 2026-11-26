@@ -38,10 +38,12 @@ public final class LbinApiClient {
 // ENDPOINT: https://api.hypixel.net/v2/skyblock/auctions?page=<n>
 // METHOD: GET
 // PURPOSE: Crawl the live auction pages to find the lowest bin per item - the licence-free
-//   fallback for auction prices when our own backend is not available.
+//   fallback for auction prices when our own backend is not available. The same pages feed
+//   the AH Wishlist, which reads an auction's item data only when its name is on the list.
 // DATA SENT: Only the page number in the query string. No body.
 // DATA RECEIVED: Read-only public JSON - one page of live auctions. Parsed with Gson into a
-//   fixed Response record.
+//   fixed Response record. item_bytes (base64 gzip NBT of the listed item) is decoded only
+//   through NbtLimits, with its size, depth and tag-count limits.
 // SAFETY DECLARATION: No user credentials, session tokens, Mojang uuids or OS telemetry
 //   are collected or transmitted. No licence token is sent - this endpoint is public.
 // ============================================================================
@@ -94,5 +96,10 @@ public final class LbinApiClient {
         public String uuid;
         /** When the auction ends, epoch millis. */
         public long end;
+        /**
+         * The listed item as base64 gzip NBT. Always in the payload; kept only so the AH Wishlist
+         * can read enchants, stars and gems. Decoded through {@code NbtLimits}, never directly.
+         */
+        public String item_bytes;
     }
 }

@@ -8,29 +8,17 @@
 
 package sbs.modid.client.economy.auctions.logic;
 
-import sbs.modid.client.core.net.validation.MessageTypes;
-import sbs.modid.client.core.net.validation.SbsReply;
-import sbs.modid.client.core.net.validation.ValidationException;
-
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import sbs.modid.SkyblockSimplifiedSBS;
-import sbs.modid.client.social.chat.logic.SBSChat;
 import sbs.modid.client.core.config.ConfigManager;
-import sbs.modid.client.core.licence.privacy.ConsentScope;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.economy.auctions.ui.AhFlipPopups;
+import sbs.modid.client.economy.localflips.logic.LocalFlipConnection;
+import sbs.modid.client.economy.localflips.model.LocalFlip;
+import sbs.modid.client.social.chat.logic.SBSChat;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -39,52 +27,41 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * Client for the SBS AH flip alerts ({@code /flips/} on the SBS backend).
+ * Client for the AH flip alerts: the flip algorithm on the SBS server
+ * ({@code https://skyblocksimplified.info/flips/...}, see {@link FlipServer}) or, for development,
+ * the same program on this PC.
  *
- * <p><b>Transport: long-poll</b>, exactly like {@link sbs.modid.client.social.chat.logic.IrcClient}: one
- * background daemon thread holds {@code GET /flips/poll} open for up to ~25s; the server answers
- * the moment a scan finds new flips – every waiting client at the same instant, so nobody gains an
- * edge from poll timing. The user's price range travels as {@code min}/{@code max} query
- * parameters and is filtered server-side (and re-checked here).
+ * <p><b>Transport.</b> One {@link LocalFlipConnection}: {@code GET /flips/stream} (Server-Sent
+ * Events: {@code sofort} = new find, {@code weg} = auction gone, a ping every 15 s) plus
+ * {@code GET /flips/liste} every 30 s. A dropped stream reconnects after 3 s and the server replays
+ * every current find, so finds are deduplicated by auction id. No {@code ?client=} on the stream:
+ * that marks the Discord bot, and in-game clients are served first.
  *
- * <p>Each flip becomes one client-side chat line – item, price, estimated value, profit, discount,
- * weekly sales – ending in a clickable <b>[OPEN IN AH]</b> that runs {@code /viewauction <id>}.
+ * <p><b>Auth.</b> The licence token as {@code X-SBS-Token}, never in the URL. A 401 is shown once
+ * ("Flip server: token missing or wrong") and not retried until the token or the source changes.
  *
- * <p><b>Input handling.</b> Auth is the licence token as a header (never in the URL), over HTTPS.
- * Everything received is validated before use: the auction id must be 32 hex characters before a
- * command is built from it, so a response can only ever produce a {@code /viewauction} for a real
- * id, and display strings are whitelist-sanitized so they carry no formatting codes or click
- * events into chat.
+ * <p><b>Input handling.</b> Every find goes through {@link LocalFlip#parse}: the auction id must be
+ * 32 hex characters and names are stripped of formatting codes, so a response can only ever produce
+ * a {@code /viewauction} for a real id and no formatting or click events reach chat.
  */
 public final class AhFlipClient {
 
     private static final AhFlipClient INSTANCE = new AhFlipClient();
 
-    /** The flips service on the SBS backend, over HTTPS. */
-    private static final String BASE = "https://skyblocksimplified.info";
-    private static final Duration POLL_TIMEOUT = Duration.ofSeconds(32);
-    private static final int POLL_HOLD_SECONDS = 25;
-
     /** The server never sends flips below its own floor; mirror it for the range clamp. */
     private static final long SERVER_MIN_PRICE = 5_000_000L;
 
-    /** Columns the client reads by fixed index (0..14). Rows with more are fine; extras are ignored. */
-    private static final int KNOWN_ROW_FIELDS = 15;
-
-    /** Hypixel auction ids are exactly 32 lowercase hex chars – anything else is refused. */
+    /** Hypixel auction ids are exactly 32 lowercase hex chars - anything else is refused. */
     private static final Pattern AUCTION_ID = Pattern.compile("[0-9a-f]{32}");
 
-    /** Item ids / reforges may only carry these before they are shown (no §-codes, no control chars). */
-    private static final Pattern DISPLAY_JUNK = Pattern.compile("[^A-Za-z0-9_:]");
-
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10)).build();
-
-    /** -1 = fresh session: the server answers with the cursor + the still-fresh flips of the last scan. */
-    private volatile long since = -1;
-    private volatile boolean authFailureShown;
-    private Thread pollThread;
+    private Thread superviseThread;
     private Thread soldThread;
+
+    /** Guarded by {@code this}. */
+    private LocalFlipConnection connection;
+    private String connectionKey;
+    /** The settings a 401 was answered for: not reconnected until they change. */
+    private volatile String rejectedKey;
 
     /**
      * How often the sold-watcher polls Hypixel's ended-auctions feed. That feed covers roughly the
@@ -93,7 +70,7 @@ public final class AhFlipClient {
      */
     private static final long SOLD_POLL_MS = 30_000L;
 
-    /** Auction ids already shown, so a reconnect / re-enable never repeats an alert. */
+    /** Auction ids already shown, so a reconnect (the server replays everything) never repeats an alert. */
     private final Set<String> shown = new LinkedHashSet<>();
     private static final int SHOWN_CAP = 512;
 
@@ -104,14 +81,14 @@ public final class AhFlipClient {
         return INSTANCE;
     }
 
-    /** Starts the poll + sold-watch loop threads once (both idle cheaply while the toggle is off). */
+    /** Starts the supervisor + sold-watch threads once (both idle cheaply while the toggle is off). */
     public synchronized void start() {
-        if (pollThread != null) {
+        if (superviseThread != null) {
             return;
         }
-        pollThread = new Thread(this::pollLoop, "SBS-FlipAlerts-Poll");
-        pollThread.setDaemon(true);
-        pollThread.start();
+        superviseThread = new Thread(this::superviseLoop, "SBS-FlipAlerts-Supervise");
+        superviseThread.setDaemon(true);
+        superviseThread.start();
         soldThread = new Thread(this::soldLoop, "SBS-FlipAlerts-Sold");
         soldThread.setDaemon(true);
         soldThread.start();
@@ -121,138 +98,47 @@ public final class AhFlipClient {
         return ConfigManager.getInstance().get().ahFlips;
     }
 
-    private static String token() {
-        String token = sbs.modid.client.core.config.LicenceToken.getInstance().get();
-        return token == null ? "" : token.trim();
-    }
-
     private static boolean inWorld() {
         return Minecraft.getInstance().player != null;
     }
 
     // ------------------------------------------------------------------
-    // Long-poll loop
+    // Connection supervisor
     // ------------------------------------------------------------------
 
-    private void pollLoop() {
+    /**
+     * Every 2 s: opens the connection while the module is on and the player is in a world, closes it
+     * otherwise, and replaces it when the source or the token changes. The connection does its own
+     * reconnecting; this only decides whether one should exist.
+     */
+    private void superviseLoop() {
         while (true) {
             try {
-                if (!cfg().enabled || !inWorld()) {
-                    since = -1; // next enable starts fresh (server replays only still-fresh flips)
-                    Thread.sleep(2_000);
-                    continue;
-                }
-                // The player's choice decides which producer runs. Picking Local means the poll is
-                // never opened - not opened and then discarded - so an unlicensed client stops
-                // knocking on a door it has no key to, which is also why the token check moved out
-                // of the gate above: without a token the local scan is the whole feature, not a
-                // reason to idle.
-                if (sbs.modid.client.core.api.RankingSource.useLocal(cfg().flipSource, "Flips")) {
-                    since = -1;
-                    scanLocal();
-                    Thread.sleep(LOCAL_SCAN_MS);
-                    continue;
-                }
-                if (token().isEmpty()) {
-                    Thread.sleep(2_000);
-                    continue;
-                }
-                long min = Math.max(cfg().minPrice, SERVER_MIN_PRICE);
-                long max = cfg().maxPrice > 0 ? Math.max(cfg().maxPrice, min) : 0;
-// ============================================================================
-// [MODERATOR AUDIT / NETWORK DISCLOSURE]
-// KEYWORDS: NETWORK_OUTBOUND, NETWORK_INBOUND, HTTP_REQUEST, API_CLIENT, EXTERNAL_IO
-// ENDPOINT: https://skyblocksimplified.info/flips/poll
-// METHOD: GET (long-poll - the server holds the request open until a flip appears or the
-//   timeout given in the query string expires, then the loop re-polls)
-// PURPOSE: Push auction-flip alerts without polling every second. Long-poll is used instead
-//   of a socket precisely because it is ordinary HTTPS a reviewer can read.
-// DATA SENT: Query parameters only - a cursor (?since=), the hold time, and the price window
-//   the user configured (?min=, ?max=). No body.
-// DATA RECEIVED: Read-only JSON - auction ids, prices and margins. Parsed with Gson.
-// SAFETY DECLARATION: Sends the licence token (Authorization: Bearer, X-Api-Token),
-//   which identifies the PURCHASE and not the player. No Mojang credentials, no
-//   session id, no OS or hardware telemetry. Refused until the user grants
-//   ConsentScope.LICENCE_VALIDATION in Licence Token > Privacy & data; every switch there starts
-//   off. See PRIVACY.md.
-// ============================================================================
-                HttpRequest request = HttpRequest.newBuilder(URI.create(
-                                BASE + "/flips/poll?since=" + since
-                                        + "&timeout=" + POLL_HOLD_SECONDS
-                                        + "&min=" + min + "&max=" + max))
-                        .timeout(POLL_TIMEOUT)
-                        .header("Authorization", "Bearer " + token())
-                        .GET().build();
-                HttpResponse<String> response = sbs.modid.client.core.api.SbsApi.send(
-                        ConsentScope.LICENCE_VALIDATION, MessageTypes.AH_FLIPS_POLL, request,
-                        HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-                if (response.statusCode() == 401) {
-                    if (!authFailureShown) {
-                        authFailureShown = true;
-                        show(system("Flip alerts: invalid licence token - check the Licence Token module."));
+                boolean local = FlipServer.isLocal();
+                String key = FlipServer.key();
+                boolean wanted = cfg().enabled && inWorld()
+                        && (local || !FlipServer.token().isEmpty())
+                        && !key.equals(rejectedKey);   // 401 for exactly these settings: wait for a change
+                synchronized (this) {
+                    if (connection != null
+                            && (!wanted || !key.equals(connectionKey) || !connection.isRunning())) {
+                        connection.stop();
+                        connection = null;
                     }
-                    Thread.sleep(30_000);
-                    continue;
-                }
-                if (response.statusCode() == 423) {
-                    if (!authFailureShown) {
-                        authFailureShown = true;
-                        show(system("Flip alerts: token locked to another connection."));
-                    }
-                    Thread.sleep(30_000);
-                    continue;
-                }
-                if (response.statusCode() != 200) {
-                    Thread.sleep(5_000);
-                    continue;
-                }
-                // The whole answer is validated against sbs.ah.flips.poll (or the shared error
-                // object) before any of it is read; an invalid answer is dropped as a whole.
-                SbsReply reply;
-                try {
-                    reply = SbsReply.parse(MessageTypes.AH_FLIPS_POLL, response.body());
-                } catch (ValidationException invalid) {
-                    if (!authFailureShown) {
-                        authFailureShown = true;
-                        show(system("Flip alerts: " + ValidationException.USER_MESSAGE));
-                    }
-                    Thread.sleep(10_000);
-                    continue;
-                }
-                if (reply.isError()) {
-                    if (!authFailureShown) {
-                        authFailureShown = true;
-                        show(system("Flip alerts: " + sanitizeError(reply.error())));
-                    }
-                    Thread.sleep(10_000);
-                    continue;
-                }
-                JsonObject body = reply.data();
-                authFailureShown = false; // clean response - re-arm the one-shot notices
-                readMayor(body); // top-level {"mayor":{available,name,...}} sibling of flips
-                long newSince = body.has("seq") && body.get("seq").isJsonPrimitive()
-                        ? body.get("seq").getAsLong() : since;
-                JsonElement flips = body.get("flips");
-                if (flips != null && flips.isJsonArray()) {
-                    for (JsonElement element : flips.getAsJsonArray()) {
-                        if (!element.isJsonArray()) {
-                            continue; // each flip is a positional array; ignore anything else
-                        }
-                        try {
-                            deliver(element.getAsJsonArray(), min, max);
-                        } catch (RuntimeException malformed) {
-                            // One bad row must not kill the alert stream.
-                            SkyblockSimplifiedSBS.LOGGER.debug("[SBS][Flips] bad row: {}",
-                                    malformed.toString());
-                        }
+                    if (wanted && connection == null) {
+                        connectionKey = key;
+                        connection = LocalFlipConnection.flipAlerts(FlipServer.base(), FlipServer.healthPath(),
+                                local ? "" : FlipServer.token(), new Sink(key, local),
+                                Minecraft.getInstance(), !local);
+                        connection.start();
                     }
                 }
-                since = Math.max(since, newSince);
+                Thread.sleep(2_000);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 return;
-            } catch (Exception e) {
-                sbs.modid.client.core.api.ApiFailure.logBackground("[SBS][Flips]", "poll", e);
+            } catch (RuntimeException e) {
+                sbs.modid.client.core.api.ApiFailure.logBackground("[SBS][Flips]", "supervise", e);
                 try {
                     Thread.sleep(5_000);
                 } catch (InterruptedException interrupted) {
@@ -260,6 +146,52 @@ public final class AhFlipClient {
                     return;
                 }
             }
+        }
+    }
+
+    /** What the connection delivers, always on the client thread. */
+    private final class Sink implements LocalFlipConnection.Sink {
+        private final String key;
+        private final boolean local;
+
+        Sink(String key, boolean local) {
+            this.key = key;
+            this.local = local;
+        }
+
+        @Override
+        public void onState(LocalFlipConnection.State state, long retryAtMs) {
+            if (state == LocalFlipConnection.State.UNAUTHORIZED && !key.equals(rejectedKey)) {
+                rejectedKey = key;
+                show(system(local ? "Flip server (local): token missing or wrong"
+                        : "Flip server: token missing or wrong"));
+            }
+        }
+
+        @Override
+        public void onSofort(LocalFlip flip) {
+            deliver(flip, true);
+        }
+
+        @Override
+        public void onWeg(String auction) {
+            // Bought or gone: out of the popups (they drop dismissed ids) and the window at once.
+            AhFlipFeed.getInstance().dismiss(auction);
+        }
+
+        @Override
+        public void onAlive() {
+        }
+
+        @Override
+        public void onList(List<LocalFlip> flips) {
+            for (LocalFlip flip : flips) {
+                deliver(flip, false);
+            }
+        }
+
+        @Override
+        public void onHealth(long apiLastUpdatedMs, double updatedSeconds) {
         }
     }
 
@@ -335,112 +267,27 @@ public final class AhFlipClient {
     }
 
     // ------------------------------------------------------------------
-    // Local scan: live auctions only, no server involved
+    // Delivery (all server data already validated by LocalFlip.parse)
     // ------------------------------------------------------------------
 
     /**
-     * How often the local ranking is re-read. The index behind it is rebuilt by the auction crawl
-     * roughly once a minute, so scanning faster would re-examine the same listings; scanning much
-     * slower would let a flip expire before it was ever shown.
+     * Hands one find to the shared feed; {@code alert} (stream finds) also pops a card and a chat
+     * line, list entries only fill the Flips window. HANG RISK finds are filtered by the server.
      */
-    private static final long LOCAL_SCAN_MS = 20_000L;
-
-    /**
-     * Reads {@link LocalAhFlipEngine} and pushes anything new into the same shared feed the server
-     * stream feeds.
-     *
-     * <p>Deliberately the same {@link AhFlipFeed.Flip} record and the same feed: the popups, the
-     * window and the chat line then work identically whichever engine found the flip, and there is
-     * one expiry rule, one dismiss list and one sold-watcher rather than two of each. The only thing
-     * the outputs need to know is the {@code local} flag, which changes the wording of the market
-     * figure - see {@link AhFlipFeed.Flip#volumeLabel()}.
-     */
-    private void scanLocal() {
-        SBSConfig.AhFlipAlertSettings cfg = cfg();
-        for (LocalAhFlipEngine.Candidate candidate : LocalAhFlipEngine.compute(cfg)) {
-            if (AhFlipFeed.getInstance().isDismissed(candidate.auctionId())) {
-                continue;
-            }
-            synchronized (shown) {
-                if (!shown.add(candidate.auctionId())) {
-                    continue;
-                }
-                if (shown.size() > SHOWN_CAP) {
-                    var it = shown.iterator();
-                    it.next();
-                    it.remove();
-                }
-            }
-            AhFlipFeed.Flip flip = new AhFlipFeed.Flip(candidate.auctionId(),
-                    sanitizeName(candidate.displayName()), candidate.price(), candidate.resale(),
-                    candidate.profit(), candidate.discountPct(), 0, candidate.endAtMs(),
-                    candidate.discountPct(), System.currentTimeMillis(), true,
-                    candidate.liveListings());
-            AhFlipFeed.getInstance().add(flip);
-            if (cfg.popupAlerts) {
-                AhFlipPopups.getInstance().push(flip);
-            }
-            if (cfg.chatAlerts) {
-                showChatLine(flip);
-            }
-        }
-    }
-
-    /**
-     * Hypixel's own item name, made safe to print.
-     *
-     * <p>It arrives §-coded and is player-influenced (renamed items, pet names), so it goes through
-     * the same whitelist the server-supplied names do rather than being trusted for coming from
-     * Hypixel - a name is display text either way, and this one reaches chat.
-     */
-    private static String sanitizeName(String raw) {
-        String clean = (raw == null ? "" : raw).replaceAll("§.", "")
-                .replaceAll("[^A-Za-z0-9 '+.:✪⚚◆★-]", "").trim();
-        if (clean.isEmpty()) {
-            return "Unknown Item";
-        }
-        return clean.length() > 80 ? clean.substring(0, 80) : clean;
-    }
-
-    // ------------------------------------------------------------------
-    // Message building (all server data treated as untrusted)
-    // ------------------------------------------------------------------
-
-    /**
-     * Row layout (see the server README):
-     * {@code [seq, foundTs, auctionId, itemId, price, target, profit, discountPct, salesWeek,
-     * endAt, count, stars, recomb, reforge, rating]}.
-     *
-     * <p>Validated and sanitized here ONCE, then handed to the shared {@link AhFlipFeed}; the
-     * outputs (popup cards, Flips window, chat line) only ever see the clean record.
-     */
-    private void deliver(JsonArray row, long min, long max) {
-        // Read the known columns by fixed index (highest is 14 = rating), so any extra fields the
-        // server appends past index 14 are simply ignored - the mod never breaks on new columns.
-        if (row.size() < KNOWN_ROW_FIELDS) {
+    private void deliver(LocalFlip in, boolean alert) {
+        String auctionId = in.auction();
+        if (!AUCTION_ID.matcher(auctionId).matches() || !in.has(in.price())) {
             return;
         }
-        String auctionId = row.get(2).getAsString().toLowerCase(Locale.ROOT).replace("-", "");
-        if (!AUCTION_ID.matcher(auctionId).matches()) {
-            return; // never build a command from data that is not exactly an auction id
-        }
-        long price = row.get(4).getAsLong();
-        long target = row.get(5).getAsLong();
-        long profit = row.get(6).getAsLong();
-        double discount = row.get(7).getAsDouble();
-        long salesWeek = row.get(8).getAsLong();
-        long endAt = Math.max(0, row.get(9).getAsLong());
-        int count = Math.max(1, row.get(10).getAsInt());
-        int stars = Math.max(0, Math.min(10, row.get(11).getAsInt()));
-        String reforge = row.get(13).isJsonNull() ? "" : row.get(13).getAsString();
-        double rating = row.get(14).getAsDouble();
-        // The server already filtered by range; re-check locally so a stale poll (range just
-        // changed) or a misbehaving response can never alert outside the user's bounds.
+        long min = Math.max(cfg().minPrice, SERVER_MIN_PRICE);
+        long max = cfg().maxPrice > 0 ? Math.max(cfg().maxPrice, min) : 0;
+        long price = in.price();
+        long profit = in.has(in.netProfit()) ? in.netProfit() : in.has(in.profitNow()) ? in.profitNow() : 0;
         if (price < min || (max > 0 && price > max) || profit <= 0) {
             return;
         }
         if (AhFlipFeed.getInstance().isDismissed(auctionId)) {
-            return; // the user closed this one - never resurrect it
+            return; // gone or closed by the user - never resurrect it
         }
         synchronized (shown) {
             if (!shown.add(auctionId)) {
@@ -452,11 +299,17 @@ public final class AhFlipClient {
                 it.remove();
             }
         }
-
-        String name = displayName(row.get(3).getAsString(), reforge, stars, count);
-        AhFlipFeed.Flip flip = new AhFlipFeed.Flip(auctionId, name, price, target, profit,
-                discount, salesWeek, endAt * 1000L, rating, System.currentTimeMillis(), false, 0);
+        long target = in.has(in.target()) ? in.target() : price + profit;
+        double pct = Double.isNaN(in.netPct()) ? profit * 100.0 / price : in.netPct();
+        long weekSales = Double.isNaN(in.salesPerDay()) ? 0 : Math.round(in.salesPerDay() * 7);
+        long endAt = Double.isNaN(in.endsMin()) ? 0
+                : System.currentTimeMillis() + Math.round(in.endsMin() * 60_000);
+        AhFlipFeed.Flip flip = new AhFlipFeed.Flip(auctionId, in.displayName(), price, target, profit,
+                pct, weekSales, endAt, Math.max(0, in.safetyPct()), System.currentTimeMillis(), meta(in));
         AhFlipFeed.getInstance().add(flip);
+        if (!alert) {
+            return;
+        }
         SBSConfig.AhFlipAlertSettings cfg = cfg();
         if (cfg.popupAlerts) {
             AhFlipPopups.getInstance().push(flip);
@@ -466,19 +319,45 @@ public final class AhFlipClient {
         }
     }
 
+    /** {@code "conf 82% · BOT PREY 72%"} / {@code "quiet (30% bots)"} from the server's numbers ({@code p_success}, {@code bot_p}). */
+    static String meta(LocalFlip flip) {
+        StringBuilder out = new StringBuilder();
+        int safety = flip.safetyPct();
+        if (safety >= 0) {
+            out.append("conf ").append(safety).append('%');
+        }
+        int bots = flip.botPct();
+        if (bots >= 0) {
+            if (out.length() > 0) {
+                out.append(" · ");
+            }
+            out.append(flip.botPrey() ? "BOT PREY " + bots + "%" : "quiet (" + bots + "% bots)");
+        }
+        if (flip.auctionOnly()) {
+            out.append(out.length() > 0 ? " · " : "").append("AUCTION ONLY");
+        }
+        return out.toString();
+    }
+
     /** The chat output (optional, in addition to the popups): one line with a click-to-open link. */
     private static void showChatLine(AhFlipFeed.Flip flip) {
-        // Plain text only: the auction is opened from the flip popup or the Flips window, by the
-        // player's click there, never from a click event carried by server data.
-        MutableComponent open = Component.literal(" [see Flips window]").withColor(SBSChat.PREFIX_COLOR);
+        // The click runs /viewauction built here from the id validated as 32 hex - the server never
+        // supplies a command or a click event, only the id.
+        String command = "/viewauction " + flip.auctionId();
+        MutableComponent open = Component.literal(" [OPEN]").withColor(SBSChat.PREFIX_COLOR)
+                .withStyle(style -> style
+                        .withClickEvent(new net.minecraft.network.chat.ClickEvent.RunCommand(command))
+                        .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
+                                Component.literal(command))));
         MutableComponent line = SBSChat.prefix()
                 .append(Component.literal(" [FLIP]").withColor(0xFFC94D))
                 .append(Component.literal(" " + flip.displayName()).withColor(SBSChat.WHITE))
                 .append(Component.literal(" " + coins(flip.price())).withColor(0xFFC94D))
                 .append(Component.literal(" → " + coins(flip.target())).withColor(0x8FA6BF))
                 .append(Component.literal("  +" + coins(flip.profit())).withColor(0x57D977))
-                .append(Component.literal(" (" + Math.round(flip.discountPct()) + "% off, "
-                        + flip.volumeLabel() + ")").withColor(0x8FA6BF))
+                .append(Component.literal(" (" + Math.round(flip.discountPct()) + "%"
+                        + (flip.volumeLabel().isEmpty() ? "" : ", " + flip.volumeLabel()) + ")")
+                        .withColor(0x8FA6BF))
                 .append(open);
         show(line);
     }
@@ -503,41 +382,6 @@ public final class AhFlipClient {
         minecraft.player.connection.sendCommand("viewauction " + flip.auctionId());
     }
 
-    /** "heroic HYPERION ✪10 x2" -> "Heroic Hyperion ✪10 x2", whitelist-sanitized. */
-    private static String displayName(String itemId, String reforge, int stars, int count) {
-        StringBuilder out = new StringBuilder();
-        String cleanReforge = DISPLAY_JUNK.matcher(reforge == null ? "" : reforge).replaceAll("");
-        if (!cleanReforge.isEmpty()) {
-            out.append(pretty(cleanReforge)).append(' ');
-        }
-        String cleanId = DISPLAY_JUNK.matcher(itemId == null ? "" : itemId).replaceAll("");
-        out.append(cleanId.isEmpty() ? "Unknown Item" : pretty(cleanId));
-        if (stars > 0) {
-            out.append(" ✪").append(stars);
-        }
-        if (count > 1) {
-            out.append(" x").append(count);
-        }
-        return out.length() > 80 ? out.substring(0, 80) : out.toString();
-    }
-
-    /** SNAKE_CASE / lowercase id fragments to Title Case words. */
-    private static String pretty(String id) {
-        String[] parts = id.replace(':', '_').split("_");
-        StringBuilder out = new StringBuilder();
-        for (String part : parts) {
-            if (part.isEmpty()) {
-                continue;
-            }
-            if (out.length() > 0) {
-                out.append(' ');
-            }
-            out.append(Character.toUpperCase(part.charAt(0)))
-                    .append(part.substring(1).toLowerCase(Locale.ROOT));
-        }
-        return out.toString();
-    }
-
     /** Compact coin amounts: 8500000 -> "8.5M", 1200000000 -> "1.2B". */
     private static String coins(long value) {
         return sbs.modid.client.core.util.NumberDisplay.format(value);
@@ -550,48 +394,6 @@ public final class AhFlipClient {
                 minecraft.player.sendSystemMessage(line);
             }
         });
-    }
-
-    /**
-     * Reads the optional top-level {@code mayor} block ({@code {"available":true,"name":"Paul",
-     * "effects":{...}}}) into the shared feed for the window header. Fully defensive: a missing
-     * block, {@code available != true}, or a missing/blank name all clear the header - the name is
-     * untrusted, so it is whitelist-sanitized before it is ever shown. {@code effects} is ignored.
-     */
-    private static void readMayor(JsonObject body) {
-        try {
-            JsonElement element = body.get("mayor");
-            if (element == null || !element.isJsonObject()) {
-                AhFlipFeed.getInstance().setMayorName(null);
-                return;
-            }
-            JsonObject mayor = element.getAsJsonObject();
-            boolean available = mayor.has("available") && mayor.get("available").isJsonPrimitive()
-                    && mayor.get("available").getAsBoolean();
-            String name = available && mayor.has("name") && mayor.get("name").isJsonPrimitive()
-                    ? mayor.get("name").getAsString() : null;
-            AhFlipFeed.getInstance().setMayorName(name != null ? sanitizeMayorName(name) : null);
-        } catch (RuntimeException malformed) {
-            AhFlipFeed.getInstance().setMayorName(null); // never let a bad mayor block break the poll
-        }
-    }
-
-    /** Mayor name is untrusted display text: keep it short, letters/digits/space only. */
-    private static String sanitizeMayorName(String name) {
-        String clean = name.replaceAll("[^A-Za-z0-9 ]", "").trim();
-        if (clean.isEmpty()) {
-            return null;
-        }
-        return clean.length() > 24 ? clean.substring(0, 24) : clean;
-    }
-
-    /** Server-supplied error text is untrusted: strip non-printable chars and clamp the length. */
-    private static String sanitizeError(String text) {
-        String clean = (text == null ? "" : text).replaceAll("[^\\x20-\\x7E]", "").trim();
-        if (clean.length() > 120) {
-            clean = clean.substring(0, 120);
-        }
-        return clean.isEmpty() ? "server error" : clean;
     }
 
     private static Component system(String text) {

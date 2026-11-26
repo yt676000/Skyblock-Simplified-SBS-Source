@@ -171,7 +171,8 @@ public final class AhFlipPopups {
                 tx, ty, 0xFFFFC94D);
         ty += lineH;
         // Line 3: profit + discount + weekly sales (the hint doubles as "this is clickable").
-        String meta = " · " + Math.round(flip.discountPct()) + "% off · " + flip.volumeLabel();
+        String meta = " (" + Math.round(flip.discountPct()) + "%)"
+                + (flip.volumeLabel().isEmpty() ? "" : " · " + flip.volumeLabel());
         g.text(font, Component.literal("+" + coins(flip.profit())), tx, ty, SBSTheme.TOGGLE_ON);
         g.text(font, Component.literal(meta + (hover ? " · click!" : "")),
                 tx + font.width("+" + coins(flip.profit())), ty, SBSTheme.TEXT_MUTED);

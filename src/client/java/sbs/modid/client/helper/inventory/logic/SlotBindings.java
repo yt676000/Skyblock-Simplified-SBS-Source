@@ -212,6 +212,72 @@ public final class SlotBindings {
     // Binding
     // ------------------------------------------------------------------
 
+    /** The slot a bind drag started on, or {@code -1}. Session state, like {@link #pending}. */
+    private static int dragFrom = -1;
+
+    /** The menu {@link #dragFrom} was pressed in. */
+    private static AbstractContainerMenu dragMenu;
+
+    /**
+     * The bind key + left press on a slot. With a pick already pending from the older two-click way,
+     * this click completes it; otherwise it starts a drag that {@link #dragReleased} finishes.
+     *
+     * @return always true - the press is the feature's either way and must not become a pickup
+     */
+    public static boolean dragPressed(int inventoryIndex) {
+        if (hasPending() && pending != inventoryIndex) {
+            clicked(inventoryIndex);
+            return true;
+        }
+        dragFrom = inventoryIndex;
+        Player player = Minecraft.getInstance().player;
+        dragMenu = player == null ? null : player.containerMenu;
+        return true;
+    }
+
+    /** The slot a bind drag is running from, or {@code -1} when none is (or its screen closed). */
+    public static int dragSlot() {
+        Player player = Minecraft.getInstance().player;
+        if (dragFrom >= 0 && player != null && player.containerMenu == dragMenu) {
+            return dragFrom;
+        }
+        dragFrom = -1;
+        dragMenu = null;
+        return -1;
+    }
+
+    /**
+     * Ends a bind drag over {@code inventoryIndex} ({@code -1} when released off any inventory slot).
+     *
+     * <p>Released on another slot: the two are bound. Released where it started, it was a click: a
+     * bound slot is unbound, an unbound one becomes the pending pick of the two-click way, and
+     * clicking the pending slot again cancels it. Released elsewhere: nothing happens.
+     *
+     * @return whether a drag was running, i.e. whether the release is the feature's to swallow
+     */
+    public static boolean dragReleased(int inventoryIndex) {
+        int from = dragSlot();
+        dragFrom = -1;
+        dragMenu = null;
+        if (from < 0) {
+            return false;
+        }
+        if (inventoryIndex < 0) {
+            return true;
+        }
+        if (inventoryIndex != from) {
+            clearPending();
+            bind(from, inventoryIndex);
+        } else if (hasPending()) {
+            clicked(inventoryIndex);          // the pending slot clicked again: cancel
+        } else if (bindingOf(inventoryIndex) != null) {
+            unbind(inventoryIndex);
+        } else {
+            clicked(inventoryIndex);          // start the two-click way
+        }
+        return true;
+    }
+
     /**
      * The bind key + left click: picks the first slot, then ties the second to it.
      *

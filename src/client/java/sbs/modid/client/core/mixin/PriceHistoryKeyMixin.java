@@ -72,18 +72,13 @@ public abstract class PriceHistoryKeyMixin {
             return;
         }
 
-        // Similar-auctions key: appraise the hovered item's exact variant via the cloud API and
-        // show live + historic matching auctions; pressed over nothing it closes an open window.
+        // Lowball Helper key (the old Similar Auctions binding): value, offers and similar
+        // auctions for the hovered item - or the whole other side in /trade - from the flip
+        // server's POST /flips/lowball; pressed over nothing it closes an open Lowball window.
         if (isSimilarKey) {
-            var auctions = sbs.modid.client.economy.auctions.ui.SimilarAuctionsOverlay.getInstance();
-            if (stack != null && !stack.isEmpty()) {
-                auctions.openFor(stack);
-            } else if (panelItem != null) {
-                auctions.openPlain(PriceLookup.candidatesFor(panelItem), panelItem.name);
-            } else if (auctions.isOpen()) {
-                auctions.close();
+            if (sbs.modid.client.economy.lowball.logic.Lowball.helper(self, slot)) {
+                cir.setReturnValue(true);
             }
-            cir.setReturnValue(true);
             return;
         }
 

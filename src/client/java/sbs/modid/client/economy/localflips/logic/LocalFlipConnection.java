@@ -88,6 +88,10 @@ public final class LocalFlipConnection {
     static final int VPN_IDLE_TIMEOUT_MS = 25_000;
     private static final int JSON_TIMEOUT_MS = 5_000;
     static final long LIST_REFRESH_MS = 20_000;
+    /** The SBS flip server pings every 15 s; 45 s of silence means the link is dead. */
+    static final int REMOTE_IDLE_TIMEOUT_MS = 45_000;
+    static final long ALERTS_LIST_REFRESH_MS = 30_000;
+    static final long REMOTE_RETRY_MS = 3_000;
     private static final String TOKEN_HEADER = "X-SBS-Token";
 
     private final URI base;
@@ -95,6 +99,11 @@ public final class LocalFlipConnection {
     private final Sink sink;
     private final Executor client;
     private final boolean vpn;
+    /** The SBS flip server over https: no local-address check, licence + consent gate instead. */
+    private final boolean remote;
+    private final String healthPath;
+    private final int idleTimeoutMs;
+    private final long listRefreshMs;
 
     private volatile boolean running;
     private volatile boolean connected;
@@ -109,6 +118,26 @@ public final class LocalFlipConnection {
 
     /** {@code vpn}: Radmin VPN source - 26.0.0.0/8 allowed, 3-30 s backoff, 25 s silence limit. */
     public LocalFlipConnection(URI base, String token, Sink sink, Executor client, boolean vpn) {
+        this(base, token, sink, client, vpn, false, "/health", vpn ? VPN_IDLE_TIMEOUT_MS : STREAM_IDLE_TIMEOUT_MS,
+                LIST_REFRESH_MS);
+    }
+
+    /**
+     * For AH Flip Alerts: the SBS flip server ({@code remote}, https, 45 s without a ping = dead,
+     * reconnect after 3 s) or the dev program on this PC. Both refresh the list every 30 s.
+     */
+    public static LocalFlipConnection flipAlerts(URI base, String healthPath, String token, Sink sink,
+                                                 Executor client, boolean remote) {
+        return new LocalFlipConnection(base, token, sink, client, false, remote, healthPath,
+                remote ? REMOTE_IDLE_TIMEOUT_MS : STREAM_IDLE_TIMEOUT_MS, ALERTS_LIST_REFRESH_MS);
+    }
+
+    private LocalFlipConnection(URI base, String token, Sink sink, Executor client, boolean vpn,
+                                boolean remote, String healthPath, int idleTimeoutMs, long listRefreshMs) {
+        this.remote = remote;
+        this.healthPath = healthPath;
+        this.idleTimeoutMs = idleTimeoutMs;
+        this.listRefreshMs = listRefreshMs;
         this.vpn = vpn;
         this.base = base;
         this.token = token == null ? "" : token.trim();
@@ -170,7 +199,11 @@ public final class LocalFlipConnection {
         while (running) {
             post(() -> sink.onState(State.CONNECTING, 0));
             try {
-                if (!resolvesLocally()) {
+                if (remote ? !remotePermitted() : !resolvesLocally()) {
+                    if (remote) {
+                        post(() -> sink.onState(State.UNAUTHORIZED, 0));
+                        break;
+                    }
                     post(() -> sink.onState(State.INVALID_ADDRESS, 0));
                     break;
                 }
@@ -191,7 +224,8 @@ public final class LocalFlipConnection {
                 connected = false;
                 stream = null;
             }
-            long delay = vpn ? Backoff.vpnDelayMs(failures) : Backoff.delayMs(failures);
+            long delay = remote ? REMOTE_RETRY_MS
+                    : vpn ? Backoff.vpnDelayMs(failures) : Backoff.delayMs(failures);
             long retryAt = System.currentTimeMillis() + delay;
             post(() -> sink.onState(State.DISCONNECTED, retryAt));
             try {
@@ -204,6 +238,17 @@ public final class LocalFlipConnection {
         synchronized (listWake) {
             listWake.notifyAll();
         }
+    }
+
+    /**
+     * The remote source may only ever be our own backend over https, and only while the licence and
+     * the user's consent cover it - the same gate {@code SbsApi.send} applies to every other request.
+     */
+    private boolean remotePermitted() {
+        return "https".equals(base.getScheme()) && sbs.modid.client.core.api.SbsApi.DOMAIN.equals(base.getHost())
+                && !token.isEmpty()
+                && sbs.modid.client.core.api.SbsApi.permits(
+                        sbs.modid.client.core.licence.privacy.ConsentScope.LICENCE_VALIDATION);
     }
 
     /** True when the host is this PC or the LAN. Resolving a name happens here, off the client thread. */
@@ -233,10 +278,14 @@ public final class LocalFlipConnection {
     //   32 hex characters and the command to open it is built locally, never taken from the data
     // SAFETY DECLARATION: Only reaches an address on the player's own machine, LAN or Radmin VPN
     //   network, only while developer mode and the feature are both on. Opening an
+    //   [AH Flip Alerts, "Server" source] ENDPOINT https://skyblocksimplified.info/flips/stream,
+    //   /flips/liste, /flips/health: sends the SBS licence token as X-SBS-Token (header only, never
+    //   in the URL), refused unless the licence + ConsentScope.LICENCE_VALIDATION gate of
+    //   SbsApi.permits allows it. Receives the same flip JSON as above.
     //   auction is a click by the player; nothing is bought, bid or clicked automatically
     // ============================================================================
     private void readStream() throws IOException {
-        int idleMs = vpn ? VPN_IDLE_TIMEOUT_MS : STREAM_IDLE_TIMEOUT_MS;
+        int idleMs = idleTimeoutMs;
         HttpURLConnection connection = open("/flips/stream", idleMs);
         connection.setRequestProperty("Accept", "text/event-stream");
         stream = connection;
@@ -328,7 +377,7 @@ public final class LocalFlipConnection {
             synchronized (listWake) {
                 try {
                     if (!connected) {
-                        listWake.wait(LIST_REFRESH_MS);
+                        listWake.wait(listRefreshMs);
                     }
                 } catch (InterruptedException interrupted) {
                     return;
@@ -342,7 +391,7 @@ public final class LocalFlipConnection {
                 refreshHealth();
                 synchronized (listWake) {
                     try {
-                        listWake.wait(LIST_REFRESH_MS);
+                        listWake.wait(listRefreshMs);
                     } catch (InterruptedException interrupted) {
                         return;
                     }
@@ -389,7 +438,17 @@ public final class LocalFlipConnection {
     // ============================================================================
     private void refreshHealth() {
         try {
-            Health health = health(base, token, vpn);
+            Health health;
+            if (remote) {
+                long started = System.nanoTime();
+                health = parseHealth(getJson(healthPath), (System.nanoTime() - started) / 1_000_000L);
+            } else if (!"/health".equals(healthPath)) {
+                checkAllowed(base, vpn);
+                long started = System.nanoTime();
+                health = parseHealth(getJson(healthPath), (System.nanoTime() - started) / 1_000_000L);
+            } else {
+                health = health(base, token, vpn);
+            }
             post(() -> sink.onHealth(health.apiLastUpdatedMs(), health.updatedSeconds()));
         } catch (IOException | RuntimeException e) {
             // Same as the list: the stream owns the state.

@@ -62,6 +62,8 @@ public final class Lowball {
     private static final int MAX_ITEMS = 64;
     private static final int SINGLE_TIMEOUT_S = 5;
     private static final int TRADE_TIMEOUT_S = 15;
+    /** The Lowball Helper talks to the SBS server, which is further away than localhost. */
+    private static final int HELPER_TIMEOUT_S = 8;
     public static final int DISPLAY_WINDOW = 0;
     public static final int DISPLAY_TOOLTIP = 1;
     public static final int DISPLAY_CHAT = 2;
@@ -102,9 +104,36 @@ public final class Lowball {
         return sbs.modid.client.core.dev.DevMode.ACTIVE && cfg().enabled; // DEV-ONLY: maintainer's lowball tool
     }
 
+    /** The Lowball Helper key is bound - the window may show without developer mode. */
+    public static boolean helperAvailable() {
+        return ConfigManager.getInstance().get().priceHistory.similarAuctionsKey != 0;
+    }
+
     // ------------------------------------------------------------------
     // Triggers (client thread)
     // ------------------------------------------------------------------
+
+    /**
+     * The Lowball Helper key (default Ä, bound under Price History): the hovered item in any
+     * container, or in /trade every item on the other side in one request. Goes to the AH flip
+     * source ({@code POST /flips/lowball} on the SBS server, or the dev program's {@code /lowball}),
+     * always answers in the Lowball window. Returns whether the key was used.
+     */
+    public static boolean helper(AbstractContainerScreen<?> screen, Slot hovered) {
+        if (isTrade(screen) && cfg().tradeAppraiseAll) {
+            appraiseTrade(screen, true);
+            return true;
+        }
+        if (hovered != null && hovered.hasItem()) {
+            appraiseSlot(hovered, true);
+            return true;
+        }
+        if (LowballWindow.getInstance().isOpen()) {
+            LowballWindow.getInstance().close();
+            return true;
+        }
+        return false;
+    }
 
     /**
      * A key press inside a container. Returns whether it was a Lowball key (and is consumed).
@@ -118,11 +147,11 @@ public final class Lowball {
         boolean tradeKey = key == cfg.appraiseTradeKey && (!shared || shift);
         boolean slotKey = key == cfg.appraiseSlotKey && (!shared || !shift);
         if (tradeKey && cfg.tradeAppraiseAll && isTrade(screen)) {
-            appraiseTrade(screen);
+            appraiseTrade(screen, false);
             return true;
         }
         if (slotKey && hovered != null && hovered.hasItem()) {
-            appraiseSlot(hovered);
+            appraiseSlot(hovered, false);
             return true;
         }
         return false;
@@ -142,7 +171,7 @@ public final class Lowball {
             say(Component.literal("Lowball: the held item is not a SkyBlock item.").withColor(GRAY));
             return;
         }
-        single(item, null, null, "hand");
+        single(item, null, null, "hand", false);
     }
 
     /** {@code /sbs lowball last}: reopens the window on the last appraisal. */
@@ -198,21 +227,21 @@ public final class Lowball {
         }
     }
 
-    private static void appraiseSlot(Slot slot) {
+    private static void appraiseSlot(Slot slot, boolean helper) {
         JsonObject item = LowballItems.read(slot.getItem(), "slot " + slot.index);
         if (item == null) {
             say(Component.literal("Lowball: not a SkyBlock item.").withColor(GRAY));
             return;
         }
-        single(item, slot, slot.getItem(), "slot");
+        single(item, slot, slot.getItem(), "slot", helper);
     }
 
-    private static void single(JsonObject item, Slot slot, ItemStack stack, String src) {
+    private static void single(JsonObject item, Slot slot, ItemStack stack, String src, boolean helper) {
         String key = LowballItems.key(item);
         Cached cached = CACHE.get(key);
         long now = System.currentTimeMillis();
         if (cached != null && now - cached.at() < CACHE_MS) {
-            showSingle(cached.result(), slot, stack, src);
+            showSingle(cached.result(), slot, stack, src, helper);
             return;
         }
         if (!rateOk(now)) {
@@ -220,7 +249,7 @@ public final class Lowball {
         }
         JsonArray items = new JsonArray();
         items.add(item);
-        send(items, src, null, SINGLE_TIMEOUT_S, answer -> {
+        send(items, src, null, helper ? HELPER_TIMEOUT_S : SINGLE_TIMEOUT_S, helper, answer -> {
             JsonObject result = firstResult(answer);
             if (result == null) {
                 say(Component.literal("Lowball: the program sent no result.").withColor(GRAY));
@@ -228,11 +257,11 @@ public final class Lowball {
             }
             JsonObject one = alone(answer, result);
             CACHE.put(key, new Cached(one, System.currentTimeMillis()));
-            showSingle(one, slot, stack, src);
+            showSingle(one, slot, stack, src, helper);
         }, false);
     }
 
-    private static void appraiseTrade(AbstractContainerScreen<?> screen) {
+    private static void appraiseTrade(AbstractContainerScreen<?> screen, boolean helper) {
         JsonArray items = new JsonArray();
         Map<String, String> keys = new HashMap<>();
         for (Slot slot : screen.getMenu().slots) {
@@ -256,7 +285,7 @@ public final class Lowball {
             return;
         }
         String partner = tradePartner(screen);
-        send(items, "trade", partner, TRADE_TIMEOUT_S, answer -> {
+        send(items, "trade", partner, TRADE_TIMEOUT_S, helper, answer -> {
             long now = System.currentTimeMillis();
             if (answer.get("results") instanceof JsonArray results) {
                 for (JsonElement e : results) {
@@ -265,7 +294,7 @@ public final class Lowball {
                     }
                 }
             }
-            if (cfg().display == DISPLAY_WINDOW) {
+            if (helper || cfg().display == DISPLAY_WINDOW) {
                 LowballWindow.getInstance().show(LowballView.parse(answer, "trade", partner));
                 showWindowHost();
             } else {
@@ -294,11 +323,16 @@ public final class Lowball {
         void accept(JsonObject body);
     }
 
-    private static void send(JsonArray items, String src, String partner, int timeoutS, Answer onAnswer,
-                             boolean isRetry) {
+    private static void send(JsonArray items, String src, String partner, int timeoutS, boolean helper,
+                             Answer onAnswer, boolean isRetry) {
+        if (helper && !sbs.modid.client.economy.auctions.logic.FlipServer.isLocal()) {
+            sendServer(items, src, partner, timeoutS, onAnswer, isRetry);
+            return;
+        }
         SBSConfig.LowballSettings cfg = cfg();
         boolean vpn = sbs.modid.client.economy.localflips.logic.FlipSource.isVpn();
-        URI base = sbs.modid.client.economy.localflips.logic.FlipSource.base(cfg.url);
+        URI base = helper ? sbs.modid.client.economy.auctions.logic.FlipServer.LOCAL
+                : sbs.modid.client.economy.localflips.logic.FlipSource.base(cfg.url);
         if (base == null && vpn) {
             say(Component.literal("Lowball: " + sbs.modid.client.economy.localflips.logic.FlipSource.NEED_IP)
                     .withColor(RED));
@@ -313,25 +347,10 @@ public final class Lowball {
             String shared = ConfigManager.getInstance().get().dev.localFlips.token;
             token = shared == null ? "" : shared.trim();
         }
-        JsonObject body = new JsonObject();
-        JsonArray discounts = new JsonArray();
-        for (int i = 0; i < 4; i++) {
-            int pct = discountPct(i);
-            if (pct > 0) {
-                discounts.add(pct / 100.0);
-            }
-        }
-        if (!discounts.isEmpty()) {
-            body.add("discounts", discounts);   // none active: the program uses its own four
-        }
-        body.add("items", items);
-        body.addProperty("src", src);
-        if (partner != null) {
-            body.addProperty("partner", partner);
-        }
-        String json = body.toString();
+        String json = body(items, src, partner);
         String finalToken = token;
         Minecraft client = Minecraft.getInstance();
+        boolean vpnCheck = vpn && !helper;
 
         // DATA SENT: the appraised items' SkyBlock data (custom_data as JSON, name, count, dye colour),
         //   the active offer discounts (up to four), and the player's own token for that program as X-SBS-Token when set.
@@ -343,7 +362,7 @@ public final class Lowball {
         CompletableFuture.supplyAsync(() -> {
                     try {
                         if (!sbs.modid.client.economy.localflips.logic.FlipSource.allowed(
-                                InetAddress.getByName(base.getHost()), vpn)) {
+                                InetAddress.getByName(base.getHost()), vpnCheck)) {
                             throw new IllegalStateException("not a local address");
                         }
                     } catch (java.net.UnknownHostException unknown) {
@@ -366,12 +385,86 @@ public final class Lowball {
                         failed(error);
                         return;
                     }
-                    handle(response.statusCode(), response.body(), items, src, partner, timeoutS, onAnswer, isRetry);
+                    handle(response.statusCode(), response.body(), items, src, partner, timeoutS, helper,
+                            onAnswer, isRetry);
+                }));
+    }
+
+    /** The request body: items, source, trade partner and the active offer discounts. */
+    private static String body(JsonArray items, String src, String partner) {
+        JsonObject body = new JsonObject();
+        JsonArray discounts = new JsonArray();
+        for (int i = 0; i < 4; i++) {
+            int pct = discountPct(i);
+            if (pct > 0) {
+                discounts.add(pct / 100.0);
+            }
+        }
+        if (!discounts.isEmpty()) {
+            body.add("discounts", discounts);   // none active: the program uses its own four
+        }
+        body.add("items", items);
+        body.addProperty("src", src);
+        if (partner != null) {
+            body.addProperty("partner", partner);
+        }
+        return body.toString();
+    }
+
+    // ============================================================================
+    // [MODERATOR AUDIT / NETWORK DISCLOSURE]
+    // KEYWORDS: NETWORK_OUTBOUND, NETWORK_INBOUND, HTTP_REQUEST, API_CLIENT, EXTERNAL_IO
+    // ENDPOINT: https://skyblocksimplified.info/flips/lowball
+    // METHOD: POST
+    // PURPOSE: Lowball Helper key - value, suggested offers and similar auctions for the hovered
+    //   item (or the other side of a /trade).
+    // DATA SENT: the appraised items' SkyBlock data (custom_data as JSON, name, count, dye colour),
+    //   the active offer discounts, the source ("slot"/"trade") and the trade partner's name when
+    //   in /trade. The licence token as X-SBS-Token (header only).
+    // DATA RECEIVED: read-only JSON - values, offers, warnings and similar auctions.
+    // SAFETY DECLARATION: sent through SbsApi.send (licence + ConsentScope.LICENCE_VALIDATION gate,
+    //   https only, no redirects). Only on the player's key press; nothing is bought or offered.
+    // ============================================================================
+    private static void sendServer(JsonArray items, String src, String partner, int timeoutS,
+                                   Answer onAnswer, boolean isRetry) {
+        String token = sbs.modid.client.economy.auctions.logic.FlipServer.token();
+        if (token.isEmpty()) {
+            say(Component.literal("Lowball: needs an active licence token.").withColor(RED));
+            return;
+        }
+        HttpRequest request = HttpRequest.newBuilder(sbs.modid.client.economy.auctions.logic.FlipServer.SERVER
+                        .resolve(sbs.modid.client.economy.auctions.logic.FlipServer.lowballPath()))
+                .timeout(Duration.ofSeconds(timeoutS))
+                .header("Content-Type", "application/json")
+                .header("User-Agent", "SBS-Lowball")
+                .header(TOKEN_HEADER, token)
+                .POST(HttpRequest.BodyPublishers.ofString(body(items, src, partner), StandardCharsets.UTF_8))
+                .build();
+        Minecraft client = Minecraft.getInstance();
+        CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return sbs.modid.client.core.api.SbsApi.send(
+                                sbs.modid.client.core.licence.privacy.ConsentScope.LICENCE_VALIDATION,
+                                (String) null, request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                    } catch (java.io.IOException e) {
+                        throw new CompletionException(e);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new CompletionException(e);
+                    }
+                }, SbsExecutors.worker())
+                .whenComplete((response, error) -> client.execute(() -> {
+                    if (error != null) {
+                        failed(error);
+                        return;
+                    }
+                    handle(response.statusCode(), response.body(), items, src, partner, timeoutS, true,
+                            onAnswer, isRetry);
                 }));
     }
 
     private static void handle(int status, String text, JsonArray items, String src, String partner,
-                               int timeoutS, Answer onAnswer, boolean isRetry) {
+                               int timeoutS, boolean helper, Answer onAnswer, boolean isRetry) {
         switch (status) {
             case 200 -> {
                 JsonObject body;
@@ -391,12 +484,14 @@ public final class Lowball {
                 say(Component.literal("Lowball: model loading, retry in a few seconds.").withColor(GRAY));
                 CompletableFuture.delayedExecutor(3, TimeUnit.SECONDS, SbsExecutors.worker())
                         .execute(() -> Minecraft.getInstance().execute(() -> {
-                            if (active()) {
-                                send(items, src, partner, timeoutS, onAnswer, true);
+                            if (helper || active()) {
+                                send(items, src, partner, timeoutS, helper, onAnswer, true);
                             }
                         }));
             }
-            case 401 -> say(Component.literal("Lowball: Token wrong or missing (401).").withColor(RED));
+            case 401 -> say(Component.literal(helper
+                    ? "Lowball: licence token missing or wrong (401)."
+                    : "Lowball: Token wrong or missing (401).").withColor(RED));
             case 400 -> say(Component.literal("Lowball: " + errorText(text)).withColor(RED));
             default -> say(Component.literal("Lowball: the program answered HTTP " + status + ".").withColor(RED));
         }
@@ -410,6 +505,9 @@ public final class Lowball {
         }
         if (cause instanceof ConnectException) {
             say(Component.literal("Lowball: start the fast mode in the flip overlay.").withColor(RED));
+        } else if (cause instanceof sbs.modid.client.core.api.SbsApi.NoConsentException) {
+            say(Component.literal("Lowball: allow licence validation under Licence Token > Privacy & data.")
+                    .withColor(RED));
         } else if (cause instanceof java.net.http.HttpTimeoutException) {
             say(Component.literal("Lowball: the program did not answer in time.").withColor(RED));
         } else if (cause instanceof IllegalStateException) {
@@ -471,12 +569,12 @@ public final class Lowball {
     // Display (client thread)
     // ------------------------------------------------------------------
 
-    private static void showSingle(JsonObject answer, Slot slot, ItemStack stack, String src) {
+    private static void showSingle(JsonObject answer, Slot slot, ItemStack stack, String src, boolean helper) {
         JsonObject json = firstResult(answer);
         if (json == null) {
             return;
         }
-        int display = cfg().display;
+        int display = helper ? DISPLAY_WINDOW : cfg().display;
         String partner = Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> screen
                 && isTrade(screen) ? tradePartner(screen) : null;
         if (display == DISPLAY_WINDOW) {

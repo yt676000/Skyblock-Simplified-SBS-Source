@@ -515,12 +515,20 @@ public final class FishingTracker {
         // The shard variant of the loot share line is itself loot-share loot (booked only while
         // fishing, like any shard line outside a window).
         boolean sharedLoot = inWindow || message.startsWith("LOOT SHARE");
-        ShardLines.Booking booking = shardLines.onLine(message, now, inWindow || recentFishingActivity());
+        // Fishing = recent cast/catch OR a rod in the main hand: the activity window alone missed the
+        // first shard of a session (and every shard after a long wait), because a shard can be the
+        // very first thing a cast produces, before any catch has refreshed the window.
+        boolean fishing = inWindow || recentFishingActivity() || rodInHand();
+        ShardLines.Booking booking = shardLines.onLine(message, now, fishing);
         if (booking == null) {
             return false;
         }
         if (booking.amount() > 0) {
-            bookLoot("SHARD_" + normalizeId(booking.shardName()), booking.amount(), Channel.CHAT, sharedLoot);
+            if (!inWindow) {
+                lastActivityAt = now;   // a fished shard is fishing activity, like a catch
+                lastLootEventAt = now;
+            }
+            bookLoot(shardId(booking.shardName()), booking.amount(), Channel.CHAT, sharedLoot);
         }
         return true;
     }
@@ -838,6 +846,23 @@ public final class FishingTracker {
     }
 
     /** "Abyssal Lanternfish" -> "ABYSSAL_LANTERNFISH". */
+    /**
+     * The Bazaar id of a shard named in chat. The same normaliser the rest of the mod prices shards
+     * with ({@code ItemPriceKey.shardKeyFromName}), so a name with an apostrophe, a hyphen or a
+     * trailing "Shard" maps to the product the Bazaar actually trades instead of a key no market
+     * has heard of - which priced the shard at 0 and dropped it from the profit.
+     */
+    static String shardId(String shardName) {
+        String key = sbs.modid.client.economy.prices.ItemPriceKey.shardKeyFromName(shardName);
+        return key != null ? key : "SHARD_" + normalizeId(shardName);
+    }
+
+    private static boolean rodInHand() {
+        Player player = Minecraft.getInstance().player;
+        return player != null
+                && player.getMainHandItem().getItem() == net.minecraft.world.item.Items.FISHING_ROD;
+    }
+
     private static String normalizeId(String name) {
         return NON_ID_CHARS.matcher(name.toUpperCase(Locale.ROOT).replace(' ', '_')).replaceAll("");
     }
@@ -1705,7 +1730,7 @@ public final class FishingTracker {
             return 1;   // treasure coins are already coins
         }
         double npc = npcPrice(itemId);
-        BazaarPriceCache.BzPrice value = BazaarPriceCache.getInstance().get(itemId);
+        BazaarPriceCache.BzPrice value = bazaar(itemId);
         if (value != null && value.sell() > 0) {
             // Never below the NPC: Lump of Magma, Moogma Pelt and Pyroclastic Scale instasell for a
             // few coins against a 50-coin NPC price (quick_status, 2026-10-08), and the NPC is the
@@ -1721,6 +1746,22 @@ public final class FishingTracker {
         return npc;
     }
 
+    /**
+     * The Bazaar quote for {@code itemId} under the key the Bazaar actually trades it as. A plain
+     * {@code get} with the tracker's own id missed every product whose spelling differs (a shard
+     * read off a display name is {@code <NAME>_SHARD}, the product {@code SHARD_<NAME>}; a
+     * lower-cased id), and the item then priced as 0.
+     */
+    private static BazaarPriceCache.BzPrice bazaar(String itemId) {
+        BazaarPriceCache cache = BazaarPriceCache.getInstance();
+        BazaarPriceCache.BzPrice direct = cache.get(itemId);
+        if (direct != null) {
+            return direct;
+        }
+        String key = cache.keyFor(itemId);
+        return key == null || key.equals(itemId) ? null : cache.get(key);
+    }
+
     /** The NPC sell price from the item catalogue, 0 when the item has none. */
     private static double npcPrice(String itemId) {
         SkyBlockItemCatalog.Entry entry = SkyBlockItemCatalog.getInstance().byId(itemId);
@@ -1734,7 +1775,7 @@ public final class FishingTracker {
      * it; a consumed bait is the opposite side of the book, so it is valued at what it cost to buy.
      */
     public double baitPrice(String baitId) {
-        BazaarPriceCache.BzPrice value = BazaarPriceCache.getInstance().get(baitId);
+        BazaarPriceCache.BzPrice value = bazaar(baitId);
         if (value != null) {
             if (value.buy() > 0) {
                 return value.buy();

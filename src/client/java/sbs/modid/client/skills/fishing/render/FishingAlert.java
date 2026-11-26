@@ -20,9 +20,11 @@ import sbs.modid.client.skills.fishing.logic.SpawnAlertFilter;
 import sbs.modid.client.ui.hud.edit.model.HudElement;
 import sbs.modid.client.ui.hud.edit.logic.HudLayout;
 import sbs.modid.client.core.render.OverlayColor;
+import sbs.modid.client.ui.render.SciFiRender;
+import sbs.modid.client.ui.theme.SBSTheme;
 
 /**
- * The spawn alert: a big "!" that fires the moment a sea creature appears, so you can look away from
+ * The spawn alert: an SBS-styled toast that fires the moment a sea creature appears, so you can look away from
  * the water and still know to turn round.
  *
  * <p>Triggered from {@link FishingTracker}'s chat intake – the same spawn message that books the
@@ -103,14 +105,46 @@ public final class FishingAlert {
         int color = alertColor(cfg, age);
 
         HudLayout.begin(g, HudElement.FISHING_ALERT);
-        // The "!" is the whole point, so it is drawn as scaled-up text rather than an icon: it
-        // stays crisp at any HUD scale and needs no texture.
-        drawBigMark(g, font, x + w / 2, y, color, cfg, age);
-        if (!creature.isEmpty()) {
-            // Clears the scaled "!" below its baseline; a tighter offset lets the two collide.
-            g.centeredText(font, Component.literal(creature), x + w / 2, y + 36, color);
-        }
+        drawToast(g, font, x + w / 2, y, color, cfg, age);
         HudLayout.end(g);
+    }
+
+    /**
+     * The alert as an SBS toast: a themed card with an accent bar in the alert colour, a small
+     * "SEA CREATURE" caption and the creature's name at 1.5x. It slides down into place and fades
+     * with {@link #alertColor}, replacing the bare "!" testers found hard to read.
+     */
+    private void drawToast(GuiGraphicsExtractor g, Font font, int cx, int y, int color,
+                           SBSConfigView cfg, long age) {
+        String name = creature.isEmpty() ? "Sea Creature" : creature;
+        String caption = "! SEA CREATURE !";
+        float nameScale = 1.5f;
+        int nameW = (int) Math.ceil(font.width(name) * nameScale);
+        int cardW = Math.max(font.width(caption), nameW) + 24;
+        int cardH = 34;
+        int alpha = (color >>> 24) & 0xFF;
+        int slide = cfg.animation() ? (int) Math.round(8 * Math.max(0, 1.0 - age / 200.0)) : 0;
+        int left = cx - cardW / 2;
+        int top = y - slide;
+
+        SciFiRender.roundedRectWithBorder(g, left, top, cardW, cardH, 4,
+                withAlpha(SBSTheme.PANEL_BASE, alpha * 0.9), withAlpha(color, alpha * 0.8));
+        SciFiRender.roundedRect(g, left + 2, top + 3, 3, cardH - 6, 1, color);
+        g.centeredText(font, Component.literal(caption), cx, top + 4, withAlpha(SBSTheme.TEXT_MUTED, alpha));
+
+        var pose = g.pose();
+        pose.pushMatrix();
+        pose.translate(cx, top + 15);
+        pose.scale(nameScale, nameScale);
+        g.centeredText(font, Component.literal(name), 0, 0, color);
+        pose.popMatrix();
+    }
+
+    /** {@code argb} with its alpha scaled to {@code alpha} (0..255) times its own. */
+    private static int withAlpha(int argb, double alpha) {
+        int own = (argb >>> 24) & 0xFF;
+        int a = (int) Math.max(0, Math.min(255, own * alpha / 255.0));
+        return (a << 24) | (argb & 0xFFFFFF);
     }
 
     /**
@@ -123,21 +157,5 @@ public final class FishingAlert {
         double pulse = cfg.animation() ? 0.65 + 0.35 * Math.abs(Math.sin(age / 160.0)) : 1.0;
         int alpha = (int) Math.max(0, Math.min(255, 255 * fade * pulse));
         return (alpha << 24) | cfg.rgb();
-    }
-
-    /** The "!" itself, scaled about its own centre so the HUD element's own scale still applies. */
-    private void drawBigMark(GuiGraphicsExtractor g, Font font, int cx, int y, int color,
-                             SBSConfigView cfg, long age) {
-        float scale = 3.6f;
-        if (cfg.animation()) {
-            // A short pop on arrival: eye-catching once, then settled.
-            scale += (float) (0.6 * Math.max(0, 1.0 - age / 250.0));
-        }
-        var pose = g.pose();
-        pose.pushMatrix();
-        pose.translate(cx, y);
-        pose.scale(scale, scale);
-        g.centeredText(font, Component.literal("!"), 0, 0, color);
-        pose.popMatrix();
     }
 }

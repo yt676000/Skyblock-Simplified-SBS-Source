@@ -13,6 +13,7 @@ import sbs.modid.client.core.config.ProfileContext;
 import sbs.modid.client.core.config.ProfileScopedStore;
 import sbs.modid.client.core.config.SBSFiles;
 import sbs.modid.client.skills.hunting.model.ShardId;
+import sbs.modid.client.skills.hunting.model.ShardRarity;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -74,6 +75,13 @@ public final class ShardOwnership implements ProfileScopedStore {
         /** The attribute's tier as last read, {@code 0} when not started, {@code -1} when unread. */
         public int tier = -1;
 
+        /**
+         * {@link ShardRarity#name()} as the menu or the box last showed it, empty when neither did.
+         * Kept because the bundled {@code shards.json} carries no rarity, and without one the panel
+         * cannot estimate an amount or a cost for any shard.
+         */
+        public String rarity = "";
+
         /** When the Hunting Box last stated this shard. */
         public long boxAt;
 
@@ -94,6 +102,11 @@ public final class ShardOwnership implements ProfileScopedStore {
          */
         public int amount() {
             return inBox >= 0 ? inBox : syphoned;
+        }
+
+        /** The rarity last seen in game, {@link ShardRarity#UNKNOWN} when none was. */
+        public ShardRarity rarity() {
+            return ShardRarity.byName(rarity);
         }
 
         /** When either source last stated this shard. */
@@ -132,9 +145,16 @@ public final class ShardOwnership implements ProfileScopedStore {
      * <p>Replaces rather than accumulates - see the class comment. A negative {@code amount} means
      * the box was read but did not state one, and leaves the previous figure alone.
      */
-    public synchronized void noteBox(String canonicalId, String name, int amount) {
+    public synchronized void noteBox(String canonicalId, String name, ShardRarity rarity, int amount) {
         Owned record = record(canonicalId, name);
-        if (record == null || amount < 0) {
+        if (record == null) {
+            return;
+        }
+        boolean changed = noteRarity(record, rarity);
+        if (amount < 0) {
+            if (changed) {
+                save();
+            }
             return;
         }
         record.inBox = amount;
@@ -148,11 +168,13 @@ public final class ShardOwnership implements ProfileScopedStore {
      * @param tier     the tier read off the entry's name, or {@code -1} when it stated none
      * @param syphoned what {@code ShardLevelling} derived, or {@link ShardLevelling#UNKNOWN}
      */
-    public synchronized void noteMenu(String canonicalId, String name, int tier, int syphoned) {
+    public synchronized void noteMenu(String canonicalId, String name, ShardRarity rarity, int tier,
+                                      int syphoned) {
         Owned record = record(canonicalId, name);
         if (record == null) {
             return;
         }
+        noteRarity(record, rarity);
         if (tier >= 0) {
             record.tier = Math.max(record.tier, tier);   // an attribute cannot be un-levelled
         }
@@ -161,6 +183,15 @@ public final class ShardOwnership implements ProfileScopedStore {
         }
         record.menuAt = System.currentTimeMillis();
         save();
+    }
+
+    /** Stores a rarity that was actually read; an unread one never overwrites a known one. */
+    private static boolean noteRarity(Owned record, ShardRarity rarity) {
+        if (rarity == null || rarity == ShardRarity.UNKNOWN || rarity.name().equals(record.rarity)) {
+            return false;
+        }
+        record.rarity = rarity.name();
+        return true;
     }
 
     /** Clears every box figure, so a box read as empty does not leave yesterday's stacks behind. */

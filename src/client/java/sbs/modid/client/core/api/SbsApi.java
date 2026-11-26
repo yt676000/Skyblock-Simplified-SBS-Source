@@ -36,8 +36,7 @@ import java.net.http.HttpResponse;
  * Hypixel key off every client and collapses N client polls into one server-side fetch per interval.
  *
  * <p>Base-URL selection mirrors {@link PriceApi} (settled HTTPS base, legacy direct-port fallback);
- * auth is the Licence Token module's token as {@code Authorization: Bearer} + {@code X-Api-Token},
- * exactly like {@link sbs.modid.client.economy.auctions.logic.AppraiseApi}.
+ * auth is the Licence Token module's token as {@code Authorization: Bearer} + {@code X-Api-Token}.
  */
 public final class SbsApi {
 
@@ -61,6 +60,16 @@ public final class SbsApi {
     /** True when a licence token is configured (proxy access requires it). */
     public static boolean hasLicence() {
         return PriceApi.hasToken();
+    }
+
+    /**
+     * The same licence + consent gate {@link #send} applies, for the one caller that cannot go
+     * through it: the AH flip event stream, a connection that stays open for hours and so cannot
+     * live inside {@link SecureHttp}'s bounded total timeout. Check it before every (re)connect.
+     */
+    public static boolean permits(ConsentScope scope) {
+        return scope != null && ConsentGate.evaluate(ConsentManager.getInstance().registry(),
+                hasLicence(), scope) == ConsentGate.Decision.ALLOW;
     }
 
     /**

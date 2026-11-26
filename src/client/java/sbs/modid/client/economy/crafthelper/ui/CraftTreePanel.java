@@ -45,8 +45,6 @@ public final class CraftTreePanel {
     private static final Component MINUS = Component.literal("−");
     private static final Component PLUS = Component.literal("+");
     private static final Component CLOSE = Component.literal("✖");
-    private static final Component NO_RECIPE = Component.literal("No recipe known - a base material.");
-    private static final Component LOADING = Component.literal("Recipe data not loaded yet.");
 
     /** What the right end of the header does. */
     public enum Action {
@@ -143,7 +141,7 @@ public final class CraftTreePanel {
         bar.set(barX, rowsTop, visibleRows * lineH, rows.size(), visibleRows);
 
         if (rows.size() == 1 && model.root().children().isEmpty()) {
-            g.text(font, model.root().recipeCount() == 0 ? NO_RECIPE : LOADING, x + PAD,
+            g.text(font, Component.literal(model.root().emptyReason()), x + PAD,
                     rowsTop + lineH, SBSTheme.TEXT_MUTED);
         }
         int left = x + PAD;

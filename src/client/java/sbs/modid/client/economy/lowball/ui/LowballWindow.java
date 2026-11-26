@@ -127,7 +127,7 @@ public final class LowballWindow {
     }
 
     public boolean isOpen() {
-        return open && view != null && Lowball.active();
+        return open && view != null && (Lowball.active() || Lowball.helperAvailable());
     }
 
     public boolean hasContent() {

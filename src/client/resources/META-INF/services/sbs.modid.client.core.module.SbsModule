@@ -38,6 +38,7 @@ sbs.modid.client.economy.essenceshop.EssenceShopModule
 sbs.modid.client.economy.mayor.MayorVoteModule
 sbs.modid.client.economy.minions.MinionCalcModule
 sbs.modid.client.economy.sacrifice.SacrificeAltarModule
+sbs.modid.client.economy.wishlist.AhWishlistModule
 sbs.modid.client.helper.abiphone.AbiphoneModule
 sbs.modid.client.helper.browser.BrowserModule
 sbs.modid.client.helper.buffs.BuffsModule
@@ -85,6 +86,7 @@ sbs.modid.client.helper.visual.DarkModeModule
 sbs.modid.client.helper.visual.FullbrightModule
 sbs.modid.client.helper.yearofthepig.YearOfThePigModule
 sbs.modid.client.skills.collection.CollectionTrackerModule
+sbs.modid.client.skills.fishing.FishingShareModule
 sbs.modid.client.skills.fishing.SeaCreatureAnnouncerModule
 sbs.modid.client.skills.foraging.BeaconTuningModule
 sbs.modid.client.skills.foraging.ForagingSweepModule

@@ -54,12 +54,12 @@ public final class SlotBindingsModule implements SbsModule {
 
     @Override
     public String displayName() {
-        return "Slot Bindings";
+        return "Slot Swap / Slot Binding";
     }
 
     @Override
     public String description() {
-        return "Tie slots to a hotbar slot - shift-click swaps the items straight over";
+        return "Slot swapping: tie slots to a hotbar slot - shift-click swaps the items straight over";
     }
 
     @Override
@@ -86,10 +86,12 @@ public final class SlotBindingsModule implements SbsModule {
                                 + "without dragging anything. Off here, shift-click is vanilla "
                                 + "everywhere. On by default, and it does nothing until you make "
                                 + "your first binding."),
-                SettingRow.holdKeybind("Bind Key (hold + click two slots)", () -> cfg().bindKey,
+                SettingRow.holdKeybind("Bind Key (hold + drag between two slots)", () -> cfg().bindKey,
                         key -> { cfg().bindKey = key; save(); })
-                        .describe("Hold this and left-click a slot, then the slot to pair it with. "
-                                + "Right-click a bound slot with the key held to unbind it. "
+                        .describe("Hold this and drag from one slot to the slot to pair it with - "
+                                + "a line shows the pair while you drag. With the key held, click "
+                                + "a bound slot to unbind it. Clicking two slots one after the "
+                                + "other works too. "
                                 + "Defaults to B. A mouse button works too; the wheel does not, "
                                 + "because this one has to be held while you click."),
                 SettingRow.label("One side must be a hotbar or offhand slot - that is the swap the game can do in one action"),
@@ -109,7 +111,7 @@ public final class SlotBindingsModule implements SbsModule {
 
         int count = SlotBindings.count();
         rows.add(SettingRow.label(count == 0
-                ? "§8No bindings yet - hold the bind key and click two slots in game"
+                ? "§8No bindings yet - hold the bind key and drag between two slots in game"
                 : "§8" + count + (count == 1 ? " binding" : " bindings") + " set"));
         if (count > 0) {
             rows.add(SettingRow.button(

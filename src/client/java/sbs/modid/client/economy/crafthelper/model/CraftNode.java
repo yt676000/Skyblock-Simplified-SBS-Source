@@ -80,6 +80,21 @@ public record CraftNode(String id, String name, String path, long need, long hav
         return true;
     }
 
+    /**
+     * Why this node shows no ingredients, as the panel prints it under a childless root. Never claims
+     * the data is still loading: a recipe count above zero means the data is there.
+     */
+    public String emptyReason() {
+        return switch (stop) {
+            case BASE -> "No recipe known - a base material.";
+            case SATISFIED -> "Already held - nothing to craft.";
+            case CYCLE -> "Recipe loops back to an item above it.";
+            case DEPTH -> "Maximum depth reached.";
+            case LIMIT -> "Tree too large - cut off.";
+            case NONE -> "Recipe has no ingredients.";
+        };
+    }
+
     /** The child at {@code index}, for tests and lookups. */
     public CraftNode child(int index) {
         return children.get(index);
