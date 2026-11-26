@@ -154,6 +154,8 @@ final class ScanCapture {
     private final Out out;
     private final Set<ScanChannel> channels;
     private final boolean keepPlayers;
+    /** The preset, for its block box; null for a channel-word session. */
+    private final ScanPreset preset;
     private final double r2;
     private final double leave2;
     private final ScanIds ids = new ScanIds();
@@ -191,7 +193,8 @@ final class ScanCapture {
     private Set<String> players = Set.of();
     private String selfName = "";
 
-    ScanCapture(Out out, Set<ScanChannel> channels, int radius, boolean keepPlayers) {
+    ScanCapture(Out out, Set<ScanChannel> channels, int radius, boolean keepPlayers, ScanPreset preset) {
+        this.preset = preset;
         this.out = out;
         this.channels = channels;
         this.keepPlayers = keepPlayers;
@@ -1011,6 +1014,7 @@ final class ScanCapture {
     void onBlock(BlockPos at, BlockState old, BlockState now) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null || old == now
+                || preset != null && !preset.inBlockBox(at.getX(), at.getY(), at.getZ())
                 || player.distanceToSqr(at.getX() + 0.5, at.getY() + 0.5, at.getZ() + 0.5) > r2) {
             return;
         }

@@ -44,7 +44,8 @@ import java.util.List;
  */
 public final class IcePathSolver implements PuzzleStrategy {
 
-    static final int READ_EVERY = 10;
+    /** Every 2 ticks, like Ice Fill: at 10 a new route showed up to a second after the fish stopped. */
+    static final int READ_EVERY = 2;
 
     private final BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
 
@@ -154,10 +155,10 @@ public final class IcePathSolver implements PuzzleStrategy {
         int from = cell;
         for (int i = 0; i < dirs.length; i++) {
             int to = stops.get(i);
-            String label = i == 0 ? "§a1: push " + IcePathBoard.describe(new int[] {dirs[0]}) : "§7" + (i + 1);
+            // No labels: the lines alone show the route, and the text sat on top of them (asked 2026-11-21).
             out.add(i == 0
-                    ? PuzzleHighlight.line(centre(from), centre(to), color, label)
-                    : new PuzzleHighlight(new AABB(centre(from), centre(from)), 0x80FFFFFF, label, false, centre(to)));
+                    ? PuzzleHighlight.line(centre(from), centre(to), color, null)
+                    : new PuzzleHighlight(new AABB(centre(from), centre(from)), 0x80FFFFFF, null, false, centre(to)));
             from = to;
         }
         route = List.copyOf(out);

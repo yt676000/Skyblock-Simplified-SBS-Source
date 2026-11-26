@@ -144,6 +144,8 @@ public final class FishingData {
         line("Thunder", "You hear a massive rumble as Thunder emerges.");
         line("Lord Jawbus", "You have angered a legendary creature... Lord Jawbus has arrived.");
         line("Plhlegblast", "WOAH! A Plhlegblast appeared.");
+        // Spawns while lava fishing on Crimson Isle under the Vanquisher perk; never double-hooked.
+        line("Vanquisher", "A Vanquisher is spawning nearby!");
         // Backwater Bayou
         line("Trash Gobbler", "The Trash Gobbler is hungry for you!");
         line("Banshee", "The desolate wail of a Banshee breaks the silence.");
@@ -180,6 +182,13 @@ public final class FishingData {
         line("Drowned Captain", "A Drowned Captain takes hold of your bobber!");
         line("Puddle Jumper", "A Puddle Jumper is preparing for liftoff—cast your rod into it and hold on tight!");
         line("Frog Prince", "Bow down before the Frog Prince... or pay the hefty price!");
+        // Torrhus Canyon
+        line("Haggard", "A Haggard stumbles to the shore, ready for a fight!");
+        line("Brineling", "A Brineling interrupts you with a stream of bubbles!");
+        line("Sprawl", "A Sprawl emerges from the blue, and it's looking for you!");
+        line("Torrid", "The laughter of a Torrid echoes through the air.");
+        line("Silkbreeze", "Something zips through the air - it's a Silkbreeze!");
+        line("Giant Isopod", "A Giant Isopod was dredged up from the depths!");
     }
 
     /**
@@ -199,7 +208,8 @@ public final class FishingData {
             "tadgang", "bogged", "stridersurfer", "loch emperor", "nessie", "atoll croaker",
             "lotus guardian", "drowned captain", "puddle jumper", "frog prince", "reindrake",
             "nutcracker", "phantom fisher", "grim reaper", "nurse shark", "blue shark", "tiger shark",
-            "great white shark", "oasis sheep", "oasis rabbit", "squid appeared", "catfish");
+            "great white shark", "vanquisher", "haggard", "brineling", "sprawl", "torrid",
+            "silkbreeze", "giant isopod", "oasis sheep", "oasis rabbit", "squid appeared", "catfish");
 
     /**
      * Sea creatures with no spawn sentence of their own (spawned by other means): part of
@@ -216,20 +226,21 @@ public final class FishingData {
     static {
         rarity(SeaCreatureRarity.MYTHIC,
                 "Thunder", "Lord Jawbus", "Plhlegblast", "Reindrake", "Nessie", "Ragnarok",
-                "Titanoboa", "Wiki Tiki", "Frog Prince", "Sea Emperor");
+                "Titanoboa", "Wiki Tiki", "Frog Prince", "Sea Emperor", "Giant Isopod");
         rarity(SeaCreatureRarity.LEGENDARY,
                 "Water Hydra", "Yeti", "Great White Shark", "Phantom Fisher", "Grim Reaper",
                 "Abyssal Miner", "Alligator", "Blue Ringed Octopus", "Fiery Scuttler",
-                "Puddle Jumper", "The Loch Emperor", "Vanquisher");
+                "Puddle Jumper", "The Loch Emperor", "Silkbreeze");
         rarity(SeaCreatureRarity.EPIC,
                 "Deep Sea Protector", "Guardian Defender", "Nutcracker", "Werewolf", "Tiger Shark",
-                "Manta Ray", "Bayou Sludge", "Drowned Captain", "Ent", "Magma Pillar");
+                "Manta Ray", "Bayou Sludge", "Drowned Captain", "Ent", "Magma Pillar", "Vanquisher",
+                "Torrid");
         rarity(SeaCreatureRarity.RARE,
                 "Carrot King", "Catfish", "Sea Leech", "Nightmare", "Taurus", "Fire Eel",
                 "Fireproof Witch", "Flaming Worm", "Lava Blaze", "Lava Flame", "Lava Leech",
                 "Lava Pigman", "Magma Slug", "Baby Magma Slug", "Moogma", "Pyroclastic Worm",
                 "Water Worm", "Poisoned Water Worm", "Agarimoo", "Banshee", "Snapping Turtle",
-                "Stridersurfer", "Tadgang", "gorF", "Monster of the Deep");
+                "Stridersurfer", "Tadgang", "gorF", "Monster of the Deep", "Sprawl");
     }
 
     private static void rarity(SeaCreatureRarity tier, String... creatures) {
@@ -259,6 +270,13 @@ public final class FishingData {
      * "double hook" mention in normal chat can never double a catch. It announces no creature of
      * its own; it doubles whichever spawn line follows it.
      */
+    /** Creatures a Double Hook never doubles: the Vanquisher is a perk spawn, not a hooked catch. */
+    private static final Set<String> NEVER_DOUBLE_HOOKED = Set.of("Vanquisher");
+
+    public static boolean canBeDoubleHooked(String creature) {
+        return !NEVER_DOUBLE_HOOKED.contains(creature);
+    }
+
     public static boolean isDoubleHook(String message) {
         return message != null && DOUBLE_HOOK_LINES.contains(stripCodes(message).trim());
     }

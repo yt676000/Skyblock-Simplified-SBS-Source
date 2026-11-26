@@ -19,6 +19,7 @@
     "FallingBlockHideMixin",
     "FarmingSoundMuteMixin",
     "FontReloadMixin",
+    "GameRendererBobAccessor",
     "GhostSwirlDimMixin",
     "HeldItemScaleMixin",
     "ItemEntityScaleMixin",

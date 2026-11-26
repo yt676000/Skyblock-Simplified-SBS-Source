@@ -41,6 +41,32 @@ final class ScanSummary {
         counts.merge(channel, 1L, Long::sum);
     }
 
+    /** Per phase (instance sessions only), per channel; phases in the order they were first seen. */
+    private final Map<String, Map<ScanChannel, Long>> phases = new LinkedHashMap<>();
+
+    /** One released event, counted under {@code phase} too; {@code null} = not an instance session. */
+    void count(ScanChannel channel, String phase) {
+        count(channel);
+        if (phase != null) {
+            phases.computeIfAbsent(phase, p -> new EnumMap<>(ScanChannel.class)).merge(channel, 1L, Long::sum);
+        }
+    }
+
+    long countOf(String phase, ScanChannel channel) {
+        Map<ScanChannel, Long> map = phases.get(phase);
+        return map == null ? 0L : map.getOrDefault(channel, 0L);
+    }
+
+    JsonObject phasesJson() {
+        JsonObject out = new JsonObject();
+        phases.forEach((phase, map) -> {
+            JsonObject per = new JsonObject();
+            map.forEach((channel, value) -> per.addProperty(channel.key, value));
+            out.add(phase, per);
+        });
+        return out;
+    }
+
     long countOf(ScanChannel channel) {
         return counts.getOrDefault(channel, 0L);
     }
@@ -121,6 +147,19 @@ final class ScanSummary {
 
         out.append("\nEvents per channel\n");
         counts.forEach((channel, value) -> out.append(String.format(Locale.ROOT, "  %-11s %d%n", channel.key, value)));
+
+        if (!phases.isEmpty()) {
+            out.append("\nEvents per phase\n");
+            phases.forEach((phase, map) -> {
+                StringBuilder line = new StringBuilder();
+                long sum = 0;
+                for (Map.Entry<ScanChannel, Long> entry : map.entrySet()) {
+                    line.append(line.isEmpty() ? "" : ", ").append(entry.getKey().key).append(' ').append(entry.getValue());
+                    sum += entry.getValue();
+                }
+                out.append(String.format(Locale.ROOT, "  %-11s %d  (%s)%n", phase, sum, line));
+            });
+        }
 
         out.append("\nThrottled\n");
         if (throttled.isEmpty()) {

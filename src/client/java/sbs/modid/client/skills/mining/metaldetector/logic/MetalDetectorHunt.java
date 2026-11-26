@@ -10,6 +10,8 @@ package sbs.modid.client.skills.mining.metaldetector.logic;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The readings that belong to one buried chest. Pure, so the rules for what goes in and what ends a
@@ -26,6 +28,24 @@ public final class MetalDetectorHunt {
     /** A set that has grown past this is mostly old readings. */
     static final int MAX_SAMPLES = 12;
 
+    /**
+     * How long after a find the bar is not believed. Hypixel sends the find line before the bar moves
+     * on: in the first watched session (2026-11-26) 9 of 16 hunts opened with a reading of 1.4-3.2 m
+     * taken where the last chest was dug up, while the next chest was 9-96 m away. Kept as a sample,
+     * that one reading says "the treasure is right here" and drags the fit onto the old hole. After
+     * the Golden Hammer find the bar read 1.9 m and then, a block from the same spot, 56.7 m - the
+     * real distance to the Lapis Sword. The stale bars arrived in the same second as the find line;
+     * two seconds is a margin, not a measurement.
+     */
+    static final long SETTLE_MILLIS = 2_000L;
+
+    /**
+     * The confirmed bar, {@code TREASURE: 38.3m}. Still loose about case and spacing, strict about
+     * a number followed by {@code m}.
+     */
+    private static final Pattern TREASURE =
+            Pattern.compile("(?i)treasure\\s*:?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*m\\b");
+
     /** The most recent parsed reading and where it was taken, kept for the probe log. */
     public record Reading(double x, double y, double z, double distance) {
     }
@@ -35,6 +55,8 @@ public final class MetalDetectorHunt {
     private double lastY = Double.NaN;
     private double lastZ = Double.NaN;
     private Reading lastReading;
+    /** Readings before this instant still describe the chest just dug up; see {@link #SETTLE_MILLIS}. */
+    private long settleUntil = Long.MIN_VALUE;
 
     /** The samples the solver should fit. Live view; do not keep it. */
     public List<MetalDetectorSolver.Sample> samples() {
@@ -90,16 +112,47 @@ public final class MetalDetectorHunt {
     }
 
     /**
-     * A chat event. Anything the detector dug up ends the hunt.
+     * A chat event. Anything the detector dug up ends the hunt, and the bar is ignored for
+     * {@link #SETTLE_MILLIS} after it.
      *
      * @return whether the hunt ended
      */
-    public boolean onChat(DivanChat.Event event) {
+    public boolean onChat(DivanChat.Event event, long nowMillis) {
         if (event instanceof DivanChat.ToolFound || event instanceof DivanChat.ChestLoot) {
             clear();
+            settleUntil = nowMillis + SETTLE_MILLIS;
             return true;
         }
         return false;
+    }
+
+    /**
+     * Whether readings are still being refused after a find. The tracker asks before
+     * {@link #noteReading}, so a bar that still describes the chest just dug up is neither logged
+     * as the new hunt's first reading nor kept as its first sample.
+     */
+    public boolean settling(long nowMillis) {
+        return nowMillis < settleUntil;
+    }
+
+    /**
+     * The distance on a Metal Detector action bar, or {@link Double#NaN} when the bar is not one.
+     * The wording is CONFIRMED (2026-11-26): {@code TREASURE: 38.3m}, and {@code TREASURE: 1m} with
+     * no decimal when the number is whole.
+     */
+    public static double parseDistance(String bar) {
+        if (bar == null) {
+            return Double.NaN;
+        }
+        Matcher matcher = TREASURE.matcher(bar);
+        if (!matcher.find()) {
+            return Double.NaN;
+        }
+        try {
+            return Double.parseDouble(matcher.group(1));
+        } catch (NumberFormatException e) {
+            return Double.NaN;
+        }
     }
 
     public boolean isEmpty() {

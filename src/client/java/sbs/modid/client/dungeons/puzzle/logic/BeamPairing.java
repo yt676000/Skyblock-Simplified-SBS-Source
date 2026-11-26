@@ -193,6 +193,46 @@ public final class BeamPairing {
         return out;
     }
 
+    /**
+     * Like {@link #throughBox}, but every lantern is used at most once (asked 2026-11-25): each lantern
+     * connects to exactly one partner in the room. Among the beams through the box the one passing
+     * closest to the box centre wins, greedily, and both its lanterns are then taken. {@code miss} is
+     * that distance.
+     */
+    public static List<Pair> throughBoxOnce(List<Point> lanterns, Point min, Point max) {
+        Point centre = new Point((min.x() + max.x()) / 2, (min.y() + max.y()) / 2, (min.z() + max.z()) / 2);
+        List<Pair> candidates = new ArrayList<>();
+        for (Pair pair : throughBox(lanterns, min, max)) {
+            candidates.add(new Pair(pair.a(), pair.b(),
+                    lineDistance(lanterns.get(pair.a()), lanterns.get(pair.b()), centre)));
+        }
+        candidates.sort((p, q) -> Double.compare(p.miss(), q.miss()));
+        boolean[] used = new boolean[lanterns.size()];
+        List<Pair> out = new ArrayList<>();
+        for (Pair pair : candidates) {
+            if (!used[pair.a()] && !used[pair.b()]) {
+                used[pair.a()] = true;
+                used[pair.b()] = true;
+                out.add(pair);
+            }
+        }
+        return out;
+    }
+
+    /** Distance from {@code c} to the segment {@code p}-{@code q}, closest point clamped to the ends. */
+    static double lineDistance(Point p, Point q, Point c) {
+        double dx = q.x() - p.x();
+        double dy = q.y() - p.y();
+        double dz = q.z() - p.z();
+        double len2 = dx * dx + dy * dy + dz * dz;
+        double t = len2 < 1e-9 ? 0
+                : Math.clamp(((c.x() - p.x()) * dx + (c.y() - p.y()) * dy + (c.z() - p.z()) * dz) / len2, 0, 1);
+        double ex = p.x() + t * dx - c.x();
+        double ey = p.y() + t * dy - c.y();
+        double ez = p.z() + t * dz - c.z();
+        return Math.sqrt(ex * ex + ey * ey + ez * ez);
+    }
+
     /** Slab test: whether the segment {@code a..b} meets the axis-aligned box {@code min..max}. */
     static boolean segmentHitsBox(Point a, Point b, Point min, Point max) {
         double[] from = {a.x(), a.y(), a.z()};

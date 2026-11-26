@@ -319,11 +319,74 @@ public final class ServerScanner {
         }
     }
 
+    // ------------------------------------------------------------------ instance sessions
+
+    /** The scanner as an {@link InstanceRecorder.Sink}: what the auto-recording features drive. */
+    public static InstanceRecorder.Sink sink() {
+        return SINK;
+    }
+
+    private static final InstanceRecorder.Sink SINK = new InstanceRecorder.Sink() {
+        @Override
+        public boolean start(ScanPreset preset, String instance, JsonObject info) {
+            if (!DevMode.ACTIVE || running) {
+                return false;
+            }
+            ServerScanner.start(preset, new String[0]);
+            if (!running) {
+                return false;
+            }
+            session.instance = instance;
+            session.manifest.addProperty("auto", instance);
+            session.manifest.add("instance", info == null ? new JsonObject() : info);
+            JsonObject event = session.event(ScanChannel.MARK, "session_start");
+            event.addProperty("instance", instance);
+            event.addProperty("preset", preset.key());
+            if (info != null) {
+                info.entrySet().forEach(e -> event.add(e.getKey(), e.getValue()));
+            }
+            session.emit(ScanChannel.MARK, event, null);
+            session.writeManifest();
+            return true;
+        }
+
+        @Override
+        public boolean recording() {
+            Session current = session;
+            return running && current != null && current.instance != null;
+        }
+
+        @Override
+        public void mark(String type, String phase, JsonObject fields) {
+            if (!recording()) {
+                return;
+            }
+            JsonObject event = session.event(ScanChannel.MARK, type);
+            if (fields != null) {
+                fields.entrySet().forEach(e -> event.add(e.getKey(), e.getValue()));
+            }
+            if (phase != null) {
+                session.phase = phase;
+                session.summary.marker(wall(), event.get("t").getAsLong(), "phase " + phase);
+            }
+            event.addProperty("phase", session.phase);
+            session.emit(ScanChannel.MARK, event, null);
+        }
+
+        @Override
+        public void stop(String reason, String result) {
+            if (recording()) {
+                session.manifest.addProperty("result", result);
+                ServerScanner.stop(reason);
+            }
+        }
+    };
+
     // ------------------------------------------------------------------ commands
 
     /**
-     * {@code /sbs scan [start <channels>|full [preset] [channels]|mark <text>|stop|status]}; either
-     * start form also takes {@code radius=<blocks>}.
+     * {@code /sbs scan [start <channels>|full [preset] [channels]|kuudra|mark <text>|stop|status]};
+     * either start form also takes {@code radius=<blocks>}.
      */
     public static void handleCommand(String argument) {
         String text = argument == null ? "" : argument.trim();
@@ -336,6 +399,7 @@ public final class ServerScanner {
                 start(preset == null ? ScanPreset.FULL : preset,
                         preset == null ? rest : Arrays.copyOfRange(rest, 1, rest.length));
             }
+            case "kuudra" -> start(ScanPreset.KUUDRA_RUN, rest);
             case "mark" -> mark(text.length() > 4 ? text.substring(4).trim() : "");
             case "stop", "off" -> {
                 if (running) {
@@ -606,6 +670,10 @@ public final class ServerScanner {
         List<String> lastTabPlain = List.of();
         String lastFooter;
         long lastPollAt;
+        /** The auto-recording instance ("kuudra"), or null for a session started by hand. */
+        String instance;
+        /** The instance's current phase; every released event is counted under it. */
+        String phase;
         // The location stamp, read once per tick rather than once per event.
         String island = "";
         String zone = "";
@@ -626,7 +694,7 @@ public final class ServerScanner {
                 world |= channel.ordinal() >= ScanChannel.ENTITY.ordinal();
             }
             this.capture = world ? new ScanCapture(this, channels, radius,
-                    preset != null && preset.keepPlayers) : null;
+                    preset != null && preset.keepPlayers, preset) : null;
             island = SkyBlockLocation.island();
             zone = SkyBlockLocation.zone();
 
@@ -742,7 +810,7 @@ public final class ServerScanner {
 
         /** Out of the queue: to the channel's own file (menus have theirs already) and the timeline. */
         private void release(ScanChannel channel, JsonObject event) {
-            summary.count(channel);
+            summary.count(channel, instance == null ? null : phase == null ? "start" : phase);
             if (channel != ScanChannel.MENUS) {
                 writer.append(files.get(channel), event, channel);
             }
@@ -1150,13 +1218,19 @@ public final class ServerScanner {
             manifest.addProperty("events", summary.total());
             manifest.add("counts", summary.countsJson());
             manifest.add("suppressed", summary.suppressedJson());
+            if (instance != null) {
+                manifest.add("phases", summary.phasesJson());
+            }
             JsonArray throttledJson = new JsonArray();
             throttled.forEach(throttledJson::add);
             manifest.add("throttled", throttledJson);
             String header = "Server Scanner session " + dir.getFileName() + "  (" + reason + ")\n"
                     + "Preset: " + (preset == null ? "none" : preset.key()) + "   Radius: " + radius
                     + "   Channels: menus" + channelList(", ") + "\n"
-                    + "Island at start: " + manifest.get("island").getAsString();
+                    + "Island at start: " + manifest.get("island").getAsString()
+                    + (instance == null ? "" : "\nInstance: " + instance + "   " + manifest.get("instance")
+                    + "   Result: " + (manifest.has("result") && !manifest.get("result").isJsonNull()
+                    ? manifest.get("result").getAsString() : "unknown"));
             // The size is only final once the IO thread has written everything queued above.
             writer.afterWrites(() -> {
                 long bytes = budget.usedBytes();

@@ -28,6 +28,7 @@ import sbs.modid.client.core.config.ProfileContext;
 import sbs.modid.client.core.config.SBSConfig;
 import sbs.modid.client.core.tab.TabWidgets;
 import sbs.modid.client.core.util.NumberParse;
+import sbs.modid.client.combat.damage.logic.DamageSplash;
 import sbs.modid.client.combat.mobhighlight.logic.MobHighlightTracker;
 
 import java.util.ArrayList;
@@ -95,9 +96,16 @@ public final class BestiaryTracker {
     private final Map<String, BestiaryTab.Row> tabRows = new HashMap<>();
 
     /** Blocks around the player to watch for the pinned mob dying. */
-    private static final double KILL_RADIUS = 16.0;
-    /** A gone entity counts as a kill only if it was seen close within this window (else it walked off). */
-    private static final long KILL_FRESH_MS = 1_200L;
+    private static final double KILL_RADIUS = 32.0;
+    /**
+     * A gone stand counts as a kill only if it was seen close within this window (else it walked off).
+     * Hypixel rewrites the nametag on death and drops the stand a moment later, so this covers that gap.
+     */
+    private static final long KILL_FRESH_MS = 3_000L;
+    /** Stand id -> the mob it labelled when first tracked; that mob dying is a kill even if the stand lingers. */
+    private final Map<Integer, Integer> standMob = new HashMap<>();
+    /** Stands already counted whose entity still exists, so they are not tracked and counted again. */
+    private final java.util.Set<Integer> counted = new java.util.HashSet<>();
     /** Drop a tracked mob we have not seen for this long without counting it (walked away / unloaded). */
     private static final long TRACK_STALE_MS = 5_000L;
     /** A jump larger than this between two tab reads is a different mob or a reset, not kills. */
@@ -138,6 +146,10 @@ public final class BestiaryTracker {
      */
     public void onWorldChange() {
         nearby.clear();
+        standMob.clear();
+        counted.clear();
+        splashes.clear();
+        standPos.clear();
         tabRows.clear();
         tabRevision = -1;
     }
@@ -409,6 +421,10 @@ public final class BestiaryTracker {
         List<SBSConfig.BestiaryPin> pins = pins();
         if (pins.isEmpty()) {
             nearby.clear();
+            standMob.clear();
+            counted.clear();
+            splashes.clear();
+            standPos.clear();
             return;
         }
         Minecraft mc = Minecraft.getInstance();
@@ -421,44 +437,125 @@ public final class BestiaryTracker {
         List<ArmorStand> stands = level.getEntitiesOfClass(ArmorStand.class,
                 player.getBoundingBox().inflate(KILL_RADIUS), ArmorStand::hasCustomName);
         seen.clear();
+        splashes.values().removeIf(s -> now - s.at() > OWN_HIT_MS);
         for (ArmorStand stand : stands) {
-            String name = stand.getCustomName() == null ? null
-                    : MobHighlightTracker.mobNameInNametag(stand.getCustomName().getString());
+            String plain = stand.getCustomName() == null ? null : stand.getCustomName().getString();
+            // Damage splashes are only shown for the player's own damage: they prove whose kill it is.
+            if (plain != null && !splashes.containsKey(stand.getId())
+                    && DamageSplash.value(plain) != DamageSplash.NOT_A_SPLASH) {
+                splashes.put(stand.getId(), new Splash(stand.getX(), stand.getZ(), now));
+                continue;
+            }
+            String name = plain == null ? null : MobHighlightTracker.mobNameInNametag(plain);
             String key = name == null ? null : pinnedKey(pins, name);
             if (key == null || tabRows.containsKey(key)) {
                 continue;   // not pinned, or the tab widget already counts it exactly
             }
-            LivingEntity mob = MobHighlightTracker.mobBelow(level, stand);
-            if (mob != null) {
-                seen.put(mob.getId(), key);
-                nearby.put(mob.getId(), now);
-                nearbyKey.put(mob.getId(), key);
+            // Track the nametag stand, not the mob under it: in a clump several stands resolve to the
+            // same nearest mob, which made a multi-kill count once. Every mob has its own stand.
+            int id = stand.getId();
+            if (counted.contains(id)) {
+                continue;   // already counted; the stand is only lingering
+            }
+            standPos.put(id, new Splash(stand.getX(), stand.getZ(), now));
+            if (nearby.containsKey(id)) {
+                seen.put(id, key);
+                nearby.put(id, now);
+            } else {
+                LivingEntity mob = MobHighlightTracker.mobBelow(level, stand,
+                        new it.unimi.dsi.fastutil.ints.IntOpenHashSet(standMob.values()));
+                if (mob != null) {
+                    seen.put(id, key);
+                    nearby.put(id, now);
+                    nearbyKey.put(id, key);
+                    standMob.put(id, mob.getId());
+                }
             }
         }
+        counted.removeIf(id -> {
+            Entity ent = level.getEntity(id);
+            return ent == null || ent.isRemoved();
+        });
+        Map<String, Integer> gainedNow = null;
         Iterator<Map.Entry<Integer, Long>> it = nearby.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<Integer, Long> e = it.next();
-            if (seen.containsKey(e.getKey())) {
+            Entity ent = level.getEntity(e.getKey());
+            // The stand is removed when its mob dies; one that merely left the radius still exists.
+            boolean standGone = ent == null || ent.isRemoved();
+            Integer mobId = standMob.get(e.getKey());
+            Entity mob = mobId == null ? null : level.getEntity(mobId);
+            boolean mobDied = mob instanceof LivingEntity le && (le.isDeadOrDying() || !le.isAlive());
+            if (seen.containsKey(e.getKey()) && !mobDied) {
                 continue;   // still here this tick
             }
-            Entity ent = level.getEntity(e.getKey());
-            boolean gone = !(ent instanceof LivingEntity le) || !le.isAlive() || le.isDeadOrDying();
+            boolean gone = standGone || mobDied;
             if (gone && now - e.getValue() <= KILL_FRESH_MS) {
                 it.remove();
+                standMob.remove(e.getKey());
+                if (!standGone) {
+                    counted.add(e.getKey());
+                }
                 String key = nearbyKey.remove(e.getKey());
+                Splash pos = standPos.remove(e.getKey());
+                if (key != null && !hitByPlayer(pos)) {
+                    unowned++;   // died without the player's damage on it: someone else's kill
+                    key = null;
+                }
                 if (key != null) {
-                    long total = sessionKills.merge(key, 1L, Long::sum);
+                    sessionKills.merge(key, 1L, Long::sum);
                     revision++;
-                    if (now - lastLogAt > 3_000L) {
-                        lastLogAt = now;
-                        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bestiary] +1 {} (session {})", key, total);
+                    if (gainedNow == null) {
+                        gainedNow = new HashMap<>();
                     }
+                    gainedNow.merge(key, 1, Integer::sum);
                 }
             } else if (now - e.getValue() > TRACK_STALE_MS || gone) {
                 it.remove();   // walked off / unloaded, or gone but too stale to trust as a kill
                 nearbyKey.remove(e.getKey());
+                standMob.remove(e.getKey());
+                standPos.remove(e.getKey());
             }
         }
+        standPos.keySet().retainAll(nearby.keySet());
+        // One line per tick that counted, with how many were counted at once and how many instances
+        // were still tracked: the line that tells a real multi-kill from one counted mob.
+        if (gainedNow != null) {
+            for (Map.Entry<String, Integer> g : gainedNow.entrySet()) {
+                SkyblockSimplifiedSBS.LOGGER.info("[SBS][Bestiary] +{} {} (session {}, {} still tracked, {} stands seen, {} not own)",
+                        g.getValue(), g.getKey(), sessionKills.get(g.getKey()), nearby.size(), seen.size(), unowned);
+            }
+        }
+    }
+
+    /** A point and when it was seen: a damage splash, or a tracked stand's last position. */
+    private record Splash(double x, double z, long at) {
+    }
+
+    /** How long a damage splash marks its spot as hit by the player. */
+    private static final long OWN_HIT_MS = 5_000L;
+    /** Horizontal distance (squared) a splash may be from the mob's stand to count as hitting it. */
+    private static final double OWN_HIT_DIST_SQ = 4.0 * 4.0;
+    /** Recent damage splashes, by stand id (each splash recorded once, when first seen). */
+    private final Map<Integer, Splash> splashes = new HashMap<>();
+    /** Last position of each tracked nametag stand. */
+    private final Map<Integer, Splash> standPos = new HashMap<>();
+    /** Kills dropped because the player did not hit the mob (log only). */
+    private long unowned;
+
+    /** Whether one of the player's damage splashes appeared near {@code pos} recently. */
+    private boolean hitByPlayer(Splash pos) {
+        if (pos == null) {
+            return false;
+        }
+        for (Splash s : splashes.values()) {
+            double dx = s.x() - pos.x();
+            double dz = s.z() - pos.z();
+            if (dx * dx + dz * dz <= OWN_HIT_DIST_SQ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Tracked instance -> the pin it belongs to. */

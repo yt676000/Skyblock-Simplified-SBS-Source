@@ -127,7 +127,20 @@ public final class KuudraProfitTracker implements ProfileScopedStore {
             KuudraRun run = ledger.apply(event, tier, duration, now, valuation);
             SkyblockSimplifiedSBS.LOGGER.info("[SBS][KuudraProfit] {} -> T{} run profit={}{}", event, tier,
                     run == null ? "-" : run.profit(), run != null && run.incomplete() ? "+" : "");
+            scan(event, now);
             dirty(event instanceof KuudraLoot.RunEnded, now);
+        }
+    }
+
+    /** The Server Scanner's Kuudra session, when one runs: the chests, the key, the end line. */
+    private static void scan(KuudraLoot.Event event, long now) {
+        sbs.modid.client.combat.kuudra.logic.KuudraScan scan =
+                sbs.modid.client.combat.kuudra.logic.KuudraScan.getInstance();
+        switch (event) {
+            case KuudraLoot.RewardBlock block -> scan.onRewardChest(block.paid(), block.items().size(), now);
+            case KuudraLoot.KeyBought key -> scan.event("key_used", "tier", key.tier(), "count", key.count(),
+                    "price", key.price());
+            case KuudraLoot.RunEnded end -> scan.event("end_line", "won", end.won());
         }
     }
 

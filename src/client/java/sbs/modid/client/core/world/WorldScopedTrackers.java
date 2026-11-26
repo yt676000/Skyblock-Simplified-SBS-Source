@@ -154,6 +154,7 @@ public final class WorldScopedTrackers {
         // Sea creatures: a spawn from the last lobby is not announced, boxed or deduped in the next.
         WorldTransitions.register(kind -> sbs.modid.client.skills.fishing.logic.SeaCreatureAnnouncer.getInstance().onWorldChange());
         WorldTransitions.register(kind -> sbs.modid.client.skills.fishing.logic.FishingShare.getInstance().onWorldChange());
+        WorldTransitions.register(kind -> sbs.modid.client.skills.fishing.logic.HotspotGoneAlert.getInstance().onWorldChange());
         WorldTransitions.register(kind -> sbs.modid.client.skills.fishing.logic.SeaCreatureDrops.getInstance().onWorldChange());
         // Effective blocks: candidates are positions in the old level.
         WorldTransitions.register(kind -> sbs.modid.client.skills.mining.logic.EffectiveBlockScanner.getInstance().onWorldChange());

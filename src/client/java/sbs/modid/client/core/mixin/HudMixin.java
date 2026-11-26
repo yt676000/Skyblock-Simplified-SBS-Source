@@ -562,6 +562,7 @@ public class HudMixin {
             sbs.modid.client.combat.slayer.render.SlayerHighlight.render(g);
             sbs.modid.client.combat.slayer.render.SlayerHud.render(g);
             sbs.modid.client.combat.slayer.render.BlazeAttunementHud.render(g);
+            sbs.modid.client.combat.slayer.render.BlazeDaggerModesHud.render(g);
             sbs.modid.client.combat.slayer.render.InfernoPhaseHud.render(g);
             sbs.modid.client.combat.slayer.render.VoidgloomPhaseHud.render(g);
             sbs.modid.client.combat.slayer.render.SlayerAlerts.getInstance().render(g);

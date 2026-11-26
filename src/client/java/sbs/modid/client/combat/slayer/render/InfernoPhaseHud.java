@@ -13,6 +13,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import sbs.modid.client.combat.slayer.logic.SlayerTracker;
+import sbs.modid.client.combat.slayer.model.InfernoDemon;
 import sbs.modid.client.combat.slayer.model.InfernoPhase;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.ui.hud.edit.logic.HudLayout;
@@ -43,7 +44,8 @@ public final class InfernoPhaseHud {
                 || Minecraft.getInstance().player == null || HudLayout.isHidden(HudElement.INFERNO_PHASE)) {
             return;
         }
-        String line = line(phase, tracker.infernoSplit(), tracker.infernoPhaseElapsed());
+        String line = cachedLine(phase, tracker.infernoSplit(), tracker.infernoPhaseElapsed(),
+                tracker.hittableDemon(), tracker.quaziiBeamCharging() ? tracker.quaziiBeamCharge() : -1f);
         Font font = Minecraft.getInstance().font;
         HudElement.Bounds bounds = HudElement.INFERNO_PHASE.defaultBounds(g.guiWidth(), g.guiHeight());
         int width = font.width(line);
@@ -55,10 +57,45 @@ public final class InfernoPhaseHud {
         HudLayout.end(g);
     }
 
+    // Per-frame cache: the text only changes every tenth of a second, so it is rebuilt then and not
+    // on every frame in between. Every input of the text is in the key.
+    private static long cachedKey = Long.MIN_VALUE;
+    private static String cachedText = "";
+
+    private static String cachedLine(InfernoPhase phase, int split, long elapsedMs, InfernoDemon hittable,
+                                     float beamCharge) {
+        int beamPercent = beamCharge < 0f ? 127 : Math.round(beamCharge * 100);
+        long key = (elapsedMs / 100) << 24
+                | (long) (split & 0xFF) << 16
+                | (long) phase.ordinal() << 12
+                | (long) (hittable == null ? 3 : hittable.ordinal()) << 8
+                | (beamPercent & 0xFF);
+        if (key != cachedKey) {
+            cachedKey = key;
+            cachedText = line(phase, split, elapsedMs, hittable, beamCharge);
+        }
+        return cachedText;
+    }
+
     /** The text of the line, e.g. "Demons #2 · 8.0s" or "Boss · 1:04". */
     static String line(InfernoPhase phase, int split, long elapsedMs) {
+        return line(phase, split, elapsedMs, null, -1f);
+    }
+
+    /**
+     * The line with what a split adds: the demon you can hit ("→ Quazii") and, while Quazii's beam is
+     * charging at you, how far ("BEAM 60%"). {@code beamCharge} below 0 means no beam.
+     */
+    static String line(InfernoPhase phase, int split, long elapsedMs, InfernoDemon hittable, float beamCharge) {
         String label = phase == InfernoPhase.DEMONS ? phase.label() + " #" + Math.max(1, split) : phase.label();
-        return label + " · " + duration(elapsedMs);
+        StringBuilder out = new StringBuilder(label).append(" · ").append(duration(elapsedMs));
+        if (phase == InfernoPhase.DEMONS && hittable != null) {
+            out.append(" → ").append(hittable.displayName());
+        }
+        if (beamCharge >= 0f) {
+            out.append(" · BEAM ").append(Math.round(beamCharge * 100)).append('%');
+        }
+        return out.toString();
     }
 
     /** Tenths of a second under a minute, where they matter; m:ss beyond it. */

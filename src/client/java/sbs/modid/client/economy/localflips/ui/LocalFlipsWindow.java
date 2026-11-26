@@ -59,7 +59,7 @@ public final class LocalFlipsWindow {
 
     private static final LocalFlipsWindow INSTANCE = new LocalFlipsWindow();
 
-    private static final List<String> SORTS = List.of("Gewinn", "Gewinn/Tag", "Sicherheit", "Neueste");
+    private static final List<String> SORTS = List.of("Profit", "Profit/Day", "Confidence", "Newest");
     private static final int HEADER_H = 16;
     private static final int CHIP_H = 12;
     private static final int PAD = 6;
@@ -76,11 +76,11 @@ public final class LocalFlipsWindow {
     private static final int SCROLL_STEP = 24;
     private static final long COPIED_SHOWN_MS = 1_500;
 
-    private static final Component OPEN = Component.literal("Öffnen");
-    private static final Component OPEN_GONE = Component.literal("weg");
-    private static final Component COPY = Component.literal("Kopieren");
-    private static final Component COPIED = Component.literal("Kopiert!");
-    private static final Component HIDE = Component.literal("Ausblenden");
+    private static final Component OPEN = Component.literal("Open");
+    private static final Component OPEN_GONE = Component.literal("gone");
+    private static final Component COPY = Component.literal("Copy");
+    private static final Component COPIED = Component.literal("Copied!");
+    private static final Component HIDE = Component.literal("Hide");
     private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm");
 
     private static final int GREEN = 0xFF57D977;
@@ -103,13 +103,19 @@ public final class LocalFlipsWindow {
                         Component title, Component right, int rightW,
                         List<Component> lines, int noteLine, List<Component> noteTip,
                         int openW, int copyX, int copyW, int hideX, int hideW,
-                        int normalLine, long normalPrice, int patientLine, long patientPrice) implements Item {
+                        int fastLine, long fastPrice, int normalLine, long normalPrice, int patientLine, long patientPrice) implements Item {
     }
 
     private record Model(List<Component> status, List<Item> items, int contentH) {
     }
 
     private boolean open;
+    /** Collapsed to the small reopen bar (still open) - remembered across restarts. */
+    private boolean minimized;
+    private int minBarX;
+    private int minBarY;
+    private int minBarW;
+    private int minBarH;
 
     private int posX = Integer.MIN_VALUE;
     private int posY = Integer.MIN_VALUE;
@@ -172,6 +178,10 @@ public final class LocalFlipsWindow {
             ConfigManager.getInstance().save();
         }
         INSTANCE.open = true;
+        if (INSTANCE.minimized) {   // the key / button asks to SEE it: bring it back up
+            INSTANCE.minimized = false;
+            INSTANCE.memory.remember(INSTANCE.posX, INSTANCE.posY, INSTANCE.sizeW, INSTANCE.sizeH, false);
+        }
         FloatingWindows.raise(FloatingWindows.Layer.LOCAL_FLIPS);
         Minecraft minecraft = Minecraft.getInstance();
         if (!(minecraft.gui.screen() instanceof AbstractContainerScreen<?>)) {
@@ -235,11 +245,16 @@ public final class LocalFlipsWindow {
     }
 
     private static String sofortLabel() {
-        return (cfg().filterSofortOnly ? "☑" : "☐") + " Nur SOFORT";
+        return (cfg().filterSofortOnly ? "☑" : "☐") + " Instant only";
     }
 
     private int sortChipW(Font font) {
         return font.width(sortLabel()) + 8;
+    }
+
+    /** Server / Local, right of the "Instant only" chip. */
+    private int sourceSwitchX(Font font) {
+        return sofortChipX(font) + font.width(sofortLabel()) + 8 + GAP;
     }
 
     private int sofortChipX(Font font) {
@@ -301,7 +316,7 @@ public final class LocalFlipsWindow {
         }
         sofort.sort(order);
         Header sofortHeader = new Header(y, LINE_H + 2,
-                Component.literal("§fSOFORT §7(" + sofort.size() + ")"));
+                Component.literal("§fInstant §7(" + sofort.size() + ")"));
         items.add(sofortHeader);
         y += sofortHeader.h();
         if (sofort.isEmpty()) {
@@ -331,7 +346,7 @@ public final class LocalFlipsWindow {
             list.sort(order);
             y += 4;
             Header listHeader = new Header(y, LINE_H + 2,
-                    Component.literal("§fFlip-Liste §7(" + list.size() + ")"));
+                    Component.literal("§fFlip List §7(" + list.size() + ")"));
             items.add(listHeader);
             y += listHeader.h();
             for (LocalFlip flip : list) {
@@ -386,37 +401,37 @@ public final class LocalFlipsWindow {
 
     private static String emptySofortText(LocalFlipFinder finder) {
         return switch (finder.status()) {
-            case OFF -> "§7Der Finder ist aus.";
-            case CONNECTED -> "§7Noch keine SOFORT-Funde - sie erscheinen hier, sobald der Server sie meldet.";
-            default -> "§7Keine SOFORT-Funde - nicht verbunden.";
+            case OFF -> "§7The finder is off.";
+            case CONNECTED -> "§7No instant finds yet - they appear here as soon as the server reports them.";
+            default -> "§7No instant finds - not connected.";
         };
     }
 
     private List<Component> statusLines(LocalFlipFinder finder, long now) {
         String source = LocalFlipFinder.server() ? "Server" : "Lokal";
         String connection = switch (finder.status()) {
-            case OFF -> "§7● aus";
-            case CONNECTING -> "§e● verbinde… §8(" + source + ")";
-            case CONNECTED -> "§a● verbunden §8(" + source + ")";
-            case DISCONNECTED -> "§c● getrennt – nächster Versuch in "
+            case OFF -> "§7● off";
+            case CONNECTING -> "§e● connecting… §8(" + source + ")";
+            case CONNECTED -> "§a● connected §8(" + source + ")";
+            case DISCONNECTED -> "§c● disconnected – retrying in "
                     + Math.max(0, (finder.retryAtMs() - now + 999) / 1000) + " s";
             case UNAUTHORIZED -> LocalFlipFinder.server()
-                    ? "§c● Lizenz-Token fehlt oder ist falsch" : "§c● 401 – falscher Token";
-            case INVALID_ADDRESS -> "§c● Adresse ungültig – nur http(s) auf diesem PC oder im LAN";
+                    ? "§c● Licence token missing or wrong" : "§c● 401 – wrong token";
+            case INVALID_ADDRESS -> "§c● Invalid address – only http(s) on this PC or in the LAN";
         };
         if (finder.lastSignalMs() > 0 && finder.status() == LocalFlipFinder.Status.CONNECTED) {
-            connection += "  §8·  §7Signal vor " + FlipText.ago((now - finder.lastSignalMs()) / 1000);
+            connection += "  §8·  §7last signal " + FlipText.ago((now - finder.lastSignalMs()) / 1000) + " ago";
         }
         String api;
         long apiAt = finder.apiLastUpdatedMs();
         if (apiAt <= 0) {
-            api = "§7Hypixel-AH-Stand: unbekannt";
+            api = "§7Hypixel AH data: unknown";
         } else if (now - apiAt > LocalFlipFinder.API_STUCK_MS) {
-            api = "§cHypixel AH API hängt seit "
+            api = "§cHypixel AH API stalled for "
                     + CLOCK.format(Instant.ofEpochMilli(apiAt).atZone(ZoneId.systemDefault()))
-                    + " – Funde können schon weg sein";
+                    + " – finds may already be gone";
         } else {
-            api = "§7Hypixel-AH-Stand: " + FlipText.ago((now - apiAt) / 1000) + " alt";
+            api = "§7Hypixel AH data: " + FlipText.ago((now - apiAt) / 1000) + " old";
         }
         int w = contentW();
         return List.of(Component.literal(fit(connection, w)), Component.literal(fit(api, w)));
@@ -430,7 +445,7 @@ public final class LocalFlipsWindow {
         int textW = cardW - CARD_PAD * 2;
         double nowSeconds = now / 1000.0;
 
-        String badgeText = gone ? "weg" : flip.kind().label();
+        String badgeText = gone ? "GONE" : flip.kind().label();
         int badgeColour = gone ? GREY : switch (flip.kind()) {
             case SOFORT -> GREEN;
             case GEBOT -> YELLOW;
@@ -445,14 +460,14 @@ public final class LocalFlipsWindow {
         List<String> lines = new ArrayList<>();
         StringBuilder price = new StringBuilder();
         if (flip.kind() == LocalFlip.Kind.GEBOT) {
-            price.append("§7Gebot jetzt §f").append(FlipText.coins(flip.price()));
+            price.append("§7Bid now §f").append(FlipText.coins(flip.price()));
         } else {
             price.append("§f").append(FlipText.coins(flip.price()));
         }
         price.append(" §7→ §e").append(FlipText.coins(flip.target()));
         int safety = flip.safetyPct();
         if (safety >= 0) {
-            price.append("  §7Sicherheit ").append(colourCode(LocalFlipFinder.safetyColour(safety)))
+            price.append("  §7Confidence ").append(colourCode(LocalFlipFinder.safetyColour(safety)))
                     .append(safety).append(" %");
         }
         lines.add(price.toString());
@@ -471,10 +486,10 @@ public final class LocalFlipsWindow {
             lines.add(String.join(" §8· ", flags));
         }
         if (flip.kind() == LocalFlip.Kind.GEBOT && flip.has(flip.maxBid())) {
-            StringBuilder bid = new StringBuilder("§e§lhöchstens ").append(FlipText.coins(flip.maxBid()))
-                    .append(" bieten§r§e – endet in ").append(FlipText.minutes(flip.endsMin()));
+            StringBuilder bid = new StringBuilder("§e§lbid at most ").append(FlipText.coins(flip.maxBid()))
+                    .append("§r§e – ends in ").append(FlipText.minutes(flip.endsMin()));
             if (flip.has(flip.profitNow())) {
-                bid.append(" §7· jetzt §a+").append(FlipText.coins(flip.profitNow()));
+                bid.append(" §7· now §a+").append(FlipText.coins(flip.profitNow()));
             }
             lines.add(bid.toString());
         }
@@ -482,50 +497,57 @@ public final class LocalFlipsWindow {
         if (!flip.dropClass().isEmpty()) {
             sell.append("§d").append(flip.dropClass()).append(" §8· ");
         }
-        sell.append("§7Verkauf ~").append(FlipText.hours(flip.sellTimeH()));
+        sell.append("§7Sells in ~").append(FlipText.hours(flip.sellTimeH()));
         if (flip.has(flip.profitPerDay())) {
-            sell.append(" §8· §f").append(FlipText.coins(flip.profitPerDay())).append("§7/Tag");
+            sell.append(" §8· §f").append(FlipText.coins(flip.profitPerDay())).append("§7/day");
         }
         lines.add(sell.toString());
         if (!Double.isNaN(flip.foundAt()) || !Double.isNaN(flip.start())) {
             StringBuilder timing = new StringBuilder("§7");
             if (!Double.isNaN(flip.foundAt())) {
-                timing.append("gefunden vor ").append(FlipText.ago((long) (nowSeconds - flip.foundAt())));
+                timing.append("found ").append(FlipText.ago((long) (nowSeconds - flip.foundAt()))).append(" ago");
             }
             if (!Double.isNaN(flip.start())) {
                 double inAhMin = (nowSeconds - flip.start()) / 60.0;
                 if (!Double.isNaN(flip.foundAt())) {
                     timing.append(" §8· ");
                 }
-                timing.append(inAhMin >= 3 ? "§6" : "§7").append("im AH seit ").append(FlipText.minutes(inAhMin));
+                timing.append(inAhMin >= 3 ? "§6" : "§7").append("in AH for ").append(FlipText.minutes(inAhMin));
             }
             lines.add(timing.toString());
         }
         if (!Double.isNaN(flip.ageMin()) || !flip.seller().isEmpty() || !Double.isNaN(flip.salesPerDay())) {
             List<String> parts = new ArrayList<>(3);
             if (!Double.isNaN(flip.ageMin())) {
-                parts.add("Alter " + FlipText.minutes(flip.ageMin()));
+                parts.add("Age " + FlipText.minutes(flip.ageMin()));
             }
             if (!flip.seller().isEmpty()) {
-                parts.add("Verkäufer " + flip.seller());
+                parts.add("Seller " + flip.seller());
             }
             if (!Double.isNaN(flip.salesPerDay())) {
-                parts.add(FlipText.decimal1(flip.salesPerDay()) + " Verkäufe/Tag");
+                parts.add(FlipText.decimal1(flip.salesPerDay()) + " sales/day");
             }
             lines.add("§7" + String.join(" §8· §7", parts));
         }
         // Price ladder: one line per sell price, click = copy it (whole coins, no separators).
+        int fastLine = -1;
         int normalLine = -1;
         int patientLine = -1;
+        if (flip.has(flip.target())) {
+            fastLine = lines.size();
+            lines.add("§7fast §f" + FlipText.coins(flip.target())
+                    + " §8(" + FlipText.hours(flip.sellTimeH()) + ")"
+                    + " §8[copy]");
+        }
         if (flip.has(flip.priceNormal())) {
             normalLine = lines.size();
             lines.add("§7normal §f" + FlipText.coins(flip.priceNormal()) + " §8(" + FlipText.hours(flip.timeNormalH())
-                    + ") §8[kopieren]");
+                    + ") §8[copy]");
         }
         if (flip.has(flip.pricePatient())) {
             patientLine = lines.size();
-            lines.add("§7geduldig §f" + FlipText.coins(flip.pricePatient()) + " §8("
-                    + FlipText.hours(flip.timePatientH()) + ") §8[kopieren]");
+            lines.add("§7patient §f" + FlipText.coins(flip.pricePatient()) + " §8("
+                    + FlipText.hours(flip.timePatientH()) + ") §8[copy]");
         }
         List<String> noteParts = new ArrayList<>(LocalFlipFinder.noteParts(flip.note()));
         if (flip.botPct() >= 0) {
@@ -565,6 +587,7 @@ public final class LocalFlipsWindow {
         return new Card(y, h, flip, gone, textColour, Component.literal(badgeText), badgeColour, badgeW,
                 titleComponent, rightComponent, rightW, List.copyOf(drawn), noteLine, noteTip,
                 openW, copyX, copyW, hideX, hideW,
+                fastLine, flip.has(flip.target()) ? flip.target() : 0,
                 normalLine, flip.has(flip.priceNormal()) ? flip.priceNormal() : 0,
                 patientLine, flip.has(flip.pricePatient()) ? flip.pricePatient() : 0);
     }
@@ -612,6 +635,10 @@ public final class LocalFlipsWindow {
 
     public void render(Screen screen, GuiGraphicsExtractor g, int mouseX, int mouseY) {
         if (!open) {
+            if (showsOpenButton(screen)) {
+                restorePosition();
+                drawMinimizedBar(screen, g, font(), mouseX, mouseY);
+            }
             return;
         }
         Font font = font();
@@ -620,6 +647,7 @@ public final class LocalFlipsWindow {
             posY = state.y;
             sizeW = state.width(sizeW);
             sizeH = state.height(sizeH);
+            minimized = state.minimized;
         });
         panelW = clamp(Math.min(sizeW, screen.width - MARGIN * 2), Math.min(MIN_W, screen.width - MARGIN * 2), MAX_W);
         panelH = clamp(Math.min(sizeH, screen.height - MARGIN * 2), Math.min(MIN_H, screen.height - MARGIN * 2), MAX_H);
@@ -629,6 +657,10 @@ public final class LocalFlipsWindow {
         }
         posX = clamp(posX, MARGIN, Math.max(MARGIN, screen.width - panelW - MARGIN));
         posY = clamp(posY, MARGIN, Math.max(MARGIN, screen.height - panelH - MARGIN));
+        if (minimized) {
+            drawMinimizedBar(screen, g, font, mouseX, mouseY);
+            return;
+        }
 
         Model m = model();
         int listTop = listTop();
@@ -646,12 +678,26 @@ public final class LocalFlipsWindow {
         g.text(font, Component.literal("Flip Finder"), posX + PAD, textY, SBSTheme.ACCENT_BRIGHT);
         g.text(font, Component.literal("x"), closeX() + 3, textY,
                 inCloseBox(mouseX, mouseY) ? SBSTheme.WARN : SBSTheme.TEXT_MUTED);
+        g.text(font, Component.literal("-"), minimizeX() + 3, textY,
+                inMinimizeBox(mouseX, mouseY) ? SBSTheme.ACCENT_BRIGHT : SBSTheme.TEXT_MUTED);
         g.fill(posX + PAD, posY + HEADER_H, posX + panelW - PAD, posY + HEADER_H + 1, SBSTheme.ACCENT_SOFT);
 
         chip(g, font, innerX(), chipsY(), sortChipW(font), sortLabel(), false, mouseX, mouseY);
         String sofort = sofortLabel();
         chip(g, font, sofortChipX(font), chipsY(), font.width(sofort) + 8, sofort, cfg().filterSofortOnly,
                 mouseX, mouseY);
+        boolean local = sbs.modid.client.economy.auctions.logic.FlipServer.isLocal();
+        int switchX = sourceSwitchX(font);
+        sbs.modid.client.ui.render.SourceSwitch.draw(g, font, switchX, chipsY(), local, mouseX, mouseY);
+        if (mouseX >= switchX && mouseX < switchX + sbs.modid.client.ui.render.SourceSwitch.width(font)
+                && mouseY >= chipsY() && mouseY < chipsY() + sbs.modid.client.ui.render.SourceSwitch.HEIGHT) {
+            List<Component> tip = new ArrayList<>();
+            for (String line : sbs.modid.client.ui.render.SourceSwitch.tooltip(local)) {
+                tip.add(Component.literal(line));
+            }
+            g.setTooltipForNextFrame(font, tip, java.util.Optional.empty(), mouseX, mouseY,
+                    SBSTheme.tooltipStyle());
+        }
 
         List<Component> status = m.status();
         for (int i = 0; i < status.size(); i++) {
@@ -753,15 +799,36 @@ public final class LocalFlipsWindow {
 
     public boolean handleClick(Screen screen, MouseButtonEvent event) {
         if (!open) {
+            if (showsOpenButton(screen) && event.button() == 0
+                    && event.x() >= minBarX && event.x() < minBarX + minBarW
+                    && event.y() >= minBarY && event.y() < minBarY + minBarH) {
+                show();
+                return true;
+            }
             return false;
         }
         double mx = event.x();
         double my = event.y();
+        if (minimized) {
+            if (event.button() == 0 && mx >= minBarX && mx < minBarX + minBarW
+                    && my >= minBarY && my < minBarY + minBarH) {
+                minimized = false;
+                memory.remember(posX, posY, sizeW, sizeH, false);
+                FloatingWindows.raise(FloatingWindows.Layer.LOCAL_FLIPS);
+                return true;
+            }
+            return false;
+        }
         if (!inPanel(mx, my)) {
             return false;
         }
         FloatingWindows.raise(FloatingWindows.Layer.LOCAL_FLIPS);
         if (event.button() != 0) {
+            return true;
+        }
+        if (inMinimizeBox(mx, my)) {
+            minimized = true;
+            memory.remember(posX, posY, sizeW, sizeH, true);
             return true;
         }
         if (inCloseBox(mx, my)) {
@@ -790,6 +857,12 @@ public final class LocalFlipsWindow {
                 ConfigManager.getInstance().save();
                 return true;
             }
+            Boolean picked = sbs.modid.client.ui.render.SourceSwitch.hit(font, sourceSwitchX(font), chipsY(), mx, my);
+            if (picked != null) {
+                sbs.modid.client.core.api.RankingSource.choose(
+                        ConfigManager.getInstance().get().ahFlips.flipSource, picked);
+                return true;
+            }
         }
         model();
         if (bar.handleClick(mx, my, scroll, value -> scroll = value)) {
@@ -808,7 +881,8 @@ public final class LocalFlipsWindow {
         int top = listTop() + card.y() - scroll;
         int lineIndex = (mouseY - (top + CARD_PAD + LINE_H)) / LINE_H;
         if (mouseY >= top + CARD_PAD + LINE_H && lineIndex < card.lines().size()) {
-            long copy = lineIndex == card.normalLine() ? card.normalPrice()
+            long copy = lineIndex == card.fastLine() ? card.fastPrice()
+                    : lineIndex == card.normalLine() ? card.normalPrice()
                     : lineIndex == card.patientLine() ? card.patientPrice() : 0;
             if (copy > 0) {
                 copyPrice(copy);
@@ -838,7 +912,7 @@ public final class LocalFlipsWindow {
         Minecraft minecraft = Minecraft.getInstance();
         minecraft.keyboardHandler.setClipboard(Long.toString(coins));
         if (minecraft.player != null) {
-            minecraft.player.sendOverlayMessage(Component.literal("Kopiert: " + coins).withColor(GREEN));
+            minecraft.player.sendOverlayMessage(Component.literal("Copied: " + coins).withColor(GREEN));
         }
     }
 
@@ -860,7 +934,7 @@ public final class LocalFlipsWindow {
     }
 
     public boolean handleDrag(Screen screen, MouseButtonEvent event) {
-        if (!open) {
+        if (!open || minimized) {
             return false;
         }
         if (dragging) {
@@ -880,7 +954,7 @@ public final class LocalFlipsWindow {
     }
 
     public boolean handleRelease(MouseButtonEvent event) {
-        if (!open) {
+        if (!open || minimized) {
             return false;
         }
         boolean wasBar = bar.release();
@@ -894,7 +968,7 @@ public final class LocalFlipsWindow {
     }
 
     public boolean handleScroll(Screen screen, double mouseX, double mouseY, double scrollY) {
-        if (!open || !inPanel(mouseX, mouseY)) {
+        if (!open || minimized || !inPanel(mouseX, mouseY)) {
             return false;
         }
         if (isCtrlDown()) {
@@ -906,6 +980,64 @@ public final class LocalFlipsWindow {
         }
         scroll = Math.max(0, Math.min(bar.maxScroll(), scroll - (int) Math.round(scrollY * SCROLL_STEP)));
         return true;
+    }
+
+    /**
+     * While the window is closed, the player inventory and the Auction House show the same small
+     * "Flip Finder" bar the minimized window uses, so the window is always one click away. Switched
+     * off with the "Flip Finder Button" setting.
+     */
+    private static boolean showsOpenButton(Screen screen) {
+        if (!cfg().inventoryButton || !(screen instanceof AbstractContainerScreen<?>)) {
+            return false;
+        }
+        if (screen instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen) {
+            return true;
+        }
+        String title = screen.getTitle() == null ? "" : screen.getTitle().getString();
+        return title.toLowerCase(java.util.Locale.ROOT).contains("auction");
+    }
+
+    /** The remembered position, for the open button drawn while the window itself is closed. */
+    private void restorePosition() {
+        memory.restore(state -> {
+            posX = state.x;
+            posY = state.y;
+            sizeW = state.width(sizeW);
+            sizeH = state.height(sizeH);
+            minimized = state.minimized;
+        });
+        if (posX == Integer.MIN_VALUE) {
+            posX = 8;
+            posY = 8;
+        }
+    }
+
+    /** The collapsed state: a small "Flip Finder" bar with a restore glyph; click it to reopen. */
+    private void drawMinimizedBar(Screen screen, GuiGraphicsExtractor g, Font font, int mouseX, int mouseY) {
+        minBarW = font.width("Flip Finder") + 26;
+        minBarH = HEADER_H;
+        minBarX = clamp(posX, MARGIN, Math.max(MARGIN, screen.width - minBarW - MARGIN));
+        minBarY = clamp(posY, MARGIN, Math.max(MARGIN, screen.height - minBarH - MARGIN));
+        boolean hover = mouseX >= minBarX && mouseX < minBarX + minBarW
+                && mouseY >= minBarY && mouseY < minBarY + minBarH;
+        SciFiRender.roundedRectWithBorder(g, minBarX, minBarY, minBarW, minBarH, SBSTheme.CORNER_RADIUS,
+                hover ? SBSTheme.CARD_BG_HOVER : SBSTheme.CARD_BG,
+                hover ? SBSTheme.ACCENT_BRIGHT : SBSTheme.CARD_BORDER);
+        int textY = minBarY + (minBarH - font.lineHeight) / 2 + 1;
+        g.text(font, Component.literal("Flip Finder"), minBarX + 5, textY, SBSTheme.ACCENT_BRIGHT);
+        int gx = minBarX + minBarW - 12;
+        int gy = minBarY + 4;
+        g.fill(gx, gy, gx + 8, gy + 2, SBSTheme.ACCENT);
+        g.outline(gx, gy, 8, minBarH - 8, hover ? SBSTheme.ACCENT_BRIGHT : SBSTheme.ACCENT);
+    }
+
+    private int minimizeX() {
+        return closeX() - 12;
+    }
+
+    private boolean inMinimizeBox(double mx, double my) {
+        return mx >= minimizeX() && mx < minimizeX() + 12 && my >= posY + 2 && my < posY + HEADER_H;
     }
 
     private int closeX() {

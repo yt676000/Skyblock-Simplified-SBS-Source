@@ -49,7 +49,6 @@ public final class AhFlipClient {
     private static final AhFlipClient INSTANCE = new AhFlipClient();
 
     /** The server never sends flips below its own floor; mirror it for the range clamp. */
-    private static final long SERVER_MIN_PRICE = 5_000_000L;
 
     /** Hypixel auction ids are exactly 32 lowercase hex chars - anything else is refused. */
     private static final Pattern AUCTION_ID = Pattern.compile("[0-9a-f]{32}");
@@ -279,7 +278,7 @@ public final class AhFlipClient {
         if (!AUCTION_ID.matcher(auctionId).matches() || !in.has(in.price())) {
             return;
         }
-        long min = Math.max(cfg().minPrice, SERVER_MIN_PRICE);
+        long min = Math.max(0, cfg().minPrice); // client-side only; 0 = no lower bound
         long max = cfg().maxPrice > 0 ? Math.max(cfg().maxPrice, min) : 0;
         long price = in.price();
         long profit = in.has(in.netProfit()) ? in.netProfit() : in.has(in.profitNow()) ? in.profitNow() : 0;

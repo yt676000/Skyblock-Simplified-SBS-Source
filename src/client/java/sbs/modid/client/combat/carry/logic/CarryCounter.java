@@ -22,6 +22,7 @@ import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.social.chat.logic.SBSChat;
 import sbs.modid.client.combat.carry.model.SlayerBoss;
 import sbs.modid.client.combat.slayer.logic.VoidgloomShield;
+import sbs.modid.client.combat.slayer.model.SlayerOwnerLine;
 import sbs.modid.client.combat.carry.render.CarryHighlight;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig.CarryCounterSettings;
@@ -107,13 +108,6 @@ public final class CarryCounter {
     private static final Pattern SLAYED_BY = Pattern.compile(
             "Slayed by\\s+([A-Za-z0-9_]{1,16})", Pattern.CASE_INSENSITIVE);
 
-    /**
-     * The owner line Hypixel writes into every slayer boss's nametag stack – the middle of the three
-     * stacked stands, e.g. {@code "Spawned by: Steve"}. It names the player whose quest spawned the
-     * boss, which is the one piece of hard evidence for "whose boss is this".
-     */
-    private static final Pattern SPAWNED_BY = Pattern.compile(
-            "Spawned by:\\s+([A-Za-z0-9_]{1,16})", Pattern.CASE_INSENSITIVE);
     private static final Pattern NON_NAME_CHARS = Pattern.compile("[^A-Za-z0-9_]");
     private static final Pattern HEALTH_FRACTION = Pattern.compile(".*\\d[\\d.,]*\\s*/\\s*\\d.*");
     private static final Pattern HEALTH_SUFFIXED = Pattern.compile(".*\\d[\\d.,]*[kKmMbB].*");
@@ -418,10 +412,12 @@ public final class CarryCounter {
             // below can match this stand as well - an owner line carries no health readout - so it is
             // taken and the rest of the boss checks are skipped.
             if (spawnedByTags != null) {
-                Matcher spawned = SPAWNED_BY.matcher(stripped);
-                if (spawned.find()) {
+                // The owner line, "Steve's SLAYER BOSS" (formerly "Spawned by: Steve") - see
+                // SlayerOwnerLine.
+                String spawnedBy = SlayerOwnerLine.ownerIn(stripped);
+                if (spawnedBy != null) {
                     spawnedByTags.add(new SpawnedByTag(stand.position(),
-                            spawned.group(1).toLowerCase(Locale.ROOT)));
+                            spawnedBy.toLowerCase(Locale.ROOT)));
                     continue;
                 }
             }

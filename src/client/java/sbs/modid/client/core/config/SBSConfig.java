@@ -522,10 +522,9 @@ public final class SBSConfig {
 
     public static final class MetalDetectorSettings {
         /**
-         * Off by default, and deliberately: the action-bar wording the whole feature reads has
-         * never been checked against a real Mines of Divan, so it may never fire - and a helper
-         * that silently does nothing is worse than one you switched on yourself. Turn it on once
-         * `docs/features/metal-detector.md` says the wording is confirmed.
+         * Off by default until the maintainer switches it on: the action-bar wording was confirmed
+         * in the first watched session (2026-11-26), but no fix has yet been checked against a
+         * chest that was dug up - see {@code docs/features/metal-detector.md}.
          */
         @Shareable(Kind.BOOL)
         public boolean enabled = false;
@@ -2326,6 +2325,18 @@ public final class SBSConfig {
         /** Small HUD line: the Inferno phase and its time. Experimental: off until the phase signal is confirmed in game. */
         @Shareable(Kind.BOOL)
         public boolean infernoPhaseTimer = false;
+        /** Big readout of the Blaze dagger in your hand: its current mode and the mode it flips to. */
+        @Shareable(Kind.BOOL)
+        public boolean heldDaggerDisplay = true;
+        /** Colour the Inferno boss's box in the attunement it is wearing instead of the phase colour. */
+        @Shareable(Kind.BOOL)
+        public boolean bossAttunementColor = true;
+        /** Also box the demon showing IMMUNE (in grey); off draws only the one you can hit. */
+        @Shareable(Kind.BOOL)
+        public boolean demonBoxImmune = true;
+        /** Alert when your Quazii's beam guardian starts charging at you. Experimental: the beam target is read off the guardian, unconfirmed in game. */
+        @Shareable(Kind.BOOL)
+        public boolean quaziiBeamAlert = false;
 
         // --- Vampire (Riftstalker) ---
         /** Big alert on the boss's Twinclaws attack. */
@@ -4091,6 +4102,10 @@ public static final class CaseOpeningSettings {
         @Shareable(Kind.BOOL)
         public boolean spawnAlert = true;
 
+        /** Centre-screen notice when the hotspot your bobber was in despawns. */
+        @Shareable(Kind.BOOL)
+        public boolean hotspotGoneAlert = true;
+
         /** Which spawns raise the alert: everything, or only the trophies. */
         @Shareable(value = Kind.ENUM, enumType = SpawnAlertFilter.class)
         public SpawnAlertFilter alertFilter = SpawnAlertFilter.MYTHIC_AND_LEGENDARY;
@@ -4430,6 +4445,25 @@ public static final class CaseOpeningSettings {
         @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.skills.fishing.model.FishingShareMode.class)
         public sbs.modid.client.skills.fishing.model.FishingShareMode rareShareMode =
                 sbs.modid.client.skills.fishing.model.FishingShareMode.CLICK;
+
+        /**
+         * Share a rare catch in the plain format other fishing mods read
+         * ("--> A Thunder has spawned <--") instead of SBS's coordinate line.
+         */
+        @Shareable(Kind.BOOL)
+        public boolean rareCompatFormat = true;
+
+        /** Alert when a party member shares a spawn ("--> A RAGNAROK has spawned <--"). */
+        @Shareable(Kind.BOOL)
+        public boolean partySpawnAlert = true;
+
+        /** All / only the list / all but the list. */
+        @Shareable(value = Kind.ENUM, enumType = sbs.modid.client.skills.fishing.model.PartyAlertListMode.class)
+        public sbs.modid.client.skills.fishing.model.PartyAlertListMode partySpawnListMode =
+                sbs.modid.client.skills.fishing.model.PartyAlertListMode.ALL;
+
+        /** Comma-separated creatures for the white/blacklist. Not shareable: can exceed 64 chars. */
+        public String partySpawnList = "";
     }
 
     /** Settings shared by every Foraging module (Beacon Tuning, and whatever Galatea gets next). */
@@ -5492,17 +5526,10 @@ public static final class CaseOpeningSettings {
         public boolean chatAlerts = false;
 
         /**
-         * Movable Flips window (like the Bazaar Best Flips window) listing the current flips,
-         * auto-opening over the player inventory and Hypixel's Auction House GUIs.
+         * Lower bound of the alert price range in coins (total auction price), filtered in the
+         * mod only; {@code 0} = show all flips. The server has no floor of its own.
          */
-        @Shareable(Kind.BOOL)
-        public boolean windowOverlay = true;
-
-        /**
-         * Lower bound of the alert price range in coins (total auction price). The server never
-         * sends flips below its own floor (5m), so values below that are raised to it.
-         */
-        public long minPrice = 5_000_000;
+        public long minPrice = 0;
 
         /** Upper bound of the alert price range in coins; {@code 0} = unlimited. */
         public long maxPrice = 0;
@@ -7149,7 +7176,7 @@ public static final class CaseOpeningSettings {
 
         /** Comma-separated name keywords whose labels are always shown (case-insensitive substring). */
         public String nametagAlwaysShow = "Inquisitor, Minos, Sphinx, Manticore, Minotaur, Gaia Construct, "
-                + "Siamese Lynx, Horror, Broodfather, Packmaster, Seraph, Demonlord, Bloodfiend, Spawned by";
+                + "Siamese Lynx, Horror, Broodfather, Packmaster, Seraph, Demonlord, Bloodfiend, Spawned by, SLAYER BOSS";
 
         /** Also hide mob labels behind blocks, re-checked every few ticks per label. */
         @Shareable(Kind.BOOL)
@@ -8894,6 +8921,15 @@ public static final class CaseOpeningSettings {
         public int leapTankKey = 0;
         @Shareable(Kind.KEYCODE)
         public int leapHealerKey = 0;
+        /** Custom Leap Menu: an SBS screen (one button per teammate) over the leap chest. Needs leapMenuEnabled. */
+        @Shareable(Kind.BOOL)
+        public boolean leapCustomMenu = true;
+        /** Custom Leap Menu: show the dungeon map under the buttons (also flipped by the on-screen toggle). */
+        @Shareable(Kind.BOOL)
+        public boolean leapShowMap = true;
+        /** Custom Leap Menu: button size in percent of the default. */
+        @Shareable(value = Kind.INT, min = 60, max = 160)
+        public int leapButtonScale = 100;
 
         /** Positional Messages: fire a message when near a saved coordinate. Outbound-capable → off. */
         @Shareable(Kind.BOOL)
@@ -9618,6 +9654,9 @@ public static final class CaseOpeningSettings {
         /** Server Scanner: a session stops by itself once its files pass this size, in MB. */
         public int scannerMaxMb = 200;
 
+        /** Server Scanner: record every Kuudra run by itself with the kuudra_run preset (developer mode only). */
+        public boolean scannerAutoKuudra = false;
+
         /** Numpad 9 – opens the name GUI, then scans the room. */
         public int scanRoomKey = 329;
 
@@ -9717,6 +9756,9 @@ public static final class CaseOpeningSettings {
     public static final class LocalFlipSettings {
         /** Off: no connection and no thread. */
         public boolean enabled = false;
+
+        /** A "Flip Finder" open button in the inventory and the Auction House while the window is closed. */
+        public boolean inventoryButton = true;
 
         /** Base address of the flip program; only loopback and private LAN addresses are used. */
         public String url = "http://127.0.0.1:3020";

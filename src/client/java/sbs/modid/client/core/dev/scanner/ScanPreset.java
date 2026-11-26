@@ -71,6 +71,18 @@ public enum ScanPreset {
     KUUDRA(64, true, text(ENTITY, DAMAGE, SOUND, TITLE, INVENTORY, WORLD, MOUSE)),
 
     /**
+     * One whole Kuudra run, started and stopped by itself ({@code combat/kuudra/logic/KuudraScan}) or
+     * with {@code /sbs scan kuudra}. Everything a Kuudra feature might read: titles and boss bars,
+     * every entity (crates, Kuudra, Elle, the piles), particles (aggregated per type per second) and
+     * block updates - only inside the arena box, where the ballista, the pre spots and the platform
+     * are. The radius covers the whole arena from any pile.
+     */
+    KUUDRA_RUN(96, true, text(TITLE, ENTITY, DAMAGE, SOUND, PARTICLES, BLOCKS, WORLD, INVENTORY),
+            // min x, y, z then max: the supply spots span x -143..-65, z -151..-68 and the boss floor
+            // is below y 10. A margin on every side, so nothing at the edge of a pile is cut off.
+            new int[]{-175, 0, -185, -35, 130, -35}),
+
+    /**
      * Diana: burrows and the spade's guess are particles and sounds, the inquisitor an entity
      * spawn. A wide radius, because the burrow particles are what is being looked for.
      */
@@ -80,11 +92,29 @@ public enum ScanPreset {
     /** Whether other real players are recorded (a party matters there); otherwise they are noise. */
     public final boolean keepPlayers;
     private final Set<ScanChannel> channels;
+    /** Block updates outside this box ({@code minX, minY, minZ, maxX, maxY, maxZ}) are not written; null = radius only. */
+    private final int[] blockBox;
 
     ScanPreset(int radius, boolean keepPlayers, Set<ScanChannel> channels) {
+        this(radius, keepPlayers, channels, null);
+    }
+
+    ScanPreset(int radius, boolean keepPlayers, Set<ScanChannel> channels, int[] blockBox) {
         this.radius = radius;
         this.keepPlayers = keepPlayers;
         this.channels = channels;
+        this.blockBox = blockBox;
+    }
+
+    /** Whether a block update at {@code x, y, z} is inside this preset's box (always, without one). */
+    public boolean inBlockBox(int x, int y, int z) {
+        return blockBox == null
+                || x >= blockBox[0] && y >= blockBox[1] && z >= blockBox[2]
+                && x <= blockBox[3] && y <= blockBox[4] && z <= blockBox[5];
+    }
+
+    public boolean hasBlockBox() {
+        return blockBox != null;
     }
 
     /** A copy the caller may extend. Never contains the always-on channels. */

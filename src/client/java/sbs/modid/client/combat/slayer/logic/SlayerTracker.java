@@ -23,6 +23,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.item.PrimedTnt;
+import net.minecraft.world.entity.monster.Guardian;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -37,6 +38,7 @@ import sbs.modid.client.combat.slayer.model.BlazeAttunement;
 import sbs.modid.client.combat.slayer.model.InfernoDemon;
 import sbs.modid.client.combat.slayer.model.InfernoPhase;
 import sbs.modid.client.combat.slayer.model.SlayerData;
+import sbs.modid.client.combat.slayer.model.SlayerOwnerLine;
 import sbs.modid.client.combat.slayer.render.SlayerAlerts;
 import sbs.modid.client.combat.slayer.render.SlayerHighlight;
 import sbs.modid.client.core.config.ConfigManager;
@@ -110,33 +112,40 @@ public final class SlayerTracker {
     private static final long PILLAR_FORGET_MS = 1_500L;
 
     /**
-     * The line that says whose slayer boss a nametag stack belongs to, e.g.
-     * {@code "Spawned by: Panikstrange"}. It is the only owner information in the world – everything
-     * else about two players' bosses looks identical – so it is what turns "which of these is mine"
-     * from a guess into a fact.
-     */
-    private static final Pattern SPAWNED_BY = Pattern.compile("Spawned by: (\\S+)");
-
-    /**
      * The Blaze attunement tag: the word, optionally followed by the shield's number, e.g.
-     * {@code "ASHEN ✦6 04:16"}. The number is only taken when nothing digit-like or a colon follows
-     * it, so the quest clock on the same line is never mistaken for it.
+     * {@code "ASHEN ♨8 04:19"} (captured 2026-11-22). The number is only taken when nothing digit-like
+     * or a colon follows it, so the quest clock on the same line is never mistaken for it.
      */
     private static final Pattern ATTUNEMENT_TAG = Pattern.compile(
             "\\b(?:ASHEN|SPIRIT|AURIC|CRYSTAL)\\b(?:\\D{0,4}(\\d{1,2})(?![\\d:]))?",
             Pattern.CASE_INSENSITIVE);
 
-    /** How far a tag may sit from your own "Spawned by" line and still be part of the same stack. */
+    /** How far a tag may sit from your own owner line and still be part of the same stack. */
     private static final double OWNED_STACK_RANGE = 4.0;
+    /**
+     * One nametag stack, as Hypixel builds it: the lines of a boss or demon stand at the same x/z,
+     * 0.3 blocks apart (name, owner line, attunement / IMMUNE). Tight on purpose – in a packed Smoldering
+     * Tomb two players' demons can stand a couple of blocks apart, and only the owner line in the SAME
+     * stack says whose a demon is.
+     */
+    private static final double STACK_XZ = 0.8;
+    private static final double STACK_DY = 1.5;
+    /** The word on a demon's third line while it cannot be hurt ("IMMUNE 04:07"). */
+    private static final String IMMUNE_WORD = "IMMUNE";
+    /** How far around your Quazii its beam guardian is looked for (it sits about 2.4 below the skeleton). */
+    private static final double BEAM_GUARDIAN_XZ = 1.5;
+    private static final double BEAM_GUARDIAN_Y = 4.0;
     /** How far a demon may have wandered from where your fight was and still be yours. */
     private static final double DEMON_RANGE = 12.0;
     /** The fight anchor goes stale this long after the last sign of your own Inferno fight. */
     private static final long ANCHOR_TTL_MS = 15_000L;
     /** How far from your fight a Quazii / Typhoeus tag may stand and still be one of yours. */
     private static final double DEMON_FIGHT_RANGE = 16.0;
-    /** How far an attunement word may float from a demon's name and still be that demon's. */
-    private static final double DEMON_STACK_RANGE = 3.0;
-    /** Inferno probe: tags worth printing during the fight – demon names and phase-sounding words. */
+    /**
+     * Inferno probe: tags worth printing during the fight – demon names and phase-sounding words.
+     * Matched against the tag with circled letters folded ({@link InfernoDemon#foldCircled}), which is
+     * how the demon names are actually printed.
+     */
     private static final Pattern INFERNO_PROBE = Pattern.compile(
             "quazii|typhoeus|demon|immune|invulnerable|split", Pattern.CASE_INSENSITIVE);
     /** Probe lines per fight at most, so one long fight cannot flood the log. */
@@ -428,6 +437,16 @@ public final class SlayerTracker {
     private int infernoProbeLines;
     /** Your own boss's last confirmed position this fight; gates the demons against a neighbour's. */
     private Vec3 ownBossPos;
+    /** The demon of yours that can be hit right now (the one not showing IMMUNE), or null. */
+    private volatile InfernoDemon hittableDemon;
+    /** Per own demon, the "immune / attunement" state last logged, so the probe logs changes only. */
+    private final Map<InfernoDemon, String> demonStateLogged = new HashMap<>();
+    /** The beam guardian of your Quazii while it is charging at you, else -1. */
+    private int beamGuardianId = -1;
+    /** Charge of that beam, 0..1 (vanilla's attack animation scale), read on the slayer scan. */
+    private volatile float beamCharge;
+    /** Whether your Quazii's beam is charging at you right now. */
+    private volatile boolean beamCharging;
 
     // ---- session stats ----
     private int bossesSlain;
@@ -483,6 +502,11 @@ public final class SlayerTracker {
         long now = System.currentTimeMillis();
         if (settings.enabled && settings.rngMeter) {
             RngMeterTracker.getInstance().onClientTick();   // throttled on its own
+        }
+        if (settings.enabled && settings.heldDaggerDisplay) {
+            updateHandDagger(Minecraft.getInstance().player);
+        } else {
+            handDaggerMode = null;
         }
         if (!settings.enabled || now - lastScanAt < SCAN_INTERVAL_MS) {
             return;
@@ -559,6 +583,9 @@ public final class SlayerTracker {
             infernoLogged.clear();
             infernoProbeLines = 0;
             ownBossPos = null;
+            hittableDemon = null;
+            demonStateLogged.clear();
+            clearBeam();
             clearAttunement();
             VoidgloomFight.getInstance().reset();
         }
@@ -579,14 +606,19 @@ public final class SlayerTracker {
         // The demon boxes take their colour from the attunement each demon wears, so they want the
         // tags read even with every attunement helper off.
         boolean readAttunement = questBoss == SlayerBoss.INFERNO
-                && (blazeHelpersOn(settings) || settings.demonHighlight && settings.demonAttunementColor);
+                && (blazeHelpersOn(settings) || settings.demonHighlight && settings.demonAttunementColor
+                    || settings.phaseHighlight && settings.bossAttunementColor);
         List<DemonTag> demonTags = readDemons ? new ArrayList<>() : List.of();
         String myName = player.getGameProfile().name();
 
-        // Collected here, decided after the loop: whose boss a tag belongs to is settled by the
-        // "Spawned by" line, and the world hands out entities in no particular order, so that line
-        // can turn up long after the tags it explains.
-        Vec3 ownerPos = null;
+        // Collected here, decided after the loop: whose boss a tag belongs to is settled by the owner
+        // line ("Steve's SLAYER BOSS"), and the world hands out entities in no particular order, so
+        // that line can turn up long after the tags it explains. Yours and everybody else's are both
+        // kept: while the boss is split, each demon carries its own owner line, and a demon under a
+        // stranger's line is a stranger's demon however close it stands.
+        List<Vec3> ownLines = new ArrayList<>(3);
+        List<Vec3> foreignLines = readDemons ? new ArrayList<>() : List.of();
+        List<Vec3> immuneLines = readDemons ? new ArrayList<>(2) : List.of();
         List<BossTag> bossTags = new ArrayList<>();
         List<AttunementTag> attunementTags = new ArrayList<>();
         Pattern stateWords = bossUp ? stateWordsFor(questBoss) : null;
@@ -622,10 +654,12 @@ public final class SlayerTracker {
                 continue;
             }
 
-            Matcher owner = SPAWNED_BY.matcher(name);
-            if (owner.find()) {
-                if (owner.group(1).equalsIgnoreCase(myName)) {
-                    ownerPos = entity.position();
+            String owner = SlayerOwnerLine.ownerIn(name);
+            if (owner != null) {
+                if (owner.equalsIgnoreCase(myName)) {
+                    ownLines.add(entity.position());
+                } else if (readDemons) {
+                    foreignLines.add(entity.position());
                 }
                 continue;
             }
@@ -639,6 +673,12 @@ public final class SlayerTracker {
             }
             if (infernoFight) {
                 probeInfernoTag(entity, name, now);
+                // A demon's third line while it cannot be hurt; which demon it marks is settled by
+                // stack after the loop.
+                if (name.startsWith(IMMUNE_WORD)) {
+                    immuneLines.add(entity.position());
+                    continue;
+                }
             }
             if (readAttunement) {
                 AttunementTag tag = readAttunementTag(entity, raw, name);
@@ -757,18 +797,21 @@ public final class SlayerTracker {
             }
         }
 
-        BossTag mine = pickOwnBoss(bossTags, ownerPos, player);
+        BossTag mine = pickOwnBoss(bossTags, ownLines, player);
+        // Your own line on the boss you picked: proof the boss is yours, not the nearest-boss guess.
+        Vec3 ownerPos = mine == null ? null : nearest(ownLines, mine.pos(), OWNED_STACK_RANGE);
         LivingEntity closestBoss = stickToBoss(mine, now);
         bossEntity = closestBoss;
-        resolveAttunement(attunementTags, ownerPos, now, settings);
-        resolveDemons(demonTags, attunementTags, ownerPos, player, boxes, now, settings);
+        resolveAttunement(attunementTags, ownLines, player, now, settings);
+        resolveDemons(level, demonTags, attunementTags, immuneLines, ownLines, foreignLines, ownerPos,
+                player, boxes, now, settings);
         scanHotbarDagger(player);
         updateBossState(mine, stateTags, settings);
         updateStakeWindow(mine, closestBoss, boxes, now);
         if (tagSample != null && mine != null) {
             logTagsNearBoss(tagSample, mine.pos(), now);
         }
-        // Voidgloom shield count + laser phase: only a boss proven yours by its "Spawned by" line,
+        // Voidgloom shield count + laser phase: only a boss proven yours by its owner line,
         // never the nearest-boss fallback - a stranger's shield count is worse than none.
         if (questBoss == SlayerBoss.VOIDGLOOM && bossUp && mine != null && ownerPos != null
                 && closestBoss != null && (settings.voidgloomShieldHud || settings.voidgloomLaserTimer)) {
@@ -788,6 +831,17 @@ public final class SlayerTracker {
                 case STATE -> settings.bossStateColor.argb();
                 case NORMAL -> settings.phaseNormalColor.argb();
             };
+            // Inferno: the box takes the colour of the attunement your boss is wearing (the word
+            // in its own stack, drawn in Hypixel's colour), so box and dagger mode match at a glance.
+            if (questBoss == SlayerBoss.INFERNO && settings.bossAttunementColor
+                    && (phase == Phase.NORMAL || phase == Phase.STATE)) {
+                for (AttunementTag tag : attunementTags) {
+                    if (sameStack(tag.pos(), mine.pos())) {
+                        color = tag.argb();
+                        break;
+                    }
+                }
+            }
             boxes.add(HighlightBox.onEntity(closestBoss, closestBoss.getBoundingBox(), color, null, false));
         }
 
@@ -1036,46 +1090,89 @@ public final class SlayerTracker {
     /**
      * Which of the slayer bosses standing around is yours.
      *
-     * <p>Hypixel writes the owner into the nametag stack ("Spawned by: …"), so when your own line was
-     * found this scan the answer is exact: your boss is the one whose name tag shares that stack. Only
-     * when the line is missing does this fall back to the old guess – the nearest one – which is right
-     * alone in an area and a coin flip in a busy one.
+     * <p>Hypixel writes the owner into the nametag stack ("Steve's SLAYER BOSS", formerly "Spawned by:
+     * Steve"), so when your own line was found this scan the answer is exact: your boss is the one whose
+     * name tag shares that stack. Only when no line of yours is in sight does this fall back to the old
+     * guess – the nearest one – which is right alone in an area and a coin flip in a busy one.
      */
-    private BossTag pickOwnBoss(List<BossTag> tags, Vec3 ownerPos, LocalPlayer player) {
+    private BossTag pickOwnBoss(List<BossTag> tags, List<Vec3> ownLines, LocalPlayer player) {
         BossTag best = null;
         double bestSqr = Double.MAX_VALUE;
         for (BossTag tag : tags) {
-            double sqr = ownerPos != null
-                    ? tag.pos().distanceToSqr(ownerPos) : tag.mob().distanceToSqr(player);
+            double sqr;
+            if (ownLines.isEmpty()) {
+                sqr = tag.mob().distanceToSqr(player);
+            } else {
+                sqr = Double.MAX_VALUE;
+                for (Vec3 line : ownLines) {
+                    sqr = Math.min(sqr, tag.pos().distanceToSqr(line));
+                }
+            }
             if (sqr < bestSqr) {
                 bestSqr = sqr;
                 best = tag;
             }
         }
-        if (ownerPos != null && bestSqr > OWNED_STACK_RANGE * OWNED_STACK_RANGE) {
+        if (!ownLines.isEmpty() && bestSqr > OWNED_STACK_RANGE * OWNED_STACK_RANGE) {
             return null;   // bosses are up, but none of them stands under your own line
         }
         return best;
     }
 
+    /** The point of {@code points} nearest to {@code to}, if within {@code range}; else null. */
+    private static Vec3 nearest(List<Vec3> points, Vec3 to, double range) {
+        Vec3 best = null;
+        double bestSqr = range * range;
+        for (Vec3 point : points) {
+            double sqr = point.distanceToSqr(to);
+            if (sqr <= bestSqr) {
+                bestSqr = sqr;
+                best = point;
+            }
+        }
+        return best;
+    }
+
+    /** Whether two nametag lines belong to the same stack: same x/z, a line or a few apart. */
+    static boolean sameStack(Vec3 a, Vec3 b) {
+        double dx = a.x - b.x;
+        double dz = a.z - b.z;
+        return dx * dx + dz * dz <= STACK_XZ * STACK_XZ && Math.abs(a.y - b.y) <= STACK_DY;
+    }
+
+    /** Whether any of {@code lines} is in the same stack as {@code pos}. */
+    private static boolean onStack(Vec3 pos, List<Vec3> lines) {
+        for (Vec3 line : lines) {
+            if (sameStack(pos, line)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
-     * Boxes your own Quazii and Typhoeus and moves the phase clock.
+     * Boxes your own Quazii and Typhoeus, says which of them can be hit, watches Quazii's beam and
+     * moves the phase clock.
      *
-     * <p>Whose demons they are is the same question {@link #resolveAttunement} answers, and with the
-     * same handicap: the demons carry no "Spawned by" line. So they are claimed by distance from the
-     * fight – your own line while it is in sight, the attunement anchor while that is fresh, and
-     * otherwise where your demons were last seen, which they then carry along as they walk.
+     * <p>Whose demons they are is read off their own stacks: since November 2026 each demon carries
+     * an owner line like the boss does ("Steve's SLAYER BOSS"), so a demon under your line is yours
+     * and one under anybody else's is not, however close it stands. Only a demon with no owner line in
+     * its stack at all (an older format, or the line not loaded yet) falls back to the distance claim
+     * – your boss's last stack, the attunement anchor, where your demons were last seen.
+     *
+     * <p>The third line of each demon is either its attunement or "IMMUNE": only one of the two can be
+     * hurt at a time, and that is the one worth a box in the attunement colour.
      *
      * <p>Only demons you can actually see are boxed, as with the starred-mob boxes: the box is there
      * to point at a target, and one drawn through a wall points at nothing you can hit.
      */
-    private void resolveDemons(List<DemonTag> tags, List<AttunementTag> attunementTags, Vec3 ownerPos,
-                               LocalPlayer player, List<HighlightBox> boxes, long now,
+    private void resolveDemons(ClientLevel level, List<DemonTag> tags, List<AttunementTag> attunementTags,
+                               List<Vec3> immuneLines, List<Vec3> ownLines, List<Vec3> foreignLines,
+                               Vec3 ownerPos, LocalPlayer player, List<HighlightBox> boxes, long now,
                                SlayerSettings settings) {
         boolean infernoFight = questBoss == SlayerBoss.INFERNO && bossUp;
-        // The last place your own boss was confirmed (its stack carried your name). The boss sits
-        // the split out where it stood, so this is the one fixed point the demons cannot drag
-        // somewhere else - see the neighbour-fight gate below.
+        // The last place your own boss was confirmed (its stack carried your name). Used only for
+        // demons without an owner line - see the neighbour-fight gate below.
         if (ownerPos != null && bossEntity != null) {
             ownBossPos = bossEntity.position();
         }
@@ -1091,16 +1188,18 @@ public final class SlayerTracker {
         }
 
         List<DemonTag> mine = new ArrayList<>(2);
-        if (anchor != null) {
-            for (DemonTag tag : tags) {
-                // Neighbour-fight gate: in a packed spot (the Smoldering Tomb) the next player's
-                // demons stand within range of a drifting anchor, and the demon anchor would then
-                // follow them. Measured against your own boss's last position as well, they cannot.
-                if (tag.pos().distanceToSqr(anchor) <= DEMON_FIGHT_RANGE * DEMON_FIGHT_RANGE
-                        && (ownBossPos == null
-                            || tag.pos().distanceToSqr(ownBossPos) <= DEMON_FIGHT_RANGE * DEMON_FIGHT_RANGE)) {
-                    mine.add(tag);
-                }
+        for (DemonTag tag : tags) {
+            if (onStack(tag.pos(), ownLines)) {
+                mine.add(tag);   // your name is on its stack: yours, full stop
+            } else if (onStack(tag.pos(), foreignLines)) {
+                continue;        // somebody else's name is on it
+            } else if (anchor != null
+                    && tag.pos().distanceToSqr(anchor) <= DEMON_FIGHT_RANGE * DEMON_FIGHT_RANGE
+                    && (ownBossPos == null
+                        || tag.pos().distanceToSqr(ownBossPos) <= DEMON_FIGHT_RANGE * DEMON_FIGHT_RANGE)) {
+                // No owner line at all: the old distance claim, gated against your boss's last
+                // position so a drifting anchor cannot follow a neighbour's demons.
+                mine.add(tag);
             }
         }
         if (!mine.isEmpty()) {
@@ -1108,10 +1207,30 @@ public final class SlayerTracker {
             demonAnchorAt = now;
         }
 
+        // Which of yours can be hit: the one whose stack shows no IMMUNE line. Both can briefly be
+        // open at once (the immune one opens as the other runs low); then the nearer one is named.
+        InfernoDemon hittable = null;
+        double hittableSqr = Double.MAX_VALUE;
+        for (DemonTag tag : mine) {
+            boolean immune = onStack(tag.pos(), immuneLines);
+            AttunementTag worn = attunementOnStack(tag, attunementTags);
+            logDemonState(tag, immune, worn, now);
+            if (!immune) {
+                double sqr = tag.pos().distanceToSqr(player.position());
+                if (sqr < hittableSqr) {
+                    hittableSqr = sqr;
+                    hittable = tag.demon();
+                }
+            }
+        }
+        hittableDemon = hittable;
+
         if (infernoClock.update(now, infernoFight, !mine.isEmpty())) {
             probe(now, "phase " + infernoClock.phase() + " (split " + infernoClock.split() + ")"
                     + (mine.isEmpty() ? "" : " demons=" + mine.size()));
         }
+
+        updateQuaziiBeam(level, mine, player, now, settings);
 
         if (!settings.demonHighlight) {
             return;
@@ -1121,37 +1240,117 @@ public final class SlayerTracker {
             if (!player.hasLineOfSight(target)) {
                 continue;
             }
+            boolean immune = onStack(tag.pos(), immuneLines);
+            if (immune && !settings.demonBoxImmune) {
+                continue;
+            }
             AABB box = tag.mob() != null ? tag.mob().getBoundingBox().inflate(0.1)
                     : tag.tagEntity().getBoundingBox().inflate(0.3);
-            boxes.add(HighlightBox.onEntity(target, box, demonColor(tag, attunementTags, settings),
-                    tag.demon().displayName(), false));
+            AttunementTag worn = immune ? null : attunementOnStack(tag, attunementTags);
+            int color = immune ? DEMON_IMMUNE_COLOR : demonColor(tag, worn, settings);
+            String label = tag.demon().displayName()
+                    + (immune ? " · IMMUNE" : worn != null ? " · " + worn.attunement() : "");
+            boxes.add(HighlightBox.onEntity(target, box, color, label, false));
         }
+    }
+
+    /** The grey of a demon that cannot be hit right now. */
+    private static final int DEMON_IMMUNE_COLOR = 0xFF8A8A8A;
+
+    /**
+     * The attunement line in the demon's own stack. Lines share the demon's x/z exactly; the older
+     * 3-block radius would, in a packed Tomb, hand a demon its neighbour's word.
+     */
+    private static AttunementTag attunementOnStack(DemonTag demon, List<AttunementTag> attunementTags) {
+        for (AttunementTag tag : attunementTags) {
+            if (sameStack(tag.pos(), demon.pos())) {
+                return tag;
+            }
+        }
+        return null;
     }
 
     /**
      * The attunement colour off the demon's own stack when it wears one and that is wanted, else the
      * colour picked for that demon.
      */
-    private static int demonColor(DemonTag demon, List<AttunementTag> attunementTags,
-                                  SlayerSettings settings) {
-        if (settings.demonAttunementColor) {
-            AttunementTag best = null;
-            double bestSqr = DEMON_STACK_RANGE * DEMON_STACK_RANGE;
-            for (AttunementTag tag : attunementTags) {
-                double sqr = tag.pos().distanceToSqr(demon.pos());
-                if (sqr <= bestSqr) {
-                    bestSqr = sqr;
-                    best = tag;
-                }
-            }
-            if (best != null) {
-                return best.argb();
-            }
+    private static int demonColor(DemonTag demon, AttunementTag worn, SlayerSettings settings) {
+        if (settings.demonAttunementColor && worn != null) {
+            return worn.argb();
         }
         return switch (demon.demon()) {
             case QUAZII -> settings.quaziiColor.argb();
             case TYPHOEUS -> settings.typhoeusColor.argb();
         };
+    }
+
+    /** One probe line whenever one of your demons turns immune, opens, or changes attunement. */
+    private void logDemonState(DemonTag tag, boolean immune, AttunementTag worn, long now) {
+        String state = immune ? "IMMUNE" : worn != null ? worn.attunement().name() : "open";
+        if (!state.equals(demonStateLogged.put(tag.demon(), state))) {
+            probe(now, "own " + tag.demon().displayName() + " -> " + state
+                    + " type=" + (tag.mob() == null ? "none" : speciesOf(tag.mob())));
+        }
+    }
+
+    /**
+     * Quazii's beam: Hypixel puts an invisible guardian inside your Quazii (2026-11-22 scan: spawned at
+     * the skeleton about 2.5 s after it, died with it), and its beam does 1,500 true damage ("You took
+     * 1,500 true damage from Quazii's beam!"). A guardian syncs its beam target to the client, so the
+     * charge-up is visible before the hit: warn once per charge aimed at you, and keep the charge for
+     * the phase line.
+     */
+    private void updateQuaziiBeam(ClientLevel level, List<DemonTag> mine, LocalPlayer player, long now,
+                                  SlayerSettings settings) {
+        if (!settings.quaziiBeamAlert) {
+            clearBeam();
+            return;
+        }
+        Guardian charging = null;
+        for (DemonTag tag : mine) {
+            if (tag.demon() != InfernoDemon.QUAZII || tag.mob() == null) {
+                continue;
+            }
+            AABB around = tag.mob().getBoundingBox().inflate(BEAM_GUARDIAN_XZ, BEAM_GUARDIAN_Y, BEAM_GUARDIAN_XZ);
+            for (Guardian guardian : level.getEntitiesOfClass(Guardian.class, around)) {
+                if (guardian.hasActiveAttackTarget() && guardian.getActiveAttackTarget() == player) {
+                    charging = guardian;
+                    break;
+                }
+            }
+        }
+        if (charging == null) {
+            clearBeam();
+            return;
+        }
+        beamCharging = true;
+        beamCharge = Math.max(0f, Math.min(1f, charging.getAttackAnimationScale(0f)));
+        if (beamGuardianId != charging.getId()) {
+            beamGuardianId = charging.getId();
+            SlayerAlerts.getInstance().trigger("BEAM!", 0xFF55FFFF);
+            probe(now, "Quazii beam charging at you (guardian " + charging.getId() + ")");
+        }
+    }
+
+    private void clearBeam() {
+        beamGuardianId = -1;
+        beamCharging = false;
+        beamCharge = 0f;
+    }
+
+    /** The demon of yours that can be hit right now, or null outside a split. */
+    public InfernoDemon hittableDemon() {
+        return hittableDemon;
+    }
+
+    /** Whether your Quazii's beam is charging at you (needs the beam alert on). */
+    public boolean quaziiBeamCharging() {
+        return beamCharging;
+    }
+
+    /** How far that beam has charged, 0..1. */
+    public float quaziiBeamCharge() {
+        return beamCharge;
     }
 
     /**
@@ -1162,7 +1361,8 @@ public final class SlayerTracker {
      * one per hit – the line itself still carries the real text and health as first seen.
      */
     private void probeInfernoTag(Entity entity, String name, long now) {
-        if (infernoProbeLines >= INFERNO_PROBE_MAX || !INFERNO_PROBE.matcher(name).find()
+        if (infernoProbeLines >= INFERNO_PROBE_MAX
+                || !INFERNO_PROBE.matcher(InfernoDemon.foldCircled(name)).find()
                 || !infernoLogged.add(entity.getId() + "|" + InfernoDemon.withoutNumbers(name))) {
             return;
         }
@@ -1219,52 +1419,64 @@ public final class SlayerTracker {
      * Settles which attunement is the one YOU have to match, out of every attuned mob in sight.
      *
      * <p>The hard part is not reading the word – it is printed plainly – but knowing whose fight it
-     * belongs to, and that changes shape halfway through. While the Demonlord is whole its stack
-     * carries your name, so the tag next to that name is yours, full stop. When it splits into the two
-     * demons the name goes with it: the demons are labelled with their attunement and nothing else.
+     * belongs to. Since November 2026 that is exact for the whole fight: the boss's stack carries your
+     * owner line ("Steve's SLAYER BOSS"), and when it splits, each demon's stack carries it too (scan of
+     * 2026-11-22). The demon you cannot hurt shows "IMMUNE" where the other shows its attunement, so the
+     * attunement line in a stack of yours is the one to match. Should both demons be open at once, the
+     * nearer one to you is reported.
      *
-     * <p>So the fight keeps an anchor instead of an identity. It is re-pinned to your own "Spawned by"
-     * line every scan that line exists, and while it does not, it rides along with the attuned mob it
-     * already pointed at – the demons walk, and an anchor left behind where the boss stood would go
-     * stale in seconds.
-     *
-     * <p>Both demons usually sit inside that radius and only one of them can be hit at a time, which
-     * the tags do not say; the nearer one to the anchor is reported, on the grounds that the one
-     * engaging you is the one you are meant to be swinging at.
+     * <p>Only when no line of yours is in sight does the old anchor take over: the place your fight was
+     * last confirmed, carried along by the attuned mob it points at, for {@link #ANCHOR_TTL_MS}.
      */
-    private void resolveAttunement(List<AttunementTag> tags, Vec3 ownerPos, long now,
-                                   SlayerSettings settings) {
+    private void resolveAttunement(List<AttunementTag> tags, List<Vec3> ownLines, LocalPlayer player,
+                                   long now, SlayerSettings settings) {
         if (questBoss != SlayerBoss.INFERNO || !blazeHelpersOn(settings)) {
             clearAttunement();
             return;
         }
-        if (ownerPos != null) {
-            blazeAnchor = ownerPos;
-            blazeAnchorAt = now;
-        }
-        if (blazeAnchor == null || now - blazeAnchorAt > ANCHOR_TTL_MS) {
-            logAttunementGate(tags, "no fight anchor", now);
-            clearAttunement();
-            return;
-        }
-
-        double range = ownerPos != null ? OWNED_STACK_RANGE : DEMON_RANGE;
         AttunementTag primary = null;
-        double bestDistance = Double.MAX_VALUE;
-        for (AttunementTag tag : tags) {
-            double distance = tag.pos().distanceTo(blazeAnchor);
-            if (distance <= range && distance < bestDistance) {
-                bestDistance = distance;
-                primary = tag;
+        boolean owned = false;
+        if (!ownLines.isEmpty()) {
+            double bestSqr = Double.MAX_VALUE;
+            for (AttunementTag tag : tags) {
+                if (onStack(tag.pos(), ownLines)) {
+                    double sqr = tag.pos().distanceToSqr(player.position());
+                    if (sqr < bestSqr) {
+                        bestSqr = sqr;
+                        primary = tag;
+                    }
+                }
             }
-        }
-        if (primary == null) {
-            logAttunementGate(tags, "all of them further than " + range + " from the anchor", now);
-            clearAttunement();
-            return;
-        }
-        if (ownerPos == null) {
-            blazeAnchor = primary.pos();   // the demons carry the fight; follow them
+            if (primary == null) {
+                // Your stacks are in sight but none shows an attunement (both demons immune, or the
+                // split just happening): nothing to match right now, and nobody else's word either.
+                logAttunementGate(tags, "none on your own stacks", now);
+                clearAttunement();
+                return;
+            }
+            owned = true;
+            blazeAnchor = primary.pos();
+            blazeAnchorAt = now;
+        } else {
+            if (blazeAnchor == null || now - blazeAnchorAt > ANCHOR_TTL_MS) {
+                logAttunementGate(tags, "no fight anchor", now);
+                clearAttunement();
+                return;
+            }
+            double bestDistance = Double.MAX_VALUE;
+            for (AttunementTag tag : tags) {
+                double distance = tag.pos().distanceTo(blazeAnchor);
+                if (distance <= DEMON_RANGE && distance < bestDistance) {
+                    bestDistance = distance;
+                    primary = tag;
+                }
+            }
+            if (primary == null) {
+                logAttunementGate(tags, "all of them further than " + DEMON_RANGE + " from the anchor", now);
+                clearAttunement();
+                return;
+            }
+            blazeAnchor = primary.pos();   // no line of yours in sight; follow the attuned mob
             blazeAnchorAt = now;
         }
         BlazeAttunement previous = neededAttunement;
@@ -1272,7 +1484,7 @@ public final class SlayerTracker {
         attunementColor = primary.argb();
         attunementSeenAt = now;
         if (previous != neededAttunement) {
-            logAttunement(primary, ownerPos != null, now);
+            logAttunement(primary, owned, now);
             if (settings.attunementAlert) {
                 SlayerAlerts.getInstance().trigger("SWAP: " + neededAttunement, primary.argb());
             }
@@ -1320,6 +1532,68 @@ public final class SlayerTracker {
         }
         heldAttunement = null;   // the right dagger is not in the hotbar at all
         daggerSlot = -1;
+    }
+
+    // ---- dagger in hand ----
+    /** The mode of the Blaze dagger in your main hand, or null when you hold none. Set every tick. */
+    private volatile BlazeAttunement handDaggerMode;
+    /** What the last name check was made for: hotbar slot and sword item. Re-checked only on change. */
+    private int handDaggerSlot = -1;
+    private net.minecraft.world.item.Item handDaggerItem;
+    private boolean handDaggerNamed;
+    private int handDaggerTicks;
+
+    /**
+     * Which mode the dagger in your hand is in, every tick so the readout follows a flip at once.
+     *
+     * <p>The sword type is checked first and is the mode itself (flipping swaps the item, scan of
+     * 2026-11-22: Pyrochaos Dagger = stone sword in Ashen, Deathripper Dagger = iron sword in Spirit).
+     * Whether that sword is a dagger at all is a name check, which allocates, so it is redone only when
+     * the selected slot or the sword item changes, and once a second besides.
+     */
+    private void updateHandDagger(LocalPlayer player) {
+        if (player == null) {
+            handDaggerMode = null;
+            return;
+        }
+        ItemStack stack = player.getMainHandItem();
+        BlazeAttunement bySword = swordMode(stack);
+        if (bySword == null) {
+            handDaggerMode = null;
+            handDaggerItem = null;
+            return;
+        }
+        int slot = player.getInventory().getSelectedSlot();
+        // Also once a second: another iron sword moved into the same slot keeps slot and item.
+        if (slot != handDaggerSlot || stack.getItem() != handDaggerItem || ++handDaggerTicks >= 20) {
+            handDaggerTicks = 0;
+            handDaggerSlot = slot;
+            handDaggerItem = stack.getItem();
+            handDaggerNamed = daggerMode(stack) != null;
+        }
+        handDaggerMode = handDaggerNamed ? bySword : null;
+    }
+
+    /** The mode a sword item stands for, without looking at its name; null for anything else. */
+    private static BlazeAttunement swordMode(ItemStack stack) {
+        if (stack.is(Items.STONE_SWORD)) {
+            return BlazeAttunement.ASHEN;
+        }
+        if (stack.is(Items.GOLDEN_SWORD)) {
+            return BlazeAttunement.AURIC;
+        }
+        if (stack.is(Items.IRON_SWORD)) {
+            return BlazeAttunement.SPIRIT;
+        }
+        if (stack.is(Items.DIAMOND_SWORD)) {
+            return BlazeAttunement.CRYSTAL;
+        }
+        return null;
+    }
+
+    /** The mode of the Blaze dagger in your main hand, or null when you are not holding one. */
+    public BlazeAttunement handDaggerMode() {
+        return handDaggerMode;
     }
 
     /**

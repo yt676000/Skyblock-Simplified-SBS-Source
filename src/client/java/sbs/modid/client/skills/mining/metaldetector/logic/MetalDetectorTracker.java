@@ -22,7 +22,6 @@ import sbs.modid.client.helper.timers.ServerWorldTime;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -46,13 +45,13 @@ import java.util.regex.Pattern;
  *   <li><b>A new lobby, or leaving the zone.</b> Same problem, with different coordinates.</li>
  * </ul>
  *
- * <h2>The action-bar wording is UNVERIFIED</h2>
- * Nothing here has seen a real Mines of Divan action bar. {@link #TREASURE} is written against the
- * expected {@code TREASURE: 12.3m}. Three log lines under {@code [SBS][Detector]} are the probe that
- * settles it: every bar that mentions treasure but does not parse (once per distinct text), the first
- * parsed reading of each hunt with the player position, and every find with the last reading, where
- * it was taken and the block under the crosshair - which is what says whether the distance is 3D or
- * horizontal. See {@code docs/features/metal-detector.md}.
+ * <h2>What the first session settled (2026-11-26)</h2>
+ * The bar is {@code TREASURE: 38.3m} (CONFIRMED; parsed by {@link MetalDetectorHunt#parseDistance}).
+ * The bar lags the find line by up to a second, so readings are refused for a moment after a find.
+ * The probe lines under {@code [SBS][Detector]} stay: every bar that mentions treasure but does not
+ * parse, the first reading of each hunt, and every find with the last reading, the crosshair block,
+ * every kept sample and the fix - the sample sets are what a real trilateration test is built from.
+ * See {@code docs/features/metal-detector.md}.
  */
 public final class MetalDetectorTracker {
 
@@ -65,14 +64,9 @@ public final class MetalDetectorTracker {
     private static final String WAYPOINT_SOURCE = "metal_detector";
 
     /**
-     * UNVERIFIED. Expected: {@code TREASURE: 12.3m}. Deliberately loose about the label and the
-     * separator, because the one thing worth being strict about is that a number followed by
-     * {@code m} is present.
+     * Anything on the bar that says "treasure" at all, for the diagnostic below - a guard for the day
+     * Hypixel rewords the confirmed {@code TREASURE: 38.3m}.
      */
-    private static final Pattern TREASURE =
-            Pattern.compile("(?i)treasure\\s*:?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*m\\b");
-
-    /** Anything on the bar that says "treasure" at all, for the diagnostic below. */
     private static final Pattern MENTIONS_TREASURE = Pattern.compile("(?i)treasure");
 
     private final MetalDetectorHunt hunt = new MetalDetectorHunt();
@@ -120,16 +114,13 @@ public final class MetalDetectorTracker {
             }
             return;
         }
-        Matcher matcher = TREASURE.matcher(text);
-        if (!matcher.find()) {
+        double distance = MetalDetectorHunt.parseDistance(text);
+        if (Double.isNaN(distance)) {
             noteUnparsed(text);
             return;
         }
-        double distance;
-        try {
-            distance = Double.parseDouble(matcher.group(1));
-        } catch (NumberFormatException e) {
-            return;
+        if (hunt.settling(System.currentTimeMillis())) {
+            return;   // still the chest just dug up
         }
         addSample(text, distance);
     }
@@ -190,7 +181,7 @@ public final class MetalDetectorTracker {
         if (enabled()) {
             logFind(line);
         }
-        if (hunt.onChat(event)) {
+        if (hunt.onChat(event, System.currentTimeMillis())) {
             fix = null;
             WaypointStore.clearTransient(WAYPOINT_SOURCE);
         }
@@ -228,6 +219,25 @@ public final class MetalDetectorTracker {
                         last.distance(), last.x(), last.y(), last.z());
         SkyblockSimplifiedSBS.LOGGER.info("[SBS][Detector] find: \"{}\" - player feet at {}, last "
                 + "reading {}, crosshair block {}{}", line, fmt(player.position()), reading, target, compare);
+        SkyblockSimplifiedSBS.LOGGER.info("[SBS][Detector] find samples ({}): {} -> fix {}",
+                hunt.samples().size(), formatSamples(hunt.samples()), formatFix(fix));
+    }
+
+    /** {@code x y z d} per sample, one decimal - copied as-is into a solver test. */
+    private static String formatSamples(List<MetalDetectorSolver.Sample> samples) {
+        StringBuilder out = new StringBuilder("[");
+        for (MetalDetectorSolver.Sample s : samples) {
+            if (out.length() > 1) {
+                out.append(", ");
+            }
+            out.append(String.format(Locale.ROOT, "%.2f %.2f %.2f %.1f", s.x(), s.y(), s.z(), s.distance()));
+        }
+        return out.append(']').toString();
+    }
+
+    private static String formatFix(MetalDetectorSolver.Fix fix) {
+        return fix == null ? "none" : String.format(Locale.ROOT, "(%.1f, %.1f, %.1f) rms %.2f%s",
+                fix.x(), fix.y(), fix.z(), fix.residual(), fix.heightIsDerived() ? " height derived" : "");
     }
 
     /** Drops every reading and the fix with them. */

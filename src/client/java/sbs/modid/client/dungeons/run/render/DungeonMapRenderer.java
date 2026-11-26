@@ -126,7 +126,7 @@ public final class DungeonMapRenderer {
         drawPanel(g, x, y);
         MapSnapshot snapshot = state.snapshot();
         if (snapshot != null) {
-            drawMap(g, x + PAD, y + PAD, snapshot);
+            drawMap(g, x + PAD, y + PAD, snapshot, null, null, 0, 0, 1f);
         }
         PuzzleChecklistRenderer.render(g, x, y + PANEL_SIZE, PANEL_SIZE, cfg.puzzleChecklist);
         HudLayout.end(g);
@@ -136,7 +136,46 @@ public final class DungeonMapRenderer {
         HudCard.draw(g, x, y, PANEL_SIZE, PANEL_SIZE);
     }
 
-    private static void drawMap(GuiGraphicsExtractor g, int baseX, int baseY, MapSnapshot snapshot) {
+    /** Receives each drawn player marker's centre, in screen pixels. */
+    @FunctionalInterface
+    public interface MarkerSink {
+        void marker(String name, boolean self, int centreX, int centreY);
+    }
+
+    /** Edge of the map's painted area at scale 1 - the unit {@link #drawScaled} scales from. */
+    public static int contentSize() {
+        return CONTENT;
+    }
+
+    /**
+     * The same map the HUD element draws - tiles, doors, labels and player markers - at {@code size}
+     * pixels square with its top-left at {@code (x, y)}, for a screen that wants it larger (the
+     * Custom Leap Menu). {@code highlight} (any case, may be null) rings that player's marker in the
+     * accent colour; {@code sink}, when not null, gets every marker's centre in screen pixels so the
+     * caller can hit-test them. Returns false, drawing nothing, while there is no map snapshot.
+     */
+    public static boolean drawScaled(GuiGraphicsExtractor g, int x, int y, int size, String highlight,
+                                     MarkerSink sink) {
+        MapSnapshot snapshot = DungeonState.getInstance().snapshot();
+        if (snapshot == null || size <= 0) {
+            return false;
+        }
+        float scale = size / (float) CONTENT;
+        Matrix3x2fStack pose = g.pose();
+        pose.pushMatrix();
+        pose.translate(x, y);
+        pose.scale(scale);
+        drawMap(g, 0, 0, snapshot, highlight, sink, x, y, scale);
+        pose.popMatrix();
+        return true;
+    }
+
+    /**
+     * {@code sinkX/sinkY/sinkScale} turn a marker's drawing position into screen pixels for
+     * {@code sink} (the pose may be scaled); the HUD passes no sink.
+     */
+    private static void drawMap(GuiGraphicsExtractor g, int baseX, int baseY, MapSnapshot snapshot,
+                                String highlight, MarkerSink sink, int sinkX, int sinkY, float sinkScale) {
         Font font = Minecraft.getInstance().font;
 
         int cellsX = Math.min(GRID_MAX, snapshot.maxCellX() - snapshot.minCellX() + 1);
@@ -213,7 +252,15 @@ public final class DungeonMapRenderer {
                 int ring = DungeonTeamClasses.colorOf(marker.name(),
                         marker.self() ? MARKER_SELF : MARKER_MATE);
                 PlayerSkin skin = DungeonTeamClasses.skinOf(marker.name());
+                if (highlight != null && highlight.equalsIgnoreCase(marker.name())) {
+                    SciFiRender.roundedRect(g, hx - HEAD / 2 - 6, hy - HEAD / 2 - 6, HEAD + 12, HEAD + 12, 4,
+                            SBSTheme.ACCENT);
+                }
                 drawMarker(g, hx, hy, marker.yawDeg(), ring, marker.self(), skin);
+                if (sink != null) {
+                    sink.marker(marker.name(), marker.self(), sinkX + Math.round(hx * sinkScale),
+                            sinkY + Math.round(hy * sinkScale));
+                }
             }
         } else {
             int px = originX + Math.round((snapshot.playerCellX() - snapshot.minCellX()) * (CELL + LANE));

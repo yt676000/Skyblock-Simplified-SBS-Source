@@ -71,9 +71,12 @@ public final class LeapMenu {
     }
 
     /** True while a Spirit Leap menu is the open screen. */
-    private static boolean isLeapMenu(AbstractContainerScreen<?> screen) {
+    public static boolean isLeapMenu(AbstractContainerScreen<?> screen) {
         String title = screen.getTitle() == null ? "" : FORMATTING.matcher(screen.getTitle().getString()).replaceAll("");
-        return title.toLowerCase(Locale.ROOT).contains("spirit leap");
+        String lower = title.toLowerCase(Locale.ROOT);
+        // Infinileap is assumed to reuse the Spirit Leap title; "infinileap" is matched as well in
+        // case it does not (unverified - no capture of that menu yet).
+        return lower.contains("spirit leap") || lower.contains("infinileap");
     }
 
     /** The class letter a pressed key is bound to, or 0. */
@@ -152,6 +155,9 @@ public final class LeapMenu {
                 seenContainer = menu.containerId;
             }
         }
+        if (LeapScreenOverlay.getInstance().isActive(screen)) {
+            return; // the custom screen covers the chest; the probe/refresh above still ran
+        }
         for (int i = 0; i < upper; i++) {
             Slot slot = menu.getSlot(i);
             String player = playerOf(slot.getItem());
@@ -168,6 +174,35 @@ public final class LeapMenu {
             outline(g, x, y, color);
             g.text(font, Component.literal(String.valueOf(cls)), x + 1, y + 1, color);
         }
+    }
+
+    /**
+     * Every player head in the menu's upper (chest) part, with its slot and both raw names, for the
+     * Custom Leap Menu's model. Built on change only (a new menu state), never per frame.
+     */
+    public java.util.List<LeapLayout.Head> heads(AbstractContainerMenu menu) {
+        java.util.List<LeapLayout.Head> out = new java.util.ArrayList<>();
+        int upper = Math.max(0, menu.getItems().size() - 36);
+        for (int i = 0; i < upper; i++) {
+            String[] raw = rawNames(menu.getSlot(i).getItem());
+            if (raw != null) {
+                out.add(new LeapLayout.Head(i, raw[0], raw[1]));
+            }
+        }
+        return out;
+    }
+
+    /** The GLFW key bound to leap to {@code cls} ({@code 'M','A','B','T','H'}), or 0. */
+    public static int keyFor(char cls) {
+        SBSConfig.DungeonsSettings cfg = cfg();
+        return switch (cls) {
+            case 'M' -> cfg.leapMageKey;
+            case 'A' -> cfg.leapArcherKey;
+            case 'B' -> cfg.leapBerserkKey;
+            case 'T' -> cfg.leapTankKey;
+            case 'H' -> cfg.leapHealerKey;
+            default -> 0;
+        };
     }
 
     /** The player name a leap-menu head belongs to, or null when not a head. */

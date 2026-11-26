@@ -166,6 +166,8 @@ public final class KuudraTracker {
 
     /** Called once per client tick from the shared tick hook. Cheap and self-gating. */
     public void onClientTick() {
+        // First, and outside every gate below: a session's end tail keeps running after the run is gone.
+        KuudraScan.getInstance().tick(System.currentTimeMillis());
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
         // Switching the module off mid-run has to close the run down, not freeze it: leaving the
@@ -261,6 +263,7 @@ public final class KuudraTracker {
         if (now != KuudraSide.UNKNOWN && now != side) {
             side = now;
             log("side -> {} at {}", now.displayName(), describe(found.position()));
+            KuudraScan.getInstance().event("kuudra_side", "side", now.name(), "at", describe(found.position()));
         }
     }
 
@@ -322,6 +325,7 @@ public final class KuudraTracker {
         SupplyTracker.getInstance().onRunStart();
         FreshTracker.getInstance().reset();
         log("run started (T{})", tier);
+        KuudraScan.getInstance().onRunStart(KuudraScan.wanted(), inHollow, tier, now);
     }
 
     /**
@@ -341,6 +345,7 @@ public final class KuudraTracker {
         phaseStart = now;
         log("phase {} -> {} ({})", previous.displayName(), next.displayName(), why);
         KuudraEvents.getInstance().onPhaseChanged(previous, next);
+        KuudraScan.getInstance().onPhase(next, why, now);
     }
 
     /** Drops everything about the run. Safe to call when there is nothing to end. */
@@ -361,6 +366,7 @@ public final class KuudraTracker {
         KuudraEvents.getInstance().onRunEnd();
         if (had) {
             log("run ended ({})", why);
+            KuudraScan.getInstance().onRunEnded(why, System.currentTimeMillis());
         }
     }
 

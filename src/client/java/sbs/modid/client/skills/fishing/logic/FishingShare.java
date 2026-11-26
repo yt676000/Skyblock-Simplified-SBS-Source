@@ -175,7 +175,18 @@ public final class FishingShare {
             return;
         }
         String plain = PlainText.strip(raw).trim();
-        if (plain.isEmpty() || PLAYER_CHAT.matcher(plain).find()) {
+        if (plain.isEmpty()) {
+            return;
+        }
+        // Checked before the player-chat guard: a party share IS player chat, on purpose.
+        if (cfg.partySpawnAlert) {
+            PartySpawnLine.Spawn spawn = PartySpawnLine.parse(plain);
+            if (spawn != null) {
+                onPartySpawn(spawn, cfg);
+                return;
+            }
+        }
+        if (PLAYER_CHAT.matcher(plain).find()) {
             return;
         }
         String creature = FishingData.seaCreatureFor(plain);
@@ -192,6 +203,35 @@ public final class FishingShare {
         onRareCreature(creature, cfg);
     }
 
+    /**
+     * A party member shared a spawn. Your own share echoing back is skipped (you already got the
+     * rare alert), and the same sender + creature within {@link #RARE_DEDUPE_MS} alerts once.
+     */
+    private void onPartySpawn(PartySpawnLine.Spawn spawn, SBSConfig.FishingShareSettings cfg) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player != null && spawn.sender().equalsIgnoreCase(player.getGameProfile().name())) {
+            return;
+        }
+        var mode = cfg.partySpawnListMode == null
+                ? sbs.modid.client.skills.fishing.model.PartyAlertListMode.ALL : cfg.partySpawnListMode;
+        if (!mode.allows(spawn.creature(), HotspotParser.parseCreatureList(cfg.partySpawnList))) {
+            return;
+        }
+        String key = "party:" + spawn.sender().toLowerCase(Locale.ROOT) + ":" + spawn.creature();
+        long now = System.currentTimeMillis();
+        Long seen = rareSeenAt.get(key);
+        if (seen != null && now - seen < RARE_DEDUPE_MS) {
+            return;
+        }
+        rareSeenAt.put(key, now);
+        int mask = (cfg.rareTitle ? AlertChannel.TITLE.bit() : 0)
+                | (cfg.rareSound ? AlertChannel.SOUND.bit() : 0);
+        if (mask != 0) {
+            String title = spawn.doubleHook() ? "2x " + spawn.creature() : spawn.creature();
+            Alerts.send(new Alerts.Alert(title, "Spawned by " + spawn.sender(), SbsAudio.Tone.ALARM, null), mask);
+        }
+    }
+
     private void onRareCreature(String creature, SBSConfig.FishingShareSettings cfg) {
         int mask = (cfg.rareTitle ? AlertChannel.TITLE.bit() : 0)
                 | (cfg.rareSound ? AlertChannel.SOUND.bit() : 0);
@@ -203,9 +243,11 @@ public final class FishingShare {
         if (mode == FishingShareMode.OFF || player == null) {
             return;
         }
-        String message = HotspotParser.shareMessage(creature,
-                (int) Math.floor(player.getX()), (int) Math.floor(player.getY()) - 1,
-                (int) Math.floor(player.getZ()), SkyBlockLocation.island());
+        String message = cfg.rareCompatFormat
+                ? compatMessage(creature)
+                : HotspotParser.shareMessage(creature,
+                        (int) Math.floor(player.getX()), (int) Math.floor(player.getY()) - 1,
+                        (int) Math.floor(player.getZ()), SkyBlockLocation.island());
         if (mode == FishingShareMode.AUTO) {
             send("party", message);
             return;
@@ -213,6 +255,13 @@ public final class FishingShare {
         int id = park(message);
         SBSChat.send("FishingShare", Component.literal(" Share " + creature + ": ").withColor(SBSChat.WHITE)
                 .append(button("[To PARTY chat]", 0x57D977, "party", id, message)));
+    }
+
+    /** The plain spawn line other fishing mods parse; it carries no tag, so it reads the same. */
+    static String compatMessage(String creature) {
+        String first = creature.isEmpty() ? "" : creature.substring(0, 1).toUpperCase(Locale.ROOT);
+        String article = "AEIOU".contains(first) && !first.isEmpty() ? "An " : "A ";
+        return "--> " + article + creature + " has spawned <--";
     }
 
     // ------------------------------------------------------------------ sending
@@ -278,7 +327,9 @@ public final class FishingShare {
         lastSendAt = now;
         String prefix = channel.equals("all") ? "ac " : "pc ";
         try {
-            minecraft.player.connection.sendCommand(prefix + ChatTag.tag(message));
+            // The compat line goes out untagged: other mods match it exactly.
+            boolean compat = message.startsWith("--> ") && message.endsWith(" <--");
+            minecraft.player.connection.sendCommand(prefix + (compat ? message : ChatTag.tag(message)));
             return true;
         } catch (RuntimeException e) {
             // Best-effort and never retried: a retry loop is a bot however small each step is.

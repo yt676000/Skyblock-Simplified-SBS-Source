@@ -62,8 +62,11 @@ public final class DivanChat {
     private static final String TOOLS = "Golden Hammer|Emerald Hammer|Diamond Axe|Lapis Sword";
     private static final String KEEPER = "\\[NPC] Keeper of (Gold|Emerald|Diamond|Lapis): ";
 
-    /** The logging client's stacking counter, {@code " (12)"} at the very end. */
-    private static final Pattern STACK_COUNTER = Pattern.compile("\\s*\\(\\d+\\)$");
+    /**
+     * A chat-stacking counter at the very end: {@code " (12)"} in the maintainer's old chat logs,
+     * {@code " (x2)"} on a repeated find line in the 2026-11-26 session.
+     */
+    private static final Pattern STACK_COUNTER = Pattern.compile("\\s*\\(x?\\d+\\)$");
 
     private static final Pattern FOUND =
             Pattern.compile("^You found (.+?) with your Metal Detector!$");

@@ -183,6 +183,30 @@ public final class SciFiTextField extends EditBox {
         return field;
     }
 
+    /**
+     * A {@link #forValueRow} whose text is checked on every keystroke: while {@code valid} rejects
+     * it the text turns red and {@code setter} is not called, so a malformed entry never reaches
+     * the config (on blur the field falls back to the stored value).
+     */
+    public static SciFiTextField forValidatedValueRow(int x, int y, int w, int h, String label,
+                                                      String hint, int maxLength, int columns,
+                                                      Supplier<String> getter, Consumer<String> setter,
+                                                      java.util.function.Predicate<String> valid) {
+        SciFiTextField field = forValueRow(x, y, w, h, label, hint, maxLength, columns, getter, setter);
+        field.setResponder(text -> {
+            boolean ok = valid.test(text);
+            field.setTextColor(ok ? SBSTheme.TEXT : 0xFFFF5555);
+            if (ok) {
+                setter.accept(text);
+            }
+        });
+        field.onDefocus = () -> {
+            field.setValue(getter.get());
+            field.setTextColor(SBSTheme.TEXT);
+        };
+        return field;
+    }
+
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
     }

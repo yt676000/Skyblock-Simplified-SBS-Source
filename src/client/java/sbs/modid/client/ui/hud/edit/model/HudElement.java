@@ -260,6 +260,12 @@ public enum HudElement {
         @Override protected Bounds computeBounds(int gw, int gh) { return new Bounds(gw / 2f - 60, gh / 2f - 78, 120, 26); }
     },
 
+    // The Blaze dagger in hand (Slayer): its current mode big, the flip mode under it. Below the
+    // crosshair, under the Inferno phase line.
+    BLAZE_DAGGER("blaze_dagger", "Blaze Dagger Modes") {
+        @Override protected Bounds computeBounds(int gw, int gh) { return new Bounds(gw / 2f - 60, gh / 2f + 30, 120, 30); }
+    },
+
     // Inferno phase timer (Slayer): boss or demons, and for how long. Just under the crosshair, clear
     // of the attunement readout and the flash alert above it.
     INFERNO_PHASE("inferno_phase", "Inferno Phase") {
@@ -816,7 +822,7 @@ public enum HudElement {
             case BAZAAR_ORDERS -> sbs.modid.client.core.module.ModuleManager.BAZAAR_ID;
             case CARRY_COUNTER -> "slayer_carry_counter";
             case COLLECTION_TRACKER -> "collection_tracker";
-            case SLAYER_TRACKER, BLAZE_ATTUNEMENT, INFERNO_PHASE, VOIDGLOOM_PHASE -> "slayer";
+            case SLAYER_TRACKER, BLAZE_ATTUNEMENT, BLAZE_DAGGER, INFERNO_PHASE, VOIDGLOOM_PHASE -> "slayer";
             case COMPOSTER, FARMING_TRACKER, VISITOR_SHOPPING, VISITOR_TIMER, PEST_PROFIT, FARMING_NET ->
                     "garden_helpers";
             case CROP_MILESTONE, FARMING_FORTUNE, HOE_LEVEL, JACOB_CONTEST, FARM_DROPS, FARMING_SPEED ->

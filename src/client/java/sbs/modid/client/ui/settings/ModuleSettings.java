@@ -548,6 +548,13 @@ public final class ModuleSettings {
                                 value -> { cfg().dev.scannerMaxMb = value; save(); }, "MB")
                         .describe("A session stops by itself, with a chat message, once its files pass "
                                 + "this size. Default: 200 MB."),
+                SettingRow.toggle("Auto-record Kuudra", () -> cfg().dev.scannerAutoKuudra,
+                                () -> { cfg().dev.scannerAutoKuudra = !cfg().dev.scannerAutoKuudra; save(); })
+                        .describe("Records every Kuudra run as its own session with the kuudra_run preset: "
+                                + "starts when Elle calls the supplies, marks every phase, crate, fresh, "
+                                + "spell and reward chest, and stops after KUUDRA DOWN and the chest, on "
+                                + "DEFEAT or when you leave. Needs the Kuudra module on. Never takes over "
+                                + "a session you started yourself. Same as /sbs scan kuudra, by itself."),
                 SettingRow.button("Open Scanner Folder", () -> {
                             java.nio.file.Path dir = sbs.modid.client.core.config.SBSFiles.scannerDir();
                             try {
@@ -2542,6 +2549,24 @@ public final class ModuleSettings {
                                     + "lets the class keys below leap instantly while the menu is "
                                     + "open."),
                     SettingRow.label("Class-colours the Spirit Leap slots; a class key leaps to that class (menu open)"),
+                    SettingRow.toggle("Custom Leap Menu", () -> cfg().dungeons.leapCustomMenu,
+                            () -> { cfg().dungeons.leapCustomMenu = !cfg().dungeons.leapCustomMenu; save(); })
+                            .describe("Replaces the Spirit Leap / Infinileap chest with an SBS screen: one big "
+                                    + "button per teammate with head, name and class. Clicking a button "
+                                    + "leaps exactly like clicking their head. Off = the class outlines on "
+                                    + "the normal chest. Needs Leap Menu. Default: on.")
+                            .disabledWhile(() -> !cfg().dungeons.leapMenuEnabled),
+                    SettingRow.toggle("Show Map In Leap Menu", () -> cfg().dungeons.leapShowMap,
+                            () -> { cfg().dungeons.leapShowMap = !cfg().dungeons.leapShowMap; save(); })
+                            .describe("Draws the dungeon map under the teammate buttons; clicking a "
+                                    + "teammate's marker on it leaps to them too. Also switchable with the "
+                                    + "Map button on the leap screen. Default: on.")
+                            .disabledWhile(() -> !cfg().dungeons.leapMenuEnabled || !cfg().dungeons.leapCustomMenu),
+                    SettingRow.rangeSlider("Leap Button Size", 60, 160, () -> cfg().dungeons.leapButtonScale,
+                            v -> { cfg().dungeons.leapButtonScale = v; save(); }, "%")
+                            .describe("Size of the teammate buttons on the Custom Leap Menu. They still "
+                                    + "shrink to fit a small window. Default: 100%.")
+                            .disabledWhile(() -> !cfg().dungeons.leapMenuEnabled || !cfg().dungeons.leapCustomMenu),
                     SettingRow.keybind("Leap: Mage", () -> cfg().dungeons.leapMageKey,
                             key -> { cfg().dungeons.leapMageKey = key; save(); })
                             .describe("With the Spirit Leap menu open, this key leaps to the "
@@ -3839,6 +3864,10 @@ public final class ModuleSettings {
                             () -> { cfg().fishing.spawnAlert = !cfg().fishing.spawnAlert; save(); })
                             .describe("A big ! above the crosshair when a sea creature spawns "
                                     + "from your hook."),
+                    SettingRow.toggle("Hotspot Gone Alert", () -> cfg().fishing.hotspotGoneAlert,
+                            () -> { cfg().fishing.hotspotGoneAlert = !cfg().fishing.hotspotGoneAlert; save(); })
+                            .describe("A notice in the middle of the screen when the hotspot you "
+                                    + "are fishing in despawns, so you don't keep casting there."),
                     SettingRow.enumOptions("Alert For", () -> cfg().fishing.alertFilter(),
                             value -> { cfg().fishing.alertFilter = value; save(); },
                             v -> v.displayName())

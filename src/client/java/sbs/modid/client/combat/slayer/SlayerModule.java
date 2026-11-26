@@ -375,12 +375,34 @@ public final class SlayerModule implements SbsModule {
                                 + "fight needs right now, so you never grab the wrong one of the "
                                 + "two."),
                 SettingRow.label("Yellow box on the hotbar slot to switch to"),
+                SettingRow.toggle("Show Dagger In Hand", () -> cfg().heldDaggerDisplay,
+                        () -> { cfg().heldDaggerDisplay = !cfg().heldDaggerDisplay; save(); })
+                        .describe("While you hold a Blaze dagger, shows its current mode big under "
+                                + "the crosshair and, below it, the mode a right-click flips it to. "
+                                + "During a fight the second line says FLIP or OTHER DAGGER when the "
+                                + "boss needs something else."),
+                SettingRow.button("Move / Resize Dagger Display", () -> open(new HudEditorScreen(
+                        new HudElement[] {HudElement.BLAZE_DAGGER}, "Edit Blaze Dagger")))
+                        .describe("Opens the editor where you drag the dagger display anywhere on "
+                                + "the screen and scale it."),
+                SettingRow.toggle("Boss Box In Attunement Color", () -> cfg().bossAttunementColor,
+                        () -> { cfg().bossAttunementColor = !cfg().bossAttunementColor; save(); })
+                        .describe("Colors your Inferno boss's box in the attunement it is wearing "
+                                + "(Ashen grey, Spirit white, Auric yellow, Crystal aqua), so the box "
+                                + "says which dagger mode to use. Needs \"Boss Phase Colors\" "
+                                + "on. Off, the normal phase color is used."),
                 SettingRow.toggle("Highlight Demons (Experimental)", () -> cfg().demonHighlight,
                         () -> { cfg().demonHighlight = !cfg().demonHighlight; save(); })
                         .describe("Draws a box around Quazii and Typhoeus while your boss is split "
-                                + "into them. The boss cannot be hurt during that stretch, so the "
-                                + "demons are the only thing worth hitting. Only your own demons, "
-                                + "and only the ones you can see."),
+                                + "into them. The boss is gone during that stretch, so the demons are "
+                                + "the only thing worth hitting. Only your own demons (your name is "
+                                + "on them), only the ones you can see; the label says which "
+                                + "attunement each needs, or IMMUNE."),
+                SettingRow.toggle("Box Immune Demon", () -> cfg().demonBoxImmune,
+                        () -> { cfg().demonBoxImmune = !cfg().demonBoxImmune; save(); })
+                        .describe("Only one demon can be hit at a time; the other shows IMMUNE. On, "
+                                + "that one gets a grey box too. Off, only the demon you can hit is "
+                                + "boxed."),
                 SettingRow.toggle("Demon Box In Attunement Color", () -> cfg().demonAttunementColor,
                         () -> { cfg().demonAttunementColor = !cfg().demonAttunementColor; save(); })
                         .describe("Colors each demon's box in the attunement it is wearing, so the "
@@ -395,11 +417,17 @@ public final class SlayerModule implements SbsModule {
                 SettingRow.toggle("Phase Timer (Experimental)", () -> cfg().infernoPhaseTimer,
                         () -> { cfg().infernoPhaseTimer = !cfg().infernoPhaseTimer; save(); })
                         .describe("A line under the crosshair saying whether your boss is whole or "
-                                + "split into its demons, and how long it has been that way."),
+                                + "split into its demons, how long it has been that way, and during "
+                                + "a split which demon you can hit."),
                 SettingRow.button("Move / Resize Phase Timer", () -> open(new HudEditorScreen(
                         new HudElement[] {HudElement.INFERNO_PHASE}, "Edit Inferno Phase")))
                         .describe("Opens the editor where you drag the phase timer anywhere on the "
                                 + "screen and scale it."),
+                SettingRow.toggle("Quazii Beam Alert (Experimental)", () -> cfg().quaziiBeamAlert,
+                        () -> { cfg().quaziiBeamAlert = !cfg().quaziiBeamAlert; save(); })
+                        .describe("Flashes BEAM! when your Quazii's beam starts charging at you - it "
+                                + "hits for 1,500 true damage. The phase timer shows how far it has "
+                                + "charged. Break line of sight or kill Quazii first."),
 
                 SettingRow.label("— Vampire —"),
                 SettingRow.toggle("Twinclaws Alert", () -> cfg().twinclawsAlert,

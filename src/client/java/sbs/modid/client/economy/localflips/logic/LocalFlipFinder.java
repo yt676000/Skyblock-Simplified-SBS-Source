@@ -358,7 +358,7 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
         }
         if (cfg.toast) {
             SystemToast.addOrUpdate(minecraft.gui.toastManager(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
-                    Component.literal("SOFORT: " + flip.displayName()),
+                    Component.literal("Instant flip: " + flip.displayName()),
                     Component.literal(FlipText.coins(flip.price()) + " → " + FlipText.coins(flip.target())
                             + "  +" + FlipText.coins(flip.netProfit())));
         }
@@ -389,11 +389,11 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
                 .append(Component.literal("[OPEN]").withColor(0x57D977).withStyle(style -> style
                         .withBold(true)
                         .withClickEvent(new ClickEvent.RunCommand(slashCommand))
-                        .withHoverEvent(new HoverEvent.ShowText(Component.literal("Öffnet " + slashCommand)))))
+                        .withHoverEvent(new HoverEvent.ShowText(Component.literal("Opens " + slashCommand)))))
                 .append(Component.literal(" "))
                 .append(Component.literal("[COPY]").withColor(0x8FA6BF).withStyle(style -> style
                         .withClickEvent(new ClickEvent.CopyToClipboard(slashCommand))
-                        .withHoverEvent(new HoverEvent.ShowText(Component.literal("Kopiert " + slashCommand)))));
+                        .withHoverEvent(new HoverEvent.ShowText(Component.literal("Copies " + slashCommand)))));
         return line;
     }
 
@@ -404,11 +404,11 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
                     .append(" (").append(FlipText.hours(flip.timeNormalH())).append(')');
         }
         if (flip.has(flip.pricePatient())) {
-            text.append("\nGeduldig: ").append(FlipText.coins(flip.pricePatient()))
+            text.append("\nPatient: ").append(FlipText.coins(flip.pricePatient()))
                     .append(" (").append(FlipText.hours(flip.timePatientH())).append(')');
         }
         if (!Double.isNaN(flip.sellTimeH())) {
-            text.append("\nVerkauf in ~").append(FlipText.hours(flip.sellTimeH()));
+            text.append("\nSells in ~").append(FlipText.hours(flip.sellTimeH()));
         }
         for (String part : noteParts(flip.note())) {
             text.append('\n').append(part);
@@ -473,7 +473,7 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
             }
         }
         if (newest == null) {
-            SBSChat.send("Lokaler Flip-Finder: kein gültiger SOFORT-Fund.");
+            SBSChat.send("Flip Finder: no valid instant find.");
             return;
         }
         openAuction(newest.flip());
@@ -499,7 +499,7 @@ public final class LocalFlipFinder implements LocalFlipConnection.Sink {
         boolean vpn = FlipSource.isVpn();
         URI base = FlipSource.base(cfg.url);
         if (base == null) {
-            SBSChat.send(vpn ? FlipSource.NEED_IP : "Lokaler Flip-Finder: ungültige Adresse.");
+            SBSChat.send(vpn ? FlipSource.NEED_IP : "Flip Finder: invalid address.");
             return;
         }
         String token = cfg.token == null ? "" : cfg.token.trim();

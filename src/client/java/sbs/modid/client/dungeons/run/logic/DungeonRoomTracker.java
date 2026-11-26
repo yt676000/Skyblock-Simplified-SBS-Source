@@ -125,6 +125,8 @@ public final class DungeonRoomTracker {
     private long standDownUntil;
     /** True while the scanner is stood down – keeps the diagnostic to ONE line per episode. */
     private boolean standingDown;
+    /** The last unknown core reported, so a room that stays unidentified is reported once. */
+    private int lastUnknownCore;
 
     private DungeonRoomTracker() {
         CollectedSecrets.getInstance().addCandidateSource(this::uncollectedSecrets);
@@ -244,10 +246,14 @@ public final class DungeonRoomTracker {
         // the impossible "3x4 span" retry spam). Stop the room scanner entirely - no locks, no
         // retries - but keep the starred-mob boxes running (boss fights are where they matter most).
         // Run memory and the map anchor stay untouched: the run itself is still going.
-        if (!RoomMapReader.hasDungeonMap()) {
+        // The phase is checked too: on F7 the map comes back into slot 9 mid-fight, and the boss
+        // phase - sticky once a floor boss spoke - is what keeps the arena from being scanned then.
+        boolean inBoss = DungeonStateManager.getInstance().phase()
+                == sbs.modid.client.dungeons.events.DungeonEvents.Phase.BOSS;
+        if (inBoss || !RoomMapReader.hasDungeonMap()) {
             unlock();
             lastScanPos = null;
-            standDown("no map in slot 9");
+            standDown(inBoss ? "boss room" : "no map in slot 9");
             tickStarredMobs(player, level);
             return;
         }
@@ -303,6 +309,15 @@ public final class DungeonRoomTracker {
                             roomState = again.mapRoom().state();
                         }
                         rememberFootprint(borders);
+                    } else if (isOtherRoom(again, againColor)) {
+                        // The map paints a SMALLER room in ANOTHER colour where the player stands:
+                        // the lock swallowed a neighbour (seen: Spider, an L of 3, locked as 4 cells
+                        // with the Tic Tac Toe room - the solver never got its room). That is not a
+                        // map hiccup; the player is in a different room. Drop the bad footprint.
+                        DungeonDebug.chat("§eRoom split: §b" + again.borders().shape() + " " + againColor
+                                + " §7was inside " + borders.shape() + " " + mapColor);
+                        forgetFootprint(borders);
+                        lockRoom(level, again, identifyOn, true, current, nowAnchored, null);
                     } else if (again.borders().rects().size() > borders.rects().size()) {
                         // GROWTH only between two map reads: the map reveals progressively, so a
                         // bigger re-read refreshes the lock - but a smaller one is a map hiccup
@@ -365,6 +380,11 @@ public final class DungeonRoomTracker {
      * (void-detected) rects carry no cell structure, so only the bounding-span heuristic can judge
      * them. An implausible result is simply not locked; the tracker retries on the next move.
      */
+    private boolean isOtherRoom(DungeonRoomLocator.Located again, String againColor) {
+        return againColor != null && mapColor != null && !againColor.equals(mapColor)
+                && again.borders().rects().size() < borders.rects().size();
+    }
+
     private boolean plausibleRoomSpan(DungeonRoomLocator.Located located) {
         DungeonRoomBorders.Borders found = located.borders();
         if (DungeonRoomLocator.isPlausibleRoom(found)) {
@@ -477,9 +497,12 @@ public final class DungeonRoomTracker {
             match = DungeonRoomMatcher.identify(lookup, borders, player, mapColor, fromMap,
                     Map.of(coreRoom, database.get(coreRoom)));
             DungeonDebug.chat("§7Core " + core + " → §b" + coreRoom + (match == null ? " §c(placement failed)" : ""));
-        } else if (DevMode.ACTIVE) { // DEV-ONLY: shows the core of unknown rooms for the database
+        } else if (DevMode.ACTIVE && core != lastUnknownCore) { // DEV-ONLY: unknown cores for the database
+            // Once per core, not once per retry: one unknown room re-identified every second
+            // printed the same line 100 times. The full number is in the log for the database.
             DungeonDebug.chat("§7Core " + core + " §8(no room with this core)");
         }
+        lastUnknownCore = coreRoom == null ? core : 0;
         if (match == null) {
             match = DungeonRoomMatcher.identify(lookup, borders, player, mapColor, fromMap, database);
         }

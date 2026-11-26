@@ -180,7 +180,7 @@ public final class DestructiveScreens {
 
     /**
      * VERIFIED (in tree) for "auction" - the same test
-     * {@code economy/auctions/ui/AhFlipsOverlay} uses. The narrower create/confirm strings are
+     * the old AH Flips window uses. The narrower create/confirm strings are
      * UNVERIFIED, and do not need to be right: the category is the same either way and it only ever
      * confirms.
      */

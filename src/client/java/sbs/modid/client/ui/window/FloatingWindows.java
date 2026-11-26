@@ -37,7 +37,6 @@ public final class FloatingWindows {
         FORGE,
 
         /** The AH Flips window (AH Flip Alerts module). */
-        AH_FLIPS,
 
         /** The in-game Calculator window. */
         CALCULATOR,
@@ -57,7 +56,7 @@ public final class FloatingWindows {
 
     private static final List<Layer> order = new ArrayList<>(
             List.of(Layer.RECIPE, Layer.BROWSERS, Layer.VALUE, Layer.LOCAL_FLIPS, Layer.FLIPS,
-                    Layer.FORGE, Layer.AH_FLIPS, Layer.CALCULATOR, Layer.GARDEN_PLOTS,
+                    Layer.FORGE, Layer.CALCULATOR, Layer.GARDEN_PLOTS,
                     Layer.ESSENCE_SHOP, Layer.MISSING_SHARDS, Layer.LOWBALL));
 
     /**

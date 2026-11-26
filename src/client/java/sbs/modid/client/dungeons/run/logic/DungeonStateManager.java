@@ -104,6 +104,12 @@ public final class DungeonStateManager {
     /** The second boss signal's cached answer, and when it was taken - see {@link #standingInARoom}. */
     private long lastRoomProbeAt;
     private boolean lastRoomProbe;
+    /**
+     * A floor boss has spoken this run. From then on the phase stays BOSS until the run resets,
+     * whatever slot 9 holds: on F7 the map comes back mid-fight (seen at Goldor), and without this
+     * the phase fell back to RUN and the room scanner went over the arena.
+     */
+    private boolean bossConfirmed;
 
     private DungeonStateManager() {
         // Registered here rather than in a listener of their own: the tally is run state, and the
@@ -114,6 +120,10 @@ public final class DungeonStateManager {
                 "dungeon state: run start");
         registry.register(DungeonBlessings.BUFF, (matcher, raw) -> onBlessing(DungeonBlessings.parse(matcher)),
                 "dungeon state: blessing");
+        // The Watcher talks in the blood room, not the boss room - every other [BOSS] speaker is
+        // the floor boss (or, on F7, one of its phases).
+        registry.register("\\[BOSS\\]\\s+(?!The Watcher\\b)[^:]+:",
+                matcher -> bossConfirmed = true, "dungeon state: boss speaks");
     }
 
     public static DungeonStateManager getInstance() {
@@ -304,7 +314,7 @@ public final class DungeonStateManager {
             // answered by a fresh scan instead of by whatever this second happened to hold.
             lastRoomProbeAt = 0;
         }
-        if (!mapInSlot && (phase == DungeonEvents.Phase.BOSS || !standingInARoom())) {
+        if (bossConfirmed || (!mapInSlot && (phase == DungeonEvents.Phase.BOSS || !standingInARoom()))) {
             next = DungeonEvents.Phase.BOSS;
         } else if (runStartMs != 0 || DungeonRoomTracker.getInstance().borders() != null) {
             // A locked room means the player has moved into the dungeon proper.
@@ -435,6 +445,7 @@ public final class DungeonStateManager {
             DungeonEvents.firePhaseChange(phase, DungeonEvents.Phase.START);
         }
         phase = DungeonEvents.Phase.START;
+        bossConfirmed = false;
         secretsFound = -1;
         secretsTotal = -1;
         secretPct = -1;

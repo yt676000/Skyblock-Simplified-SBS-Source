@@ -452,6 +452,10 @@ public final class FishingHud {
             rows.add(Row.make(font, "Times Fished",
                     sbs.modid.client.core.util.NumberDisplay.format(tracker.timesFished()),
                     SBSTheme.TEXT, SBSTheme.TEXT, false));
+            // Shares the Times Fished toggle: casts and the catches they landed read as a pair.
+            rows.add(Row.make(font, "Catches",
+                    sbs.modid.client.core.util.NumberDisplay.format(tracker.catches()),
+                    SBSTheme.TEXT, SBSTheme.TEXT, false));
         }
         if (cfg.profitSession) {
             rows.add(Row.make(font, "Session", coins(tracker.totalProfit()), SBSTheme.TEXT, VALUE_COLOR, false));

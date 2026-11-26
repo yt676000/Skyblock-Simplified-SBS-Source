@@ -121,6 +121,9 @@ public final class TickTasks {
                 TickTask.of("tick.FishingShare",
                         c -> c.fishing() && sbs.modid.client.skills.fishing.logic.FishingShare.hotspotScanOn(),
                         () -> sbs.modid.client.skills.fishing.logic.FishingShare.getInstance().onClientTick()),
+                TickTask.of("tick.HotspotGoneAlert",
+                        c -> c.fishing() && sbs.modid.client.skills.fishing.logic.HotspotGoneAlert.on(),
+                        () -> sbs.modid.client.skills.fishing.logic.HotspotGoneAlert.getInstance().onClientTick()),
                 // Any island, and singleplayer.
                 TickTask.of("tick.MobHighlightTracker", PLAYER,
                         () -> sbs.modid.client.combat.mobhighlight.logic.MobHighlightTracker.getInstance().onClientTick()),

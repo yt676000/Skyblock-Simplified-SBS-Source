@@ -200,6 +200,7 @@ public final class SupplyTracker {
         myPre = player == null ? null : PreSpot.at(player.position());
         KuudraTracker.getInstance().log("supplies started, camp = {}",
                 myPre == null ? "none" : myPre.displayName());
+        KuudraScan.getInstance().event("supplies_start", "pre", myPre == null ? null : myPre.name());
     }
 
     /** All six are in - the no-pre watch has nothing left to say. */
@@ -336,6 +337,7 @@ public final class SupplyTracker {
             if (name.contains(PILE_DONE)) {
                 if (completed.add(closest)) {
                     KuudraTracker.getInstance().log("pile {} is done", closest.displayName());
+                    KuudraScan.getInstance().event("pile_done", "pile", closest.name(), "done", completed.size());
                 }
             } else if (seenLabels.add(name)) {
                 KuudraTracker.getInstance().log("label on pile {}: \"{}\"", closest.displayName(), name);
@@ -413,6 +415,7 @@ public final class SupplyTracker {
     private void callMissing(SBSConfig.KuudraSettings cfg, SupplySpot spot) {
         called.add(spot);
         KuudraTracker.getInstance().log("no pre: {}", spot.displayName());
+        KuudraScan.getInstance().event("no_pre", "spot", spot.name(), "by", "self");
         KuudraAlert.getInstance().flash("NO " + spot.displayName().toUpperCase(Locale.ROOT) + "!",
                 0xFFFF5555, cfg.noPreSound, 0.8f);
         if (cfg.noPreToParty) {
@@ -445,6 +448,7 @@ public final class SupplyTracker {
         if (text.contains(SELF_PICKUP)) {
             KuudraTracker.getInstance().log("picked up a supply at {}s",
                     String.format(Locale.US, "%.1f", suppliesSeconds()));
+            KuudraScan.getInstance().event("supply_picked", "by", "self", "atMs", (long) (suppliesSeconds() * 1000));
             return;
         }
         readPartyCall(text);
@@ -456,6 +460,7 @@ public final class SupplyTracker {
         deliveries.add(new Delivery(player, number, at));
         KuudraTracker.getInstance().log("supply {}/6 by {} at {}",
                 number, player, KuudraTracker.clock(at));
+        KuudraScan.getInstance().event("supply_placed", "n", number, "of", 6, "by", KuudraScan.who(player), "atMs", at);
         if (cfg.supplyAlert && number >= 6) {
             KuudraAlert.getInstance().flash("SUPPLIES IN", 0xFF7CFF6A, cfg.supplySound, 1.6f);
         }
@@ -463,6 +468,7 @@ public final class SupplyTracker {
 
     private void onDropped(SBSConfig.KuudraSettings cfg, String player) {
         KuudraTracker.getInstance().log("{} dropped a supply", player);
+        KuudraScan.getInstance().event("supply_dropped", "by", KuudraScan.who(player));
         if (cfg.supplyDropAlert) {
             KuudraAlert.getInstance().flash(player + " DROPPED", 0xFFFF9A2E, cfg.supplySound, 0.7f);
         }
@@ -495,6 +501,7 @@ public final class SupplyTracker {
             }
             if (spot != null && called.add(spot)) {
                 KuudraTracker.getInstance().log("{} called no {}", party.group(1), spot.displayName());
+                KuudraScan.getInstance().event("no_pre", "spot", spot.name(), "by", KuudraScan.who(party.group(1)));
             }
         }
     }

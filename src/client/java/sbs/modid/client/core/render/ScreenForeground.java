@@ -73,6 +73,13 @@ public final class ScreenForeground {
                             .renderTopMost(container, g, mouseX, mouseY));
             return;
         }
+        // The Custom Leap Menu is exclusive the same way: it covers the leap chest whole.
+        if (sbs.modid.client.dungeons.run.ui.LeapScreenOverlay.getInstance().isActive(container)) {
+            MenuRenderPriority.run("dungeon.leap_screen", RenderTier.RELEVANT,
+                    () -> sbs.modid.client.dungeons.run.ui.LeapScreenOverlay.getInstance()
+                            .renderTopMost(container, g, mouseX, mouseY));
+            return;
+        }
         MenuRenderPriority.run("storage.preview", RenderTier.RELEVANT,
                 () -> StoragePreview.getInstance().renderTopMost(container, g, mouseX, mouseY));
         // The Accessory Bag's "Missing" chip sits above the menu, never over it.
@@ -156,8 +163,6 @@ public final class ScreenForeground {
                         case FLIPS -> sbs.modid.client.economy.bazaar.ui.BestFlipsOverlay.getInstance()
                                 .renderTopMost(container, g, mouseX, mouseY);
                         case FORGE -> sbs.modid.client.economy.forge.ui.ForgeFlipsOverlay.getInstance()
-                                .renderTopMost(container, g, mouseX, mouseY);
-                        case AH_FLIPS -> sbs.modid.client.economy.auctions.ui.AhFlipsOverlay.getInstance()
                                 .renderTopMost(container, g, mouseX, mouseY);
                         case CALCULATOR -> sbs.modid.client.economy.calculator.CalculatorOverlay.getInstance()
                                 .renderTopMost(container, g, mouseX, mouseY);

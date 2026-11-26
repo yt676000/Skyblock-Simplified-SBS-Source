@@ -111,8 +111,10 @@ public final class FishingTracker {
      */
     private static final long LOOT_PICKUP_WINDOW_MS = 10_000L;
 
-    /** How long after a "Double Hook!" line the following catch still counts as the doubled one. */
-    private static final long DOUBLE_HOOK_WINDOW_MS = 5_000L;
+    /** How long after a "Double Hook!" line the next sea creature still counts double. Held until that
+     *  creature arrives (the line can come well before it), but bounded so a stale flag cannot double
+     *  an unrelated catch minutes later. */
+    private static final long DOUBLE_HOOK_WINDOW_MS = 60_000L;
 
     /**
      * How long a channel's recent booking stays available for cross-channel dedup. Generous, because
@@ -190,6 +192,32 @@ public final class FishingTracker {
     private static final Pattern STASH_PICKUP = Pattern.compile(
             "(?i)(?:picked up|from your) .*stash");
 
+    /**
+     * Lines after which items land in the inventory that were never fished: a cancelled Bazaar order
+     * refunding goods, a bought-back item, a Supercraft result, a sack withdrawal, a cancelled auction,
+     * a trade, or Kat handing back a pet. Like the stash line they only hold the inventory diff off
+     * for a moment - they never book or un-book anything.
+     */
+    private static final Pattern[] ITEM_MOVE_LINES = {
+            Pattern.compile("^\\[Bazaar] Cancelled!"),
+            Pattern.compile("^You bought back "),
+            Pattern.compile("^You Supercrafted "),
+            Pattern.compile("^Moved [\\d,]+ .+ from your Sacks to your inventory\\.$"),
+            Pattern.compile("^You canceled your auction for "),
+            Pattern.compile("^Trade completed with "),
+            Pattern.compile("cancelled the trade!$"),
+            Pattern.compile("^\\[NPC] Kat: "),
+    };
+
+    private static boolean isItemMoveLine(String message) {
+        for (Pattern pattern : ITEM_MOVE_LINES) {
+            if (pattern.matcher(message).find()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** How long a stash line keeps inventory gains from counting. */
     private static final long STASH_SETTLE_MS = 3_000L;
 
@@ -234,6 +262,12 @@ public final class FishingTracker {
 
     /** When the last "Double Hook!" line arrived, or 0 once its catch has claimed it. */
     private long doubleHookAt;
+
+    /** Successful reels: chat-announced catches plus the silent ones (raw fish, logs, junk). */
+    private final CatchCounter catchCounter = new CatchCounter();
+
+    /** Subscribed from a cast until fishing goes idle; hears the XP orb sound of a silent catch. */
+    private final sbs.modid.client.core.sound.SoundListeners.Listener catchSoundListener = this::onCatchSound;
 
     /** Bumped on every change to what the HUD shows - its rebuild key, compared for equality only. */
     private volatile int revision;
@@ -467,7 +501,7 @@ public final class FishingTracker {
         if (onPurchaseLine(message)) {
             return;
         }
-        if (STASH_PICKUP.matcher(message).find()) {
+        if (STASH_PICKUP.matcher(message).find() || isItemMoveLine(message)) {
             stashSettleUntil = System.currentTimeMillis() + STASH_SETTLE_MS;
             return;
         }
@@ -480,12 +514,23 @@ public final class FishingTracker {
         if (isPlayerChat(message)) {
             return;
         }
+        // Trophy fish are counted by their own module; here they only mark a catch.
+        if (message.startsWith("TROPHY FISH!")) {
+            catchCounter.onChatCatch(System.currentTimeMillis());
+            revision++;
+            return;
+        }
         String creature = FishingData.seaCreatureFor(message);
         if (creature != null) {
             lastActivityAt = System.currentTimeMillis();
             lastLootEventAt = lastActivityAt;
             castSession.onActivity(lastActivityAt, pauseMs());
-            creatures.merge(creature, consumeDoubleHook() ? 2 : 1, Integer::sum);
+            boolean doubled = consumeDoubleHook() && FishingData.canBeDoubleHooked(creature);
+            creatures.merge(creature, doubled ? 2 : 1, Integer::sum);
+            // The Vanquisher is a perk spawn beside the catch, not the catch itself.
+            if (!"Vanquisher".equals(creature)) {
+                catchCounter.onChatCatch(lastActivityAt);
+            }
             revision++;
             FishingAlert.getInstance().trigger(creature);
         }
@@ -564,6 +609,7 @@ public final class FishingTracker {
         Matcher coins = TREASURE_COINS.matcher(message);
         if (coins.find()) {
             if (recentFishingActivity()) {
+                catchCounter.onChatCatch(System.currentTimeMillis());
                 bookLoot(COIN_ID, parseCount(coins.group(1)), Channel.CHAT);
             }
             return true;
@@ -574,6 +620,10 @@ public final class FishingTracker {
         // this line, once from the pickup - whenever the two resolved to different ids or the
         // sack summary outlived the cross-channel dedup window.
         if (TREASURE_ITEM.matcher(message).find()) {
+            if (recentFishingActivity()) {
+                catchCounter.onChatCatch(System.currentTimeMillis());
+                revision++;
+            }
             return true;
         }
         // "RARE DROP! Squid Boots (+4% Magic Find)" and the rest of the family: one shared parser.
@@ -936,6 +986,46 @@ public final class FishingTracker {
     /** How many casts this session made ("Times Fished"). */
     public int timesFished() {
         return castSession.timesFished();
+    }
+
+    /** Successful reels this session: chat-announced catches plus silent ones (raw fish, logs). */
+    public int catches() {
+        return catchCounter.catches();
+    }
+
+    /**
+     * Sound listener: an XP orb pickup right at the player is the only sign of a catch that has no
+     * chat line. Record and return - this runs for every sound in the game. Unsubscribes itself once
+     * fishing has gone idle, so the sound path is free again away from the water.
+     */
+    private void onCatchSound(net.minecraft.client.resources.sounds.SoundInstance instance) {
+        long now = System.currentTimeMillis();
+        if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.fishing == null
+                && !recentFishingActivity()) {
+            sbs.modid.client.core.sound.SoundListeners.remove(catchSoundListener);
+            return;
+        }
+        var id = instance.getIdentifier();
+        if (id == null || !"entity.experience_orb.pickup".equals(id.getPath())) {
+            return;
+        }
+        float volume = instance.getVolume();
+        if (Math.abs(volume - 0.1f) > 0.01f && Math.abs(volume - 0.5f) > 0.01f) {
+            return;
+        }
+        Player player = Minecraft.getInstance().player;
+        if (player == null) {
+            return;
+        }
+        double dx = instance.getX() - player.getX();
+        double dy = instance.getY() - player.getY();
+        double dz = instance.getZ() - player.getZ();
+        if (dx * dx + dy * dy + dz * dz > 1.0) {
+            return;
+        }
+        if (catchCounter.onCatchSound(now)) {
+            revision++;
+        }
     }
 
     /** The session clock's pause length from the settings, in milliseconds. */
@@ -1447,10 +1537,14 @@ public final class FishingTracker {
         boolean inFluid = hook != null && (hook.isInWater() || hook.isInLava());
         CastSession.Edge edge = castSession.onTick(bobber, inFluid, now, pauseMs(),
                 ConfigManager.getInstance().get().fishing.reelRollingCasts);
+        if (inFluid) {
+            catchCounter.onBobberInFluid(now);
+        }
         if (edge == CastSession.Edge.CAST) {
             // Only the CAST marks activity, not the bobber merely being out: a bobber left in the
             // water is waiting or afk. Bites and catches refresh activity on their own.
             lastActivityAt = now;
+            sbs.modid.client.core.sound.SoundListeners.add(catchSoundListener);
             revision++;
             logCastEdge(now);
             if (!partOff[PART_BAIT_SACK]) {
@@ -1462,6 +1556,7 @@ public final class FishingTracker {
             }
         } else if (edge == CastSession.Edge.REEL) {
             revision++;
+            catchCounter.onReel(now);
             long sample = castSession.lastReelSample();
             ReelTimer reel = castSession.reelTimer();
             if (sample >= 0 && !reel.landed() && !noLandLogged) {
@@ -1879,6 +1974,7 @@ public final class FishingTracker {
         SeaCreatureDrops.getInstance().resetSession();
         revision++;
         doubleHookAt = 0;
+        catchCounter.reset();
         loot.clear();
         baitsUsed.clear();
         for (Channel channel : Channel.values()) {

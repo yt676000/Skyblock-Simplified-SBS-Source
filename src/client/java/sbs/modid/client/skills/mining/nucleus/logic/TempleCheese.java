@@ -37,6 +37,21 @@ public final class TempleCheese {
     /** How close to the target the player has to come for the "reached" log line. */
     public static final double REACHED_WITHIN = 3.0;
 
+    /**
+     * How far from the body's feet, horizontally, the guardian's nametag stand may stand and still be
+     * its tag.
+     */
+    public static final double TAG_HORIZONTAL = 0.75;
+    /**
+     * How far below the body's feet the nametag stand may sit. Not zero: the guardian's name stand
+     * sits <b>level with the feet</b> (block centre, whole-number Y; maintainer's log 2026-11-26,
+     * {@code pos=523.50,115.00,271.50}), so the "strictly above" rule of {@code NpcNametags} never
+     * matched it and no anchor was ever taken.
+     */
+    public static final double TAG_BELOW = 0.5;
+    /** How far above the body's feet the nametag stand may sit. */
+    public static final double TAG_ABOVE = 3.0;
+
     /** How the guardian was accepted as the anchor. */
     public enum Via { SIGHT, CHAT }
 
@@ -79,6 +94,23 @@ public final class TempleCheese {
     /** Whether a colour-stripped entity or nametag name is the guardian's. */
     public static boolean isGuardianName(String name) {
         return name != null && NucleusSignals.GUARDIAN_NAME.matcher(name).find();
+    }
+
+    /**
+     * Whether a nametag stand at {@code dx,dy,dz} from a body's feet is that body's tag: within
+     * {@link #TAG_HORIZONTAL} horizontally, from {@link #TAG_BELOW} below the feet to
+     * {@link #TAG_ABOVE} above them.
+     */
+    public static boolean isTagOf(double dx, double dy, double dz) {
+        return dx * dx + dz * dz <= TAG_HORIZONTAL * TAG_HORIZONTAL && dy >= -TAG_BELOW && dy <= TAG_ABOVE;
+    }
+
+    /**
+     * The guardian's block when only its nametag stand is matched: the block the stand is in. The
+     * stand sits level with the guardian's feet, so that is the feet block.
+     */
+    public static Pos standBlock(double x, double y, double z) {
+        return new Pos((int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z));
     }
 
     /** A chat line. Returns whether it was a guardian line, which opens the chat window. */

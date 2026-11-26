@@ -87,7 +87,7 @@ public final class RecipePricing {
     }
 
     /** Bazaar first (insta-buy / top buy order), else the single lowest-BIN-style price. */
-    static Unit livePrice(String lookupId) {
+    public static Unit livePrice(String lookupId) {
         if (lookupId == null || lookupId.isEmpty()) {
             return Unit.NONE;
         }

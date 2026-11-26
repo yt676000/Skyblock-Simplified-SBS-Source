@@ -108,14 +108,19 @@ public final class NucleusSignals {
     /** Said when this lobby's temple has nothing to give. */
     public static final Pattern GUARDIAN_NO_TREASURE = Pattern.compile(
             "^\\[NPC] Kalhuiki Door Guardian: This temple does not have the treasure you are seeking at this time\\.$");
+    /**
+     * Said when the player clicks the guardian without a Jungle Key. The line a player who walks up
+     * to the door first meets; it was missing here, so a keyless visit never opened the chat gate.
+     */
+    public static final Pattern GUARDIAN_LOCKED = Pattern.compile(
+            "^\\[NPC] Kalhuiki Door Guardian: This temple is locked, you will need to bring me a key to open the door!$");
     /** Every guardian line: receiving one means the player is standing at the temple door. */
     public static final List<Pattern> GUARDIAN_LINES =
-            List.of(GUARDIAN_KEY, GUARDIAN_DOOR_OPEN, GUARDIAN_NO_TREASURE);
+            List.of(GUARDIAN_KEY, GUARDIAN_DOOR_OPEN, GUARDIAN_NO_TREASURE, GUARDIAN_LOCKED);
     public static final Certainty GUARDIAN_LINE_CERTAINTY = Certainty.CONFIRMED;
     /**
-     * The guardian's name as an entity or its nametag shows it, colour-stripped. The words are
-     * confirmed from chat; that the nametag reads the same has not been captured, hence the tolerant
-     * match.
+     * The guardian's name as an entity or its nametag shows it, colour-stripped. Confirmed as the
+     * nametag stand's text too (maintainer's log, 2026-11-26: {@code name="Kalhuiki Door Guardian"}).
      */
     public static final Pattern GUARDIAN_NAME = Pattern.compile("(?i)\\bkalhuiki\\s+door\\s+guardian\\b");
 

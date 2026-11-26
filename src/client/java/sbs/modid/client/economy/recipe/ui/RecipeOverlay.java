@@ -450,6 +450,34 @@ public final class RecipeOverlay {
     }
 
     /**
+     * Market price lines for a panel item: Bazaar insta-buy and insta-sell for a Bazaar product,
+     * otherwise the Auction House lowest BIN. Nothing when no price is known.
+     */
+    private static void addPriceLines(List<Component> lines, String lookupId) {
+        var unit = sbs.modid.client.economy.recipe.logic.RecipePricing.livePrice(lookupId);
+        if (unit.insta() == null && unit.order() == null) {
+            return;
+        }
+        lines.add(Component.empty());
+        if (unit.bazaar()) {
+            if (unit.insta() != null) {
+                lines.add(priceLine("Bazaar Insta-Buy: ", unit.insta()));
+            }
+            if (unit.order() != null) {
+                lines.add(priceLine("Bazaar Insta-Sell: ", unit.order()));
+            }
+        } else {
+            lines.add(priceLine("AH Lowest BIN: ", unit.insta()));
+        }
+    }
+
+    private static Component priceLine(String label, long coins) {
+        return Component.literal(label).withColor(0xAAAAAA)
+                .append(Component.literal(sbs.modid.client.core.util.NumberDisplay.format(coins) + " coins")
+                        .withColor(0xFFAA00));
+    }
+
+    /**
      * Draws the hovered panel item's tooltip <b>immediately</b>, rather than queueing it into the
      * deferred pipeline.
      *
@@ -471,6 +499,7 @@ public final class RecipeOverlay {
             return;
         }
         List<Component> lines = RepoLoreCache.buildTooltip(hovered.iconStack(), hovered.lookupId());
+        addPriceLines(lines, hovered.lookupId());
         if (docked.isOpen()) {
             lines.add(Component.literal("Click an amount to copy it").withColor(HINT_COLOR));
             lines.add(Component.literal("Middle Click to open Bazaar / AH").withColor(HINT_COLOR));

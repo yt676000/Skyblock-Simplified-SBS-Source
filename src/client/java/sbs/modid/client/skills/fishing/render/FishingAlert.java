@@ -41,6 +41,8 @@ public final class FishingAlert {
     private long shownAt;
     /** What spawned – drawn under the "!" so a glance tells you whether it is worth turning for. */
     private String creature = "";
+    /** The small line above the name: what kind of notice this is. */
+    private String caption = "! SEA CREATURE !";
 
     private FishingAlert() {
     }
@@ -71,6 +73,7 @@ public final class FishingAlert {
             return;
         }
         this.creature = creature == null ? "" : creature;
+        this.caption = "! SEA CREATURE !";
         this.shownAt = System.currentTimeMillis();
         if (cfg.sound()) {
             Minecraft minecraft = Minecraft.getInstance();
@@ -78,6 +81,23 @@ public final class FishingAlert {
                 // The note block "pling" cuts through ambient water noise without being a jumpscare.
                 SbsSounds.play(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 1.6f);
             }
+        }
+    }
+
+    /**
+     * The hotspot the bobber was in has despawned. Same toast, its own toggle, so the spawn alert can
+     * be off while this stays on.
+     */
+    public void triggerHotspotGone() {
+        var fishing = ConfigManager.getInstance().get().fishing;
+        if (!fishing.enabled || !fishing.hotspotGoneAlert) {
+            return;
+        }
+        this.creature = "Hotspot Gone";
+        this.caption = "! HOTSPOT !";
+        this.shownAt = System.currentTimeMillis();
+        if (fishing.alertSound && Minecraft.getInstance().player != null) {
+            SbsSounds.play(SoundEvents.NOTE_BLOCK_BASS.value(), 1.0f, 0.8f);
         }
     }
 
@@ -89,7 +109,8 @@ public final class FishingAlert {
     /** Drawn from the HUD pass; does nothing unless an alert is live. */
     public void render(GuiGraphicsExtractor g) {
         SBSConfigView cfg = config();
-        if (!cfg.enabled() || !cfg.spawnAlert() || HudLayout.isHidden(HudElement.FISHING_ALERT)) {
+        // No spawnAlert check here: each trigger checks its own toggle, and only a triggered toast shows.
+        if (!cfg.enabled() || HudLayout.isHidden(HudElement.FISHING_ALERT)) {
             return;
         }
         if (!showing(cfg)) {
@@ -117,7 +138,6 @@ public final class FishingAlert {
     private void drawToast(GuiGraphicsExtractor g, Font font, int cx, int y, int color,
                            SBSConfigView cfg, long age) {
         String name = creature.isEmpty() ? "Sea Creature" : creature;
-        String caption = "! SEA CREATURE !";
         float nameScale = 1.5f;
         int nameW = (int) Math.ceil(font.width(name) * nameScale);
         int cardW = Math.max(font.width(caption), nameW) + 24;

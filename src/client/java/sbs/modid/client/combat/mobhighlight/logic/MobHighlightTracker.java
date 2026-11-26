@@ -173,8 +173,10 @@ public final class MobHighlightTracker {
             if (tracked.nameClass() == NameClass.NONE || !isWanted(tracked)) {
                 continue;
             }
-            LivingEntity mob = mobBelow(level, (ArmorStand) tracked.entity);
-            if (mob != null && mob != player && !boxed.contains(mob.getId())
+            // The nearest mob nobody claimed yet: in a clump every stand's NEAREST mob was the same
+            // one, so a pack of five showed a single box.
+            LivingEntity mob = mobBelow(level, (ArmorStand) tracked.entity, boxed);
+            if (mob != null && mob != player
                     && player.hasLineOfSight(mob) && boxed.add(mob.getId())) {
                 pick(mob, tracked.mobName());
             }
@@ -433,9 +435,15 @@ public final class MobHighlightTracker {
      * skipped; Hypixel's player-model mobs are fake players and stay candidates.
      */
     public static LivingEntity mobBelow(ClientLevel level, ArmorStand stand) {
+        return mobBelow(level, stand, null);
+    }
+
+    /** {@link #mobBelow(ClientLevel, ArmorStand)}, skipping mobs whose id is in {@code taken}. */
+    public static LivingEntity mobBelow(ClientLevel level, ArmorStand stand, it.unimi.dsi.fastutil.ints.IntSet taken) {
         List<LivingEntity> mobs = level.getEntitiesOfClass(LivingEntity.class,
                 stand.getBoundingBox().inflate(1.0, 0, 1.0).expandTowards(0, -4, 0),
-                m -> m != stand && !(m instanceof ArmorStand) && !RealPlayers.isRealPlayerEntity(m) && m.isAlive());
+                m -> m != stand && !(m instanceof ArmorStand) && !RealPlayers.isRealPlayerEntity(m) && m.isAlive()
+                        && (taken == null || !taken.contains(m.getId())));
         LivingEntity best = null;
         double bestDistance = Double.MAX_VALUE;
         for (LivingEntity mob : mobs) {

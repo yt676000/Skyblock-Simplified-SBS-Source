@@ -167,7 +167,12 @@ public final class LocalFlipConnection {
         connected = false;
         HttpURLConnection open = stream;
         if (open != null) {
-            open.disconnect();
+            // Off the caller's thread: closing a TLS socket waits for the reader holding it, which
+            // sits in a read until the next ping (up to 15 s) - on the client thread that froze the
+            // game every time the source was switched.
+            Thread closer = new Thread(open::disconnect, "SBS-FlipStream-Close");
+            closer.setDaemon(true);
+            closer.start();
         }
         if (streamThread != null) {
             streamThread.interrupt();

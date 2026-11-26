@@ -72,6 +72,10 @@ public abstract class ContainerTooltipSuppressMixin {
                 .coversForTooltip(screen, mouseX, mouseY)) {
             return "Terminal Board";
         }
+        if (sbs.modid.client.dungeons.run.ui.LeapScreenOverlay.getInstance()
+                .coversForTooltip(screen, mouseX, mouseY)) {
+            return "Leap Screen";
+        }
         return null;
     }
 

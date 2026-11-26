@@ -103,6 +103,28 @@ public final class FishingShareModule implements SbsModule {
                         v -> v.name().charAt(0) + v.name().substring(1).toLowerCase(Locale.ROOT))
                 .describe("Off: nothing. Click: a [To PARTY chat] button. Auto: sends your "
                         + "coordinates and the creature to party chat straight away."));
+        rows.add(SettingRow.toggle("Compatibility Format", () -> cfg().rareCompatFormat,
+                        () -> { cfg().rareCompatFormat = !cfg().rareCompatFormat; save(); })
+                .describe("Shares as \"--> A Thunder has spawned <--\", the line other fishing mods "
+                        + "understand. Off: SBS's line with your coordinates and island. Default: on."));
+
+        rows.add(SettingRow.label("§bParty spawns"));
+        rows.add(SettingRow.toggle("Party Spawn Alert", () -> cfg().partySpawnAlert,
+                        () -> { cfg().partySpawnAlert = !cfg().partySpawnAlert; save(); })
+                .describe("Alerts when a party member shares a spawn, e.g. \"--> A RAGNAROK has "
+                        + "spawned <--\". Uses the Big Title and Play Sound settings above."));
+        rows.add(SettingRow.enumOptions("Creature Filter",
+                        () -> cfg().partySpawnListMode == null
+                                ? sbs.modid.client.skills.fishing.model.PartyAlertListMode.ALL
+                                : cfg().partySpawnListMode,
+                        value -> { cfg().partySpawnListMode = value; save(); },
+                        v -> v.displayName())
+                .describe("All: every shared creature. Whitelist: only the creatures listed below. "
+                        + "Blacklist: every creature except those listed below."));
+        rows.add(SettingRow.text("Filter List", "Ragnarok, Thunder, ...", 400,
+                        () -> cfg().partySpawnList,
+                        v -> { cfg().partySpawnList = v; save(); })
+                .describe("Comma-separated creature names for the filter; case does not matter."));
         return rows;
     }
 }

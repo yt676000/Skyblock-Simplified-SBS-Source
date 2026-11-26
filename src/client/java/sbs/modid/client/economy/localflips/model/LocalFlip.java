@@ -75,11 +75,11 @@ public record LocalFlip(
     /** What kind of offer this is; drives the badge and which fields mean anything. */
     public enum Kind {
         /** Just listed and time-critical; arrives over the stream. */
-        SOFORT("SOFORT"),
+        SOFORT("INSTANT"),
         /** Buy-it-now from the flip list. */
         BIN("BIN"),
         /** A bid auction: {@code price} is the current bid, {@code maxBid} the most worth bidding. */
-        GEBOT("Gebot"),
+        GEBOT("Bid"),
         /** A kind this build does not know; shown, never filtered on. */
         OTHER("?");
 

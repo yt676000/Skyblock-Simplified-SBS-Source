@@ -133,6 +133,7 @@ public final class KuudraAbilities {
             return;
         }
         Vec3 at = player.position();
+        KuudraScan.getInstance().event("spell", "by", "self", "spell", known, "x", (int) at.x, "y", (int) at.y, "z", (int) at.z);
         if (known.equals("Ichor Pool")) {
             addPool(at);
         }
@@ -161,6 +162,7 @@ public final class KuudraAbilities {
         addPool(at);
         KuudraTracker.getInstance().log("{} pooled at {},{},{}",
                 announce.group(1), (int) at.x, (int) at.y, (int) at.z);
+        KuudraScan.getInstance().event("pool", "by", KuudraScan.who(announce.group(1)), "x", (int) at.x, "y", (int) at.y, "z", (int) at.z);
     }
 
     private void addPool(Vec3 at) {

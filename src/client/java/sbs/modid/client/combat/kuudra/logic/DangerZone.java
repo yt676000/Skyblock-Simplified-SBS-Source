@@ -105,6 +105,7 @@ public final class DangerZone {
         }
         Level previous = level;
         level = found;
+        KuudraScan.getInstance().event("danger", "from", previous.name(), "to", found.name());
         // Only ever announced on the way up. Coming back down to safe is good news, and good news
         // does not need a title in the middle of a damage window.
         if (found.ordinal() > previous.ordinal() && found.ordinal() >= Level.WARNING.ordinal()) {

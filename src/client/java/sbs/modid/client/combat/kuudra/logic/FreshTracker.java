@@ -124,6 +124,7 @@ public final class FreshTracker {
         if (party.find()) {
             mark(party.group(1));
             tracker.log("{} is fresh (announced)", party.group(1));
+            KuudraScan.getInstance().event("fresh", "by", KuudraScan.who(party.group(1)), "source", "party");
         }
     }
 
@@ -136,6 +137,7 @@ public final class FreshTracker {
         mark(name);
         int percent = tracker.buildPercent();
         tracker.log("own fresh at {}% build", percent);
+        KuudraScan.getInstance().event("fresh", "by", "self", "source", "perk", "build", percent);
         if (cfg.freshAlert) {
             KuudraAlert.getInstance().flash("FRESH!", 0xFF7CFF6A, cfg.freshSound, 2.0f);
         }

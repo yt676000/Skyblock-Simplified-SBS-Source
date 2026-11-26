@@ -116,23 +116,20 @@ public final class AhFlipAlertsModule implements SbsModule {
                         () -> { cfg().chatAlerts = !cfg().chatAlerts; save(); })
                         .describe("Each flip also as a clickable chat line - it stays in the chat "
                                 + "history, unlike a popup."),
-                SettingRow.toggle("Flips Window (Inventory & AH)", () -> cfg().windowOverlay,
-                        () -> { cfg().windowOverlay = !cfg().windowOverlay; save(); })
-                        .describe("A window with the current best flips beside your inventory and "
-                                + "the Auction House, so you can browse them while already in the "
-                                + "menu."),
-                SettingRow.text("Min Price", "5m", 12,
-                        () -> fmt(cfg().minPrice),
-                        text -> { cfg().minPrice = Math.max(parseCoins(text), 5_000_000L); save(); })
-                        .describe("Ignore flips cheaper than this (shorthand like 5m or 800k "
-                                + "works). 5m is the server-side minimum - cheap flips are not "
-                                + "worth the alert."),
-                SettingRow.text("Max Price (empty = no limit)", "no limit", 12,
+                SettingRow.validatedText("Min Price", "all", 12,
+                        () -> cfg().minPrice > 0 ? fmt(cfg().minPrice) : "",
+                        text -> { cfg().minPrice = parseCoins(text); save(); },
+                        AhFlipAlertsModule::validCoins)
+                        .describe("Ignore flips cheaper than this (shorthand like 5m or 800k works). "
+                                + "Filtered on your side only; empty or 0 = show all flips."),
+                SettingRow.validatedText("Max Price (empty = no limit)", "no limit", 12,
                         () -> cfg().maxPrice > 0 ? fmt(cfg().maxPrice) : "",
-                        text -> { cfg().maxPrice = parseCoins(text); save(); })
+                        text -> { cfg().maxPrice = parseCoins(text); save(); },
+                        AhFlipAlertsModule::validCoins)
                         .describe("Ignore flips costing more than this - cap it at what you can "
                                 + "actually afford to buy. Empty = no limit."),
-                SettingRow.label("Range is the auction's total price - 5m is the server minimum"),
+                SettingRow.label("Range is the auction's total price. Filtered in the mod, the server "
+                        + "sends all flips."),
                 SettingRow.label("— Flip Finder window —"),
                 SettingRow.toggle("Flip Finder", () -> flipFinder().enabled,
                                 () -> { flipFinder().enabled = !flipFinder().enabled; save(); })
@@ -141,6 +138,11 @@ public final class AhFlipAlertsModule implements SbsModule {
                                 + "stays open beside the Auction House and the other SBS windows. "
                                 + "Needs your licence token. Default: off.")
                         .licenced(),
+                SettingRow.toggle("Flip Finder Button", () -> flipFinder().inventoryButton,
+                                () -> { flipFinder().inventoryButton = !flipFinder().inventoryButton; save(); })
+                        .describe("A small \"Flip Finder\" button in your inventory and the Auction "
+                                + "House while the window is closed; click it to open the window. "
+                                + "Default: on."),
                 SettingRow.button("Open Flip Finder Window",
                                 sbs.modid.client.economy.localflips.ui.LocalFlipsWindow::show)
                         .describe("Opens the window (and switches the Flip Finder on). Drag the header, "
@@ -183,27 +185,33 @@ public final class AhFlipAlertsModule implements SbsModule {
     }
 
     /** Parses "50m" / "1.5b" / "800k" / plain coins; empty or unparsable = 0. */
-    private static long parseCoins(String text) {
-        String t = text == null ? "" : text.trim().toLowerCase(Locale.ROOT).replace(",", ".");
-        if (t.isEmpty()) {
+    /** Plain coin amounts: digits, an optional dot decimal, an optional k/m/b suffix. */
+    private static final java.util.regex.Pattern COINS =
+            java.util.regex.Pattern.compile("(\\d+(?:\\.\\d+)?)([kmb]?)");
+
+    /**
+     * Whether {@code text} is a coin amount {@link #parseCoins} reads exactly; empty counts (= no
+     * limit). A comma is rejected rather than guessed: Hypixel's "77,11M" must never become 7.7b.
+     */
+    static boolean validCoins(String text) {
+        String t = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
+        return t.isEmpty() || COINS.matcher(t).matches();
+    }
+
+    /** Coins from "5m", "800k", "1.5b", "70.9m"; empty or invalid = 0 (no limit). */
+    static long parseCoins(String text) {
+        String t = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
+        var m = COINS.matcher(t);
+        if (!m.matches()) {
             return 0;
         }
-        double mult = 1;
-        if (t.endsWith("b")) {
-            mult = 1_000_000_000;
-            t = t.substring(0, t.length() - 1);
-        } else if (t.endsWith("m")) {
-            mult = 1_000_000;
-            t = t.substring(0, t.length() - 1);
-        } else if (t.endsWith("k")) {
-            mult = 1_000;
-            t = t.substring(0, t.length() - 1);
-        }
-        try {
-            return Math.max(0, Math.round(Double.parseDouble(t) * mult));
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        double mult = switch (m.group(2)) {
+            case "b" -> 1_000_000_000d;
+            case "m" -> 1_000_000d;
+            case "k" -> 1_000d;
+            default -> 1d;
+        };
+        return Math.round(Double.parseDouble(m.group(1)) * mult);
     }
 
     /**

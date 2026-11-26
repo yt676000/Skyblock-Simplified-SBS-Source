@@ -564,6 +564,19 @@ public final class SettingRow {
     }
 
     /**
+     * Like {@link #text}, but text {@code valid} rejects is shown red and never handed to
+     * {@code setter}.
+     */
+    public static SettingRow validatedText(String label, String hint, int maxLength,
+                                           Supplier<String> getter, java.util.function.Consumer<String> setter,
+                                           java.util.function.Predicate<String> valid) {
+        int columns = Math.max(4, Math.min(14, maxLength));
+        return new SettingRow(label, (x, y, w, h) ->
+                sbs.modid.client.ui.component.SciFiTextField.forValidatedValueRow(x, y, w, h, label,
+                        hint, maxLength, columns, getter, setter, valid));
+    }
+
+    /**
      * Like {@link #text} but the value is masked ({@code ****}) while {@code reveal} is false – a
      * password field. Editing / pasting / persisting are unaffected; only the drawn glyphs hide.
      */

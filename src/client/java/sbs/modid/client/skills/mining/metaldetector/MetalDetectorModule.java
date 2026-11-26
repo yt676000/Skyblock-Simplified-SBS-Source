@@ -82,7 +82,6 @@ public final class MetalDetectorModule implements SbsModule {
                                 + "from several readings taken in different places. It marks the "
                                 + "spot and nothing else - it will not walk or dig for you."),
                 SettingRow.label("Take readings from a few spots - walking a straight line is not enough"),
-                SettingRow.label("Off until the action bar wording is confirmed in game"),
 
                 SettingRow.toggle("Treasure Waypoint", () -> cfg().waypoint,
                         () -> { cfg().waypoint = !cfg().waypoint; save(); })

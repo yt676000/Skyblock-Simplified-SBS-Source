@@ -79,6 +79,12 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
             cir.setReturnValue(true);
             return;
         }
+        // The Custom Leap Menu covers the leap chest the same way: a button or map-marker click is
+        // forwarded as one left-click on that teammate's head slot, everything else is swallowed.
+        if (sbs.modid.client.dungeons.run.ui.LeapScreenOverlay.getInstance().handleClick(self, event)) {
+            cir.setReturnValue(true);
+            return;
+        }
         // Dungeon terminal misclick guard: veto a click the solution does not contain (never sends it
         // to the server); everything the solver marked, and every terminal it does not guard, falls
         // through to the game untouched.
@@ -209,8 +215,6 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
                         .handleClick(self, event);
                 case FORGE -> sbs.modid.client.economy.forge.ui.ForgeFlipsOverlay.getInstance()
                         .handleClick(self, event);
-                case AH_FLIPS -> sbs.modid.client.economy.auctions.ui.AhFlipsOverlay.getInstance()
-                        .handleClick(self, event);
                 case CALCULATOR -> sbs.modid.client.economy.calculator.CalculatorOverlay.getInstance()
                         .handleClick(self, event);
                 case GARDEN_PLOTS -> sbs.modid.client.skills.garden.ui.GardenPlotsOverlay.getInstance()
@@ -275,10 +279,6 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
             cir.setReturnValue(true);
             return;
         }
-        if (sbs.modid.client.economy.auctions.ui.AhFlipsOverlay.getInstance().handleDrag(self, event)) {
-            cir.setReturnValue(true);
-            return;
-        }
         if (sbs.modid.client.economy.itemvalue.ItemValueOverlay.getInstance().handleDrag(self, event)) {
             cir.setReturnValue(true);
             return;
@@ -339,10 +339,6 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
             return;
         }
         if (sbs.modid.client.economy.bazaar.ui.BestFlipsOverlay.getInstance().handleRelease(event)) {
-            cir.setReturnValue(true);
-            return;
-        }
-        if (sbs.modid.client.economy.auctions.ui.AhFlipsOverlay.getInstance().handleRelease(event)) {
             cir.setReturnValue(true);
             return;
         }
@@ -466,8 +462,6 @@ public abstract class ContainerSearchBarMixin implements ContainerEventHandler {
                 case FLIPS -> sbs.modid.client.economy.bazaar.ui.BestFlipsOverlay.getInstance()
                         .handleScroll(self, mouseX, mouseY, scrollY);
                 case FORGE -> sbs.modid.client.economy.forge.ui.ForgeFlipsOverlay.getInstance()
-                        .handleScroll(self, mouseX, mouseY, scrollY);
-                case AH_FLIPS -> sbs.modid.client.economy.auctions.ui.AhFlipsOverlay.getInstance()
                         .handleScroll(self, mouseX, mouseY, scrollY);
                 case CALCULATOR -> sbs.modid.client.economy.calculator.CalculatorOverlay.getInstance()
                         .handleScroll(self, mouseX, mouseY, scrollY);

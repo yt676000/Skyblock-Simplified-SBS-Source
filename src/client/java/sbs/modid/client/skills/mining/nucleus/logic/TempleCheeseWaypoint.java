@@ -15,13 +15,13 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.phys.AABB;
 import sbs.modid.SkyblockSimplifiedSBS;
 import sbs.modid.client.core.config.ConfigManager;
 import sbs.modid.client.core.config.SBSConfig.NucleusRunSettings;
 import sbs.modid.client.core.dev.EntityProbe;
-import sbs.modid.client.core.dev.NpcNametags;
 import sbs.modid.client.core.location.SkyBlockLocation;
 import sbs.modid.client.core.pathfinding.Waypoint;
 import sbs.modid.client.core.pathfinding.WaypointStore;
@@ -190,64 +190,65 @@ public final class TempleCheeseWaypoint {
 
     // ------------------------------------------------------------------ the guardian
 
+    /** One way of seeing the guardian: the entity measured, its name, how it counts, and whether it is a bare tag. */
+    private record Sighting(Entity seen, String name, TempleCheese.Via via, double distance, boolean bareTag) {
+    }
+
     private void findGuardian(LocalPlayer player, ClientLevel level, String lobby, long now) {
         AABB box = player.getBoundingBox().inflate(TempleCheese.SIGHT_RANGE);
         List<Entity> nearby = level.getEntities(player, box);
-        List<ArmorStand> stands = new ArrayList<>();
+        List<ArmorStand> tags = new ArrayList<>();
+        List<LivingEntity> bodies = new ArrayList<>();
         for (Entity entity : nearby) {
             if (entity instanceof ArmorStand stand) {
-                stands.add(stand);
+                if (TempleCheese.isGuardianName(plain(stand.getCustomName()))) {
+                    tags.add(stand);
+                }
+            } else if (entity instanceof LivingEntity living) {
+                bodies.add(living);
             }
         }
-        Entity best = null;
-        String bestName = null;
-        TempleCheese.Via bestVia = null;
-        double bestDistance = Double.MAX_VALUE;
-        for (Entity entity : nearby) {
-            if (entity instanceof ArmorStand) {
-                continue;
+        Sighting best = null;
+        for (LivingEntity body : bodies) {
+            String name = ownGuardianName(body);
+            if (name != null) {
+                best = better(best, sight(body, name, false, player, now));
             }
-            String name = guardianName(entity, stands);
-            if (name == null) {
-                continue;
+        }
+        // Each guardian nametag: the body standing under it, else the stand itself - it sits level
+        // with the guardian's feet, so its block is the anchor either way.
+        for (ArmorStand tag : tags) {
+            LivingEntity body = bodyUnder(tag, bodies);
+            if (body == null && !bodilessLogged) {
+                bodilessLogged = true;
+                log("guardian nametag without a matching body, anchoring on the stand: "
+                        + EntityProbe.describe(tag, player));
             }
-            double distance = entity.distanceTo(player);
-            TempleCheese.Via via = logic.accept(distance, player.hasLineOfSight(entity), now);
-            if (via != null && distance < bestDistance) {
-                best = entity;
-                bestName = name;
-                bestVia = via;
-                bestDistance = distance;
-            }
+            best = better(best, sight(body != null ? body : tag, plain(tag.getCustomName()), body == null,
+                    player, now));
         }
         if (best != null) {
-            BlockPos feet = BlockPos.containing(best.getX(), best.getY(), best.getZ());
-            TempleCheese.Anchor anchor = logic.setAnchor(new TempleCheese.Pos(feet.getX(), feet.getY(),
-                    feet.getZ()), bestVia, lobby);
+            Entity seen = best.seen();
+            TempleCheese.Pos feet = best.bareTag()
+                    ? TempleCheese.standBlock(seen.getX(), seen.getY(), seen.getZ())
+                    : pos(BlockPos.containing(seen.getX(), seen.getY(), seen.getZ()));
+            TempleCheese.Anchor anchor = logic.setAnchor(feet, best.via(), lobby);
             if (anchor != null) {
                 dumpPending = false;
-                log("anchor: guardian at " + format(anchor.guardian()) + " (entity " + typeId(best)
-                        + ", name \"" + bestName + "\", via " + bestVia.name().toLowerCase(Locale.ROOT)
-                        + ") -> target " + format(anchor.target()) + " (offset "
-                        + TempleCheese.OFFSET_X + "," + TempleCheese.OFFSET_Y + "," + TempleCheese.OFFSET_Z
-                        + " " + TempleCheese.OFFSET_CERTAINTY + ", lobby " + lobby + ")");
+                log("anchor: guardian at " + format(anchor.guardian()) + " (entity " + typeId(seen)
+                        + (best.bareTag() ? ", nametag stand only" : "") + ", name \"" + best.name()
+                        + "\", via " + best.via().name().toLowerCase(Locale.ROOT) + ", "
+                        + String.format(Locale.ROOT, "%.1f", best.distance()) + " blocks) -> target "
+                        + format(anchor.target()) + " (offset " + TempleCheese.OFFSET_X + ","
+                        + TempleCheese.OFFSET_Y + "," + TempleCheese.OFFSET_Z + " "
+                        + TempleCheese.OFFSET_CERTAINTY + ", lobby " + lobby + ")");
             }
             return;
-        }
-        if (!bodilessLogged) {
-            for (ArmorStand stand : stands) {
-                String text = plain(stand.getCustomName());
-                if (TempleCheese.isGuardianName(text)) {
-                    bodilessLogged = true;
-                    log("guardian nametag without a matching body: " + EntityProbe.describe(stand, player));
-                    break;
-                }
-            }
         }
         if (dumpPending) {
             dumpPending = false;
             dumpedThisLobby = true;
-            log("no guardian body within " + (int) TempleCheese.SIGHT_RANGE + " blocks after its chat line; "
+            log("no guardian within " + (int) TempleCheese.SIGHT_RANGE + " blocks after its chat line; "
                     + nearby.size() + " entit(ies) nearby, player at " + block(player));
             for (Entity entity : nearby) {
                 log("nearby: " + EntityProbe.describe(entity, player));
@@ -255,30 +256,51 @@ public final class TempleCheeseWaypoint {
         }
     }
 
-    /**
-     * The guardian's name if {@code body} is the guardian: its own custom name, its own name, or the
-     * top line of the nametag stands stacked above it. {@code null} when none of them reads as the
-     * guardian.
-     */
-    private static String guardianName(Entity body, List<ArmorStand> stands) {
+    /** {@code seen} as a sighting if it counts (range, line of sight or a fresh chat line), else {@code null}. */
+    private Sighting sight(Entity seen, String name, boolean bareTag, LocalPlayer player, long now) {
+        double distance = seen.distanceTo(player);
+        TempleCheese.Via via = logic.accept(distance, player.hasLineOfSight(seen), now);
+        return via == null ? null : new Sighting(seen, name, via, distance, bareTag);
+    }
+
+    /** A body beats a bare tag (it is the real feet block); between equals, the nearer one. */
+    private static Sighting better(Sighting a, Sighting b) {
+        if (a == null || b == null) {
+            return a == null ? b : a;
+        }
+        if (a.bareTag() != b.bareTag()) {
+            return a.bareTag() ? b : a;
+        }
+        return b.distance() < a.distance() ? b : a;
+    }
+
+    /** The guardian's name if the body carries it itself (custom name or own name), else {@code null}. */
+    private static String ownGuardianName(Entity body) {
         String custom = plain(body.getCustomName());
         if (TempleCheese.isGuardianName(custom)) {
             return custom;
         }
         String own = plain(body.getName());
-        if (TempleCheese.isGuardianName(own)) {
-            return own;
-        }
-        List<NpcNametags.Stand> above = new ArrayList<>();
-        for (ArmorStand stand : stands) {
-            String text = stand.getCustomName() == null ? null : stand.getCustomName().getString();
-            if (text != null) {
-                above.add(new NpcNametags.Stand(stand.getX() - body.getX(), stand.getY() - body.getY(),
-                        stand.getZ() - body.getZ(), text));
+        return TempleCheese.isGuardianName(own) ? own : null;
+    }
+
+    /** The body {@code tag} is the nametag of: horizontally nearest among those it fits ({@link TempleCheese#isTagOf}). */
+    private static LivingEntity bodyUnder(ArmorStand tag, List<LivingEntity> bodies) {
+        LivingEntity best = null;
+        double bestSq = Double.MAX_VALUE;
+        for (LivingEntity body : bodies) {
+            double dx = tag.getX() - body.getX();
+            double dz = tag.getZ() - body.getZ();
+            if (!TempleCheese.isTagOf(dx, tag.getY() - body.getY(), dz)) {
+                continue;
+            }
+            double sq = dx * dx + dz * dz;
+            if (sq < bestSq) {
+                bestSq = sq;
+                best = body;
             }
         }
-        String resolved = NpcNametags.resolveName(null, above);
-        return TempleCheese.isGuardianName(resolved) ? resolved : null;
+        return best;
     }
 
     // ------------------------------------------------------------------ waypoint
@@ -330,8 +352,11 @@ public final class TempleCheeseWaypoint {
     // ------------------------------------------------------------------ helpers
 
     private static TempleCheese.Pos pos(LocalPlayer player) {
-        BlockPos feet = player.blockPosition();
-        return new TempleCheese.Pos(feet.getX(), feet.getY(), feet.getZ());
+        return pos(player.blockPosition());
+    }
+
+    private static TempleCheese.Pos pos(BlockPos block) {
+        return new TempleCheese.Pos(block.getX(), block.getY(), block.getZ());
     }
 
     private static String block(LocalPlayer player) {
